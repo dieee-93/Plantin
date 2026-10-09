@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* ─── Google Fonts: Geist-style stack via variable font ──────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Outfit:wght@300;400;500;600;700&display=swap");
+
+/* ─── Design Tokens ─────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Typeface */
+    --font-sans: "Outfit", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", "Fira Code", monospace;
+
+    /* Surface scale — warm-neutral, NOT pure white/black */
+    --surface-base:      #f8f7f5;   /* page bg */
+    --surface-elevated:  #ffffff;   /* cards, panels */
+    --surface-subtle:    #f2f1ef;   /* sidebar bg, fields bg */
+    --surface-muted:     #e9e7e4;   /* dividers, inactive bg */
+
+    /* Text scale */
+    --text-primary:   #141412;   /* headings */
+    --text-secondary: #5c5a57;   /* body, labels */
+    --text-tertiary:  #9e9c98;   /* placeholder, hint */
+    --text-inverted:  #fafaf9;
+
+    /* Accent: single color, botanical green */
+    --accent:         #2d6a4f;
+    --accent-light:   #d8f3dc;
+    --accent-dim:     #52b788;
+
+    /* Borders */
+    --border:         #e2e0dd;
+    --border-strong:  #c9c7c3;
+
+    /* Status */
+    --status-active:    #2d6a4f;
+    --status-harvested: #1e6091;
+    --status-dead:      #c0392b;
+    --status-discarded: #7c7b78;
+
+    /* Shadows — tinted to bg hue */
+    --shadow-sm: 0 1px 3px rgba(20, 20, 18, 0.06), 0 1px 2px rgba(20, 20, 18, 0.04);
+    --shadow-md: 0 4px 12px rgba(20, 20, 18, 0.08), 0 2px 4px rgba(20, 20, 18, 0.05);
+    --shadow-lg: 0 12px 32px rgba(20, 20, 18, 0.10), 0 4px 8px rgba(20, 20, 18, 0.06);
+
+    /* Radius — consistent scale */
+    --radius-sm:  6px;
+    --radius-md:  10px;
+    --radius-lg:  16px;
+    --radius-xl:  20px;
+  }
+
+  /* ─── Global Reset ─────────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--surface-base);
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* Scrollbar — thin, tasteful */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-muted); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+  /* Focus rings — accessible, not ugly */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  :focus:not(:focus-visible) { outline: none; }
+}
+
+/* ─── Utility Classes ───────────────────────────────────────────────────── */
+@layer utilities {
+  /* Monospace numbers for data */
+  .tabular { font-variant-numeric: tabular-nums; }
+  .font-mono { font-family: var(--font-mono); }
+
+  /* BBCH color dots */
+  .bbch-bar {
+    height: 3px;
+    border-radius: 99px;
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Sidebar nav active glow */
+  .nav-active-glow {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  /* Page fade in */
+  .page-enter {
+    animation: page-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes page-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Shimmer for skeleton states */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--surface-muted) 25%,
+      var(--border) 50%,
+      var(--surface-muted) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+  }
+
+  /* Tactile button press */
+  .btn-press:active {
+    transform: scale(0.98) translateY(1px);
+  }
+}
+
+/* ─── Tailwind Layer Overrides ──────────────────────────────────────────── */
+@layer base {
+  /* Form elements inherit design tokens */
+  input, select, textarea {
+    font-family: inherit;
+    color: var(--text-primary);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-tertiary);
+  }
+}
