@@ -70,7 +70,7 @@ describe('TaxonsPage', () => {
     const apple = taxons.find(t => t.genus === 'Malus')
     expect(apple).toBeDefined()
     expect(apple?.species).toBe('domestica')
-    expect(apple?.cropCode).toBe('MAN') // "Manzano" first 3 letters uppercase
+    expect(apple?.cropCode).toBe('APPLE') // Automatically resolved to APPLE ontology
   })
 
   it('selects a taxon and displays its details in the main area', async () => {

@@ -1,13 +1,16 @@
 import React, { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAccessionStore } from '@/store/accessionStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useIndividualStore } from '@/store/individualStore'
 import { useSeedLotStore } from '@/store/seedLotStore'
+import { useTaxonomySearch } from '@/hooks/useTaxonomySearch'
+import { resolveCropOntology, getTraitsForCrop } from '@/domain/ontology/index'
 import type { Accession, AcquisitionSource } from '@/domain/accession'
 import {
   Sprout, Plus, Search, Trash2, Info, Globe, GitBranch,
-  ChevronRight, Package, Users, Calendar, MapPin, Edit2, Check, X
+  ChevronRight, Package, Users, Calendar, MapPin, Edit2, Check, X, Sparkles, LeafyGreen
 } from 'lucide-react'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ function AccessionDetail({
   accession: Accession
   onDelete: () => void
 }) {
+  const navigate = useNavigate()
   const { taxons } = useTaxonStore()
   const { accessions } = useAccessionStore()
   const { individuals } = useIndividualStore()
@@ -93,6 +97,7 @@ function AccessionDetail({
   const relatedIndividuals = individuals.filter(i => i.accessionId === accession.id)
   const relatedLots = seedLots.filter(l => l.accessionId === accession.id)
   const srcCfg = SOURCE_COLORS[accession.acquisitionSource]
+  const ontologyTraits = taxon?.cropCode ? getTraitsForCrop(taxon.cropCode) : (taxon?.traits || [])
 
   return (
     <div style={{ padding: '36px 44px', maxWidth: 780, height: '100%', overflowY: 'auto' }}>
@@ -133,6 +138,12 @@ function AccessionDetail({
                 </span>
               )}
             </p>
+            {taxon?.cropCode && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '3px 10px', borderRadius: 99, background: '#d8f3dc', color: '#1b4332', fontSize: 11.5, fontWeight: 600 }}>
+                <Sparkles size={12} color="#2d6a4f" />
+                Ontología: {taxon.cropCode} · {ontologyTraits.length} descriptores activos
+              </div>
+            )}
           </div>
           <button
             onClick={onDelete}
@@ -158,7 +169,7 @@ function AccessionDetail({
         </div>
       </header>
 
-      {/* Quick stats */}
+      {/* Quick stats with actionable direct links */}
       <div
         style={{
           display: 'grid',
@@ -194,7 +205,31 @@ function AccessionDetail({
             </p>
             <p style={{ ...MONO_LABEL, marginBottom: 0, marginTop: 2 }}>Individuos</p>
           </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={() => navigate(`/individuals?accessionId=${accession.id}`)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 11px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--accent)',
+                color: '#fff',
+                fontSize: 11.5,
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              className="btn-press"
+              title="Sembrar nueva planta para esta accesión"
+            >
+              <Plus size={12} strokeWidth={2.5} />
+              Sembrar
+            </button>
+          </div>
         </div>
+
         <div
           style={{
             ...CARD,
@@ -221,6 +256,29 @@ function AccessionDetail({
               {relatedLots.length}
             </p>
             <p style={{ ...MONO_LABEL, marginBottom: 0, marginTop: 2 }}>Lotes de semillas</p>
+          </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={() => navigate(`/seedlots?accessionId=${accession.id}`)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 11px',
+                borderRadius: 'var(--radius-sm)',
+                background: '#7b2d8b',
+                color: '#fff',
+                fontSize: 11.5,
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              className="btn-press"
+              title="Registrar nuevo lote de semillas de esta accesión"
+            >
+              <Plus size={12} strokeWidth={2.5} />
+              Nuevo Lote
+            </button>
           </div>
         </div>
       </div>
@@ -377,6 +435,143 @@ function AccessionDetail({
   )
 }
 
+// ─── Modal para agregar especie al vuelo desde GBIF ──────────────────────────
+
+function QuickAddTaxonModal({
+  isOpen,
+  onClose,
+  onTaxonCreated,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onTaxonCreated: (taxonId: string) => void
+}) {
+  const { add } = useTaxonStore()
+  const [query, setQuery] = useState('')
+  const { data: results, isLoading } = useTaxonomySearch(query)
+
+  if (!isOpen) return null
+
+  const handleSelect = (r: any) => {
+    const family = r.family || 'Desconocida'
+    const genus = r.genus || ''
+    const species = r.species || ''
+    const commonName = r.commonName || ''
+
+    const resolved = resolveCropOntology({ genus, species, commonName, family })
+    const traits = resolved ? getTraitsForCrop(resolved.cropCode) : undefined
+
+    const created = add({
+      family,
+      genus,
+      species,
+      commonName: commonName || undefined,
+      cropCode: resolved?.cropCode,
+      imageUrl: r.imageUrl,
+      agronomicData: r.agronomicData,
+      traits,
+    })
+
+    onTaxonCreated(created.id)
+    onClose()
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: 'var(--surface-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          width: '100%',
+          maxWidth: 480,
+          boxShadow: 'var(--shadow-md)',
+          padding: 22,
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <LeafyGreen size={16} color="var(--accent)" />
+            Agregar Especie desde GBIF
+          </h3>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ position: 'relative', marginBottom: 12 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+          <input
+            type="text"
+            placeholder="Buscar por nombre científico (ej. Solanum, Zea...)"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            autoFocus
+            style={{ ...INPUT_STYLE, paddingLeft: 30 }}
+          />
+        </div>
+
+        <div style={{ maxHeight: 250, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {isLoading && <p style={{ fontSize: 12, textAlign: 'center', color: 'var(--text-tertiary)', padding: 12 }}>Buscando en GBIF...</p>}
+          {!isLoading && query.length > 2 && results?.length === 0 && (
+            <p style={{ fontSize: 12, textAlign: 'center', color: 'var(--text-tertiary)', padding: 12 }}>No se encontraron especies.</p>
+          )}
+          {results?.map(r => (
+            <div
+              key={r.id}
+              onClick={() => handleSelect(r)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-base)',
+                cursor: 'pointer',
+              }}
+              className="btn-press"
+            >
+              {r.imageUrl ? (
+                <img src={r.imageUrl} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: 28, height: 28, borderRadius: 4, background: '#d8f3dc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <LeafyGreen size={14} color="#1b4332" />
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {r.commonName || r.scientificName}
+                </p>
+                <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                  {r.scientificName} ({r.family})
+                </p>
+              </div>
+              <Plus size={14} color="var(--accent)" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function AccessionsPage() {
@@ -385,6 +580,7 @@ export function AccessionsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [showQuickAddTaxon, setShowQuickAddTaxon] = useState(false)
 
   // Form state
   const [accessionNumber, setAccessionNumber] = useState('')
@@ -510,9 +706,30 @@ export function AccessionsPage() {
           <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleAdd}>
             {/* Especie (Taxon) - matches test label */}
             <div>
-              <label htmlFor="taxon-select" style={LABEL_STYLE}>
-                Especie (Taxon) <span style={{ color: '#dc2626' }}>*</span>
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                <label htmlFor="taxon-select" style={{ ...LABEL_STYLE, marginBottom: 0 }}>
+                  Especie (Taxon) <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAddTaxon(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--accent)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    padding: '2px 4px',
+                  }}
+                  title="Buscar y agregar especie al vuelo desde GBIF"
+                >
+                  <Plus size={11} strokeWidth={2.5} /> Buscar en GBIF
+                </button>
+              </div>
               <select
                 id="taxon-select"
                 aria-label="Especie (Taxón)"
@@ -529,9 +746,28 @@ export function AccessionsPage() {
                 ))}
               </select>
               {taxons.length === 0 && (
-                <p style={{ fontSize: 11, color: '#b45309', marginTop: 3 }}>
-                  No hay taxones. Registra primero en Taxonomia.
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAddTaxon(true)}
+                  style={{
+                    width: '100%',
+                    marginTop: 6,
+                    padding: '7px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px dashed var(--accent)',
+                    background: 'var(--accent-light)',
+                    color: 'var(--accent)',
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <Plus size={13} /> Buscar y agregar especie al vuelo
+                </button>
               )}
             </div>
 
@@ -781,7 +1017,7 @@ export function AccessionsPage() {
 
       {/* ── Main detail area ── */}
       <main style={{ flex: 1, background: 'var(--surface-base)', overflow: 'hidden' }}>
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {selectedAccession ? (
             <motion.div
               key={selectedAccession.id}
@@ -821,6 +1057,13 @@ export function AccessionsPage() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Modal para alta rápida de especies desde GBIF */}
+      <QuickAddTaxonModal
+        isOpen={showQuickAddTaxon}
+        onClose={() => setShowQuickAddTaxon(false)}
+        onTaxonCreated={id => handleTaxonChange(id)}
+      />
     </div>
   )
 }

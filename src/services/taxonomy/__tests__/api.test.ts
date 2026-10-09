@@ -67,7 +67,7 @@ describe('Taxonomy APIs', () => {
         commonName: 'Tomato',
         family: 'Solanaceae',
         genus: 'Solanum',
-        species: 'Solanum lycopersicum'
+        species: 'lycopersicum'
       })
     })
 

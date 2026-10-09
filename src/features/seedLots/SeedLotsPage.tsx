@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useAccessionStore } from '@/store/accessionStore'
@@ -369,6 +370,10 @@ export function SeedLotsPage() {
   const [moistureContent, setMoistureContent] = useState('')
   const [harvestDate, setHarvestDate] = useState('')
 
+  const [searchParams] = useSearchParams()
+  const initialAccId = searchParams.get('accessionId')
+  const initialSelectedId = searchParams.get('selectedId')
+
   // Auto-generate lot code when accession changes
   const handleAccessionChange = (id: string) => {
     setAccessionId(id)
@@ -379,6 +384,15 @@ export function SeedLotsPage() {
     const existing = seedLots.filter(l => l.accessionId === id).length + 1
     setLotCode(`${acc.accessionNumber}-L${existing}`)
   }
+
+  useEffect(() => {
+    if (initialAccId) {
+      handleAccessionChange(initialAccId)
+    }
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId)
+    }
+  }, [initialAccId, initialSelectedId, accessions])
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault()
@@ -728,7 +742,7 @@ export function SeedLotsPage() {
 
       {/* ── Main detail area ── */}
       <main style={{ flex: 1, background: 'var(--surface-base)', overflow: 'hidden' }}>
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {selectedLot ? (
             <motion.div
               key={selectedLot.id}

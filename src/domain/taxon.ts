@@ -14,6 +14,8 @@ export interface AgronomicData {
   growthMonths?: string[];
 }
 
+import type { TraitDefinition } from './ontology/types'
+
 export interface Taxon {
   id: string
   family: string
@@ -25,6 +27,8 @@ export interface Taxon {
   authority?: string   // Ej: "Mill."
   cropCode?: string    // Ej: "TOM" (para prefijos de accesión)
   agronomicData?: AgronomicData // Traído de la API (Ej: Trefle)
+  imageUrl?: string    // Imagen botánica de la API
+  traits?: TraitDefinition[] // Descriptores fenotípicos vinculados
 }
 
 // kingdom, phylum, class, order → descartados: irrelevantes para fitomejoramiento

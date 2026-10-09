@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useIndividualStore } from '@/store/individualStore'
 import { useAccessionStore } from '@/store/accessionStore'
@@ -447,6 +448,10 @@ export function IndividualsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
+  const [searchParams] = useSearchParams()
+  const initialAccId = searchParams.get('accessionId')
+  const initialSelectedId = searchParams.get('selectedId')
+
   // Form state
   const [accessionId, setAccessionId] = useState('')
   const [locationId, setLocationId] = useState('')
@@ -456,6 +461,15 @@ export function IndividualsPage() {
   const [status, setStatus] = useState<IndividualStatus>('active')
   const [generation, setGeneration] = useState('')
   const [notes, setNotes] = useState('')
+
+  useEffect(() => {
+    if (initialAccId) {
+      setAccessionId(initialAccId)
+    }
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId)
+    }
+  }, [initialAccId, initialSelectedId])
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault()

@@ -18,6 +18,7 @@ import { ORNAMENTALS_ONTOLOGY } from './categories/ornamentals';
 import { OTHERS_ONTOLOGY } from './categories/others';
 
 export * from './types';
+export * from './cropResolver';
 
 export const CROP_ONTOLOGY: Record<string, TraitDefinition[]> = {
   ...CEREALS_ONTOLOGY,
@@ -39,9 +40,54 @@ export const CROP_ONTOLOGY: Record<string, TraitDefinition[]> = {
   ...OTHERS_ONTOLOGY,
 };
 
+export const CROP_ALIASES: Record<string, string> = {
+  'POT': 'POT_TABLE',
+  'POTATO': 'POT_TABLE',
+  'SOY': 'SOY_SHORT',
+  'SOYBEAN': 'SOY_SHORT',
+  'RIC': 'RIC_INDICA',
+  'RICE': 'RIC_INDICA',
+  'BAR': 'BAR_MALT',
+  'BARLEY': 'BAR_MALT',
+  'BEA': 'BEA_DRY',
+  'BEAN': 'BEA_DRY',
+  'PEA': 'PEA_DRY',
+  'SUN': 'SUN_OIL',
+  'SUNFLOWER': 'SUN_OIL',
+  'ONI': 'ONION',
+  'GAR': 'GARLIC',
+  'CAR': 'CARROT',
+  'LET': 'LETTUCE',
+  'CAB': 'CABBAGE',
+  'EGG': 'EGGPLANT',
+  'CUC': 'CUCUMBER',
+  'MEL': 'MELON',
+  'WAT': 'WATERMELON',
+  'RAD': 'RADISH',
+  'CEL': 'CELERY',
+  'ART': 'ARTICHOKE',
+  'PEP': 'PEPPER_SWEET',
+  'CHILI': 'PEPPER_HOT',
+  'TOMATO': 'TOM',
+  'CORN': 'MAI',
+  'MAIZE': 'MAI',
+  'WHEAT': 'WHT',
+  'ALFALFA': 'ALF',
+  'CLOVER': 'CLO',
+  'OATS': 'OAT',
+};
+
 // Funciones de utilidad para el motor
 export function getTraitsForCrop(cropCode: string): TraitDefinition[] {
-  return CROP_ONTOLOGY[cropCode.toUpperCase()] || []
+  const upper = cropCode.toUpperCase()
+  if (CROP_ONTOLOGY[upper]) {
+    return CROP_ONTOLOGY[upper]
+  }
+  const alias = CROP_ALIASES[upper]
+  if (alias && CROP_ONTOLOGY[alias]) {
+    return CROP_ONTOLOGY[alias]
+  }
+  return []
 }
 
 export function validateTraitValue(trait: TraitDefinition, value: any): { valid: boolean; error?: string } {
