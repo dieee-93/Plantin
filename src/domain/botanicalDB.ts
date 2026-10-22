@@ -11,14 +11,28 @@ export const BOTANICAL_FAMILIES = [
   'Rutaceae',
   'Apiaceae',
   'Liliaceae',
-  'Asteraceae'
+  'Asteraceae',
+  'Cannabaceae',
+  'Rubiaceae',
+  'Malvaceae'
 ] as const;
 
 export const BOTANICAL_DB: Record<string, Record<string, string[]>> = {
   Solanaceae: {
     Solanum: ['lycopersicum (Tomate) [TOM]', 'tuberosum (Papa) [POT]', 'melongena (Berenjena) [EGG]'],
     Capsicum: ['annuum (Pimiento) [PEP]', 'chinense (Ají) [PEP]', 'frutescens (Tabasco) [PEP]'],
-    Nicotiana: ['tabacum (Tabaco)']
+    Nicotiana: ['tabacum (Tabaco) [TOB]']
+  },
+  Cannabaceae: {
+    Cannabis: ['sativa (Cáñamo / Cannabis) [HEMP]', 'indica (Cannabis medicinal) [HEMP]'],
+    Humulus: ['lupulus (Lúpulo) [HOP]']
+  },
+  Rubiaceae: {
+    Coffea: ['arabica (Café Arábica) [COF]', 'canephora (Café Robusta) [COF]']
+  },
+  Malvaceae: {
+    Theobroma: ['cacao (Cacao) [CAC]'],
+    Gossypium: ['hirsutum (Algodón) [COT]']
   },
   Poaceae: {
     Zea: ['mays (Maíz) [MAI]'],

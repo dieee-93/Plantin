@@ -1,19 +1,108 @@
 import React, { useState } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useTaxonomySearch } from '@/hooks/useTaxonomySearch'
+import { fetchTrefleSpeciesDetail } from '@/services/taxonomy/trefleApi'
+import { lookupEcocrop } from '@/services/taxonomy/ecocrop'
 import type { TaxonomySearchResult } from '@/services/taxonomy/types'
-import { resolveCropOntology, getTraitsForCrop } from '@/domain/ontology/index'
+import { resolveCropOntology, getTraitsForCrop, generateFallbackCropCode } from '@/domain/ontology/index'
 import type { ResolvedCrop } from '@/domain/ontology/cropResolver'
 import type { TraitDefinition } from '@/domain/ontology/types'
-import type { AgronomicData } from '@/domain/taxon'
+import { mergeAgronomicData } from '@/domain/taxon'
+import type { AgronomicData, AgronomicField, AgronomicSource } from '@/domain/taxon'
 import {
   Search, Plus, LeafyGreen, Info, Database, Trash2,
-  Sparkles, CheckCircle2, AlertCircle, Thermometer, Droplets, Sun, Layers
+  Sparkles, CheckCircle2, Thermometer, Droplets, Sun, Layers, Loader2,
+  CloudRain, CalendarDays
 } from 'lucide-react'
+import { AgroSuitabilityCard } from '@/features/agroclimate/AgroSuitabilityCard'
+import { useAgroSuitability } from '@/hooks/useAgroSuitability'
+import { SeedBankTabs } from '@/components/SeedBankTabs'
+
+const INPUT_STYLE: React.CSSProperties = {
+  width: '100%',
+  background: 'var(--surface-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-sm)',
+  padding: '8px 12px',
+  fontSize: 13,
+  color: 'var(--text-primary)',
+  outline: 'none',
+  fontFamily: 'var(--font-sans)',
+}
+
+const LABEL_STYLE: React.CSSProperties = {
+  display: 'block',
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: 'var(--text-secondary)',
+  marginBottom: 4,
+}
+
+const MONO_LABEL: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.1em',
+  color: 'var(--text-tertiary)',
+  fontFamily: 'var(--font-mono)',
+}
+
+const CARD: React.CSSProperties = {
+  background: 'var(--surface-subtle)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-lg)',
+  padding: '18px 20px',
+}
+
+const SOURCE_LABEL: Record<AgronomicSource, string> = {
+  trefle: 'Trefle',
+  ecocrop: 'FAO EcoCrop',
+  manual: 'Manual',
+}
+
+const SOURCE_COLORS: Record<AgronomicSource, { bg: string; text: string }> = {
+  trefle:  { bg: '#dbeafe', text: '#1e3a5f' },
+  ecocrop: { bg: '#fef3c7', text: '#78350f' },
+  manual:  { bg: '#ede9fe', text: '#4c1d95' },
+}
+
+function SourceBadge({ source }: { source?: AgronomicSource }) {
+  if (!source) return null
+  const cfg = SOURCE_COLORS[source]
+  return (
+    <span
+      style={{
+        marginLeft: 5,
+        padding: '1px 5px',
+        borderRadius: 4,
+        fontSize: 9,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        fontFamily: 'var(--font-mono)',
+        background: cfg.bg,
+        color: cfg.text,
+      }}
+    >
+      {SOURCE_LABEL[source]}
+    </span>
+  )
+}
+
+/** Campos ecofisiológicos editables en el formulario. */
+const EDITABLE_FIELDS: { key: AgronomicField; label: string; unit?: string; step: string }[] = [
+  { key: 'minTemp', label: 'Temp. mín', unit: '°C', step: '0.5' },
+  { key: 'maxTemp', label: 'Temp. máx', unit: '°C', step: '0.5' },
+  { key: 'optTempMin', label: 'Óptima mín', unit: '°C', step: '0.5' },
+  { key: 'optTempMax', label: 'Óptima máx', unit: '°C', step: '0.5' },
+  { key: 'phMinimum', label: 'pH mín', step: '0.1' },
+  { key: 'phMaximum', label: 'pH máx', step: '0.1' },
+]
 
 export function TaxonsPage() {
   const { taxons, add, remove } = useTaxonStore()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -29,8 +118,27 @@ export function TaxonsPage() {
   const [agronomicData, setAgronomicData] = useState<AgronomicData | undefined>(undefined)
   const [resolvedCrop, setResolvedCrop] = useState<ResolvedCrop | null>(null)
   const [resolvedTraits, setResolvedTraits] = useState<TraitDefinition[]>([])
+  const [isFetchingDetail, setIsFetchingDetail] = useState(false)
+  const [ecocropMatch, setEcocropMatch] = useState<string | null>(null)
 
-  const handleSelectResult = (result: TaxonomySearchResult) => {
+  /** Edición manual de un campo: sobrescribe el valor y lo marca como 'manual'. */
+  const handleAgronomicEdit = (key: AgronomicField, raw: string) => {
+    setAgronomicData(prev => {
+      const next: AgronomicData = { ...(prev ?? {}), sources: { ...(prev?.sources ?? {}) } }
+      if (raw.trim() === '') {
+        delete (next as Record<string, unknown>)[key]
+        delete next.sources![key]
+      } else {
+        const n = Number(raw)
+        if (!Number.isFinite(n)) return prev
+        ;(next as Record<string, unknown>)[key] = n
+        next.sources![key] = 'manual'
+      }
+      return next
+    })
+  }
+
+  const handleSelectResult = async (result: TaxonomySearchResult) => {
     const resFamily = result.family || 'Desconocida'
     const resGenus = result.genus || ''
     const resSpecies = result.species || ''
@@ -41,7 +149,8 @@ export function TaxonsPage() {
     setSpecies(resSpecies)
     setCommonName(resCommon)
     setImageUrl(result.imageUrl)
-    setAgronomicData(result.agronomicData)
+    setSearchQuery(result.scientificName)
+    setShowDropdown(false)
 
     // Resolución automática de Ontología biológica
     const resolution = resolveCropOntology({
@@ -50,16 +159,23 @@ export function TaxonsPage() {
       commonName: resCommon,
       family: resFamily,
     })
-
     setResolvedCrop(resolution)
-    if (resolution) {
-      setResolvedTraits(getTraitsForCrop(resolution.cropCode))
-    } else {
-      setResolvedTraits([])
-    }
+    setResolvedTraits(resolution ? getTraitsForCrop(resolution.cropCode) : [])
 
-    setSearchQuery(result.scientificName)
-    setShowDropdown(false)
+    // Datos ecofisiológicos: Trefle (detalle) + FAO EcoCrop en paralelo, fusión campo a campo
+    setIsFetchingDetail(true)
+    setAgronomicData(undefined)
+    setEcocropMatch(null)
+    try {
+      const [trefle, eco] = await Promise.all([
+        result.trefleSlug ? fetchTrefleSpeciesDetail(result.trefleSlug) : Promise.resolve(result.agronomicData),
+        lookupEcocrop(resGenus, resSpecies),
+      ])
+      setAgronomicData(mergeAgronomicData(trefle, eco?.data))
+      setEcocropMatch(eco ? eco.matchedName : null)
+    } finally {
+      setIsFetchingDetail(false)
+    }
   }
 
   const handleManualGenusChange = (newGenus: string) => {
@@ -90,12 +206,14 @@ export function TaxonsPage() {
     e.preventDefault()
     if (!family.trim() || !genus.trim() || !species.trim()) return
 
+    const effectiveCropCode = resolvedCrop?.cropCode || generateFallbackCropCode(genus, species)
+
     const newTaxon = add({
       family,
       genus,
       species,
       commonName: commonName.trim() || undefined,
-      cropCode: resolvedCrop?.cropCode,
+      cropCode: effectiveCropCode,
       imageUrl,
       agronomicData,
       traits: resolvedTraits.length > 0 ? resolvedTraits : undefined,
@@ -109,6 +227,7 @@ export function TaxonsPage() {
     setCommonName('')
     setImageUrl(undefined)
     setAgronomicData(undefined)
+    setEcocropMatch(null)
     setResolvedCrop(null)
     setResolvedTraits([])
     setSelectedId(newTaxon.id)
@@ -116,32 +235,91 @@ export function TaxonsPage() {
 
   const selectedTaxon = taxons.find(t => t.id === selectedId)
   const activeTraits = selectedTaxon?.traits || (selectedTaxon?.cropCode ? getTraitsForCrop(selectedTaxon.cropCode) : [])
+  const {
+    assessment: agroAssessment,
+    climate,
+    isLoadingClimate,
+    climateError,
+    detectBrowserLocation,
+  } = useAgroSuitability(selectedTaxon?.agronomicData)
 
   return (
-    <div className="flex h-full animate-in fade-in duration-500">
-      {/* Sidebar / Form List */}
-      <aside className="w-[440px] flex flex-col border-r border-zinc-200/70 bg-zinc-50/60 overflow-hidden">
-        <div className="p-6 border-b border-zinc-200/70 overflow-y-auto max-h-[58vh]">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold tracking-tight text-zinc-900">Nueva Especie</h2>
-            <span className="text-[11px] font-medium text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Ontología Auto
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)' }}>
+      <SeedBankTabs active="taxons" />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* ── Sidebar / Form List ── */}
+      <aside
+        style={{
+          width: 380,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--surface-elevated)',
+          borderRight: '1px solid var(--border)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '20px 18px',
+            borderBottom: '1px solid var(--border)',
+            overflowY: 'auto',
+            maxHeight: '58vh',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--accent-light)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <LeafyGreen size={14} color="var(--accent)" strokeWidth={2} />
+              </div>
+              <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+                Nueva Especie
+              </h2>
+            </div>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 600,
+                color: 'var(--accent)',
+                background: 'var(--accent-light)',
+                padding: '2px 8px',
+                borderRadius: 99,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Sparkles size={11} /> Ontología Auto
             </span>
           </div>
 
-          <form className="space-y-3.5" onSubmit={handleAdd}>
+          <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={handleAdd}>
             {/* Autocomplete Search */}
-            <div className="relative">
+            <div style={{ position: 'relative' }}>
               <label htmlFor="searchQuery" className="sr-only">Buscar Especie en GBIF</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <div style={{ position: 'relative' }}>
+                <Search
+                  size={14}
+                  color="var(--text-tertiary)"
+                  style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+                />
                 <input
                   id="searchQuery"
                   type="text"
-                  className="w-full bg-white border border-zinc-200 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 transition-all placeholder:text-zinc-400 shadow-sm"
+                  style={{ ...INPUT_STYLE, paddingLeft: 32 }}
                   placeholder="Buscar en GBIF (ej. Solanum, Zea...)"
                   value={searchQuery}
-                  onChange={(e) => {
+                  onChange={e => {
                     setSearchQuery(e.target.value)
                     setShowDropdown(true)
                   }}
@@ -152,27 +330,74 @@ export function TaxonsPage() {
               </div>
 
               {showDropdown && searchQuery.trim().length > 2 && (
-                <div className="absolute z-20 w-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-                  {isLoading && <div className="p-4 text-sm text-zinc-500 text-center animate-pulse">Consultando GBIF / API botánica...</div>}
+                <div
+                  style={{
+                    position: 'absolute',
+                    zIndex: 20,
+                    width: '100%',
+                    marginTop: 4,
+                    background: 'var(--surface-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: 'var(--shadow-lg)',
+                    overflow: 'hidden',
+                    maxHeight: 240,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {isLoading && (
+                    <div style={{ padding: 14, fontSize: 12.5, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                      Consultando GBIF / API botánica...
+                    </div>
+                  )}
                   {!isLoading && searchResults?.length === 0 && (
-                    <div className="p-4 text-sm text-zinc-500 text-center">No se encontraron especies con ese nombre</div>
+                    <div style={{ padding: 14, fontSize: 12.5, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                      No se encontraron especies con ese nombre
+                    </div>
                   )}
                   {!isLoading && searchResults?.map(result => (
                     <div
                       key={result.id}
-                      className="flex items-center gap-3 p-3 hover:bg-emerald-50/50 cursor-pointer border-b border-zinc-100 last:border-0 transition-colors"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border)',
+                      }}
                       onClick={() => handleSelectResult(result)}
                     >
                       {result.imageUrl ? (
-                        <img src={result.imageUrl} alt={result.commonName || result.scientificName} className="w-10 h-10 rounded-md object-cover bg-zinc-100 shrink-0" />
+                        <img
+                          src={result.imageUrl}
+                          alt={result.commonName || result.scientificName}
+                          style={{ width: 34, height: 34, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                        />
                       ) : (
-                        <div className="w-10 h-10 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                          <LeafyGreen className="w-5 h-5" />
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 6,
+                            background: 'var(--accent-light)',
+                            color: 'var(--accent)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <LeafyGreen size={16} />
                         </div>
                       )}
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-medium text-zinc-900 truncate">{result.commonName || result.scientificName}</span>
-                        <span className="text-xs text-zinc-500 truncate"><i>{result.scientificName}</i> ({result.family})</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {result.commonName || result.scientificName}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <i>{result.scientificName}</i> ({result.family})
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -180,313 +405,696 @@ export function TaxonsPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label className="text-xs font-medium text-zinc-500 mb-1 block">Familia</label>
+                <label style={LABEL_STYLE}>Familia</label>
                 <input
                   type="text"
-                  className="w-full bg-zinc-100/70 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-700 focus:outline-none"
+                  style={{ ...INPUT_STYLE, background: 'var(--surface-subtle)', fontSize: 12.5 }}
                   value={family}
-                  onChange={(e) => setFamily(e.target.value)}
+                  onChange={e => setFamily(e.target.value)}
                   placeholder="Ej. Solanaceae"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-zinc-500 mb-1 block">Género</label>
+                <label style={LABEL_STYLE}>Género</label>
                 <input
                   type="text"
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  style={{ ...INPUT_STYLE, fontSize: 12.5 }}
                   value={genus}
-                  onChange={(e) => handleManualGenusChange(e.target.value)}
+                  onChange={e => handleManualGenusChange(e.target.value)}
                   placeholder="Ej. Solanum"
                   required
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label className="text-xs font-medium text-zinc-500 mb-1 block">Especie</label>
+                <label style={LABEL_STYLE}>Especie</label>
                 <input
                   type="text"
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  style={{ ...INPUT_STYLE, fontSize: 12.5 }}
                   value={species}
-                  onChange={(e) => handleManualSpeciesChange(e.target.value)}
+                  onChange={e => handleManualSpeciesChange(e.target.value)}
                   placeholder="Ej. lycopersicum"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-zinc-700 mb-1 block">Nombre Vulgar</label>
+                <label style={LABEL_STYLE}>Nombre Vulgar</label>
                 <input
                   type="text"
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  style={{ ...INPUT_STYLE, fontSize: 12.5 }}
                   value={commonName}
-                  onChange={(e) => setCommonName(e.target.value)}
+                  onChange={e => setCommonName(e.target.value)}
                   placeholder="Ej. Tomate"
                 />
               </div>
             </div>
 
             {/* Ficha de Resolución Automática de Ontología */}
-            <div className="mt-2">
-              {resolvedCrop ? (
-                <div className="p-3 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-emerald-950">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-emerald-900 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      Ontología: {resolvedCrop.cropName} ({resolvedCrop.cropCode})
-                    </span>
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-200/60 text-emerald-800">
-                      {resolvedCrop.confidence === 'exact' ? 'Exacto' : resolvedCrop.confidence === 'synonym' ? 'Sinónimo' : 'Género CWR'}
-                    </span>
-                  </div>
-                  {resolvedCrop.notes && (
-                    <p className="text-[11px] text-emerald-800/90 mb-1.5">{resolvedCrop.notes}</p>
-                  )}
-                  <p className="text-[11px] text-emerald-700">
-                    <strong>{resolvedTraits.length}</strong> descriptores fenotípicos vinculados automáticamente.
+            {resolvedCrop ? (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--accent-light)',
+                  border: '1px solid #b7e4c7',
+                  color: '#1b4332',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <CheckCircle2 size={13} color="var(--accent)" />
+                    Ontología: {resolvedCrop.cropName} ({resolvedCrop.cropCode})
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9.5,
+                      textTransform: 'uppercase',
+                      fontWeight: 700,
+                      fontFamily: 'var(--font-mono)',
+                      padding: '1px 6px',
+                      borderRadius: 4,
+                      background: '#b7e4c7',
+                      color: '#1b4332',
+                    }}
+                  >
+                    {resolvedCrop.confidence === 'exact' ? 'Exacto' : resolvedCrop.confidence === 'synonym' ? 'Sinónimo' : 'Género CWR'}
+                  </span>
+                </div>
+                {resolvedCrop.notes && (
+                  <p style={{ fontSize: 11, marginBottom: 4 }}>{resolvedCrop.notes}</p>
+                )}
+                <p style={{ fontSize: 11 }}>
+                  <strong>{resolvedTraits.length}</strong> descriptores fenotípicos vinculados automáticamente.
+                </p>
+              </div>
+            ) : (genus || species) ? (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--surface-subtle)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 11.5,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}
+              >
+                <Info size={14} color="var(--text-tertiary)" style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>Sin ontología agronómica específica registrada. Se guardará con sus datos taxonómicos completos.</span>
+              </div>
+            ) : null}
+
+            {/* Ecophysiological data loading indicator */}
+            {isFetchingDetail && (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: '#dbeafe',
+                  border: '1px solid #bfdbfe',
+                  color: '#1e3a5f',
+                  fontSize: 11.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Loader2 size={14} className="animate-spin" style={{ flexShrink: 0 }} />
+                Cargando datos ecofisiológicos (Trefle + FAO EcoCrop)...
+              </div>
+            )}
+
+            {/* Editable ecophysiological data */}
+            {!isFetchingDetail && (genus || species) && (
+              <fieldset
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--surface-subtle)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <legend
+                  style={{
+                    padding: '0 4px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <Thermometer size={12} color="#d97706" /> Datos ecofisiológicos
+                </legend>
+                {ecocropMatch && (
+                  <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                    Complementado con FAO EcoCrop: <i>{ecocropMatch}</i>
                   </p>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {EDITABLE_FIELDS.map(f => {
+                    const value = agronomicData?.[f.key]
+                    return (
+                      <div key={f.key}>
+                        <label
+                          htmlFor={`agro-${f.key}`}
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 500,
+                            color: 'var(--text-secondary)',
+                            marginBottom: 3,
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          {f.label}{f.unit ? ` (${f.unit})` : ''}
+                          <SourceBadge source={agronomicData?.sources?.[f.key]} />
+                        </label>
+                        <input
+                          id={`agro-${f.key}`}
+                          type="number"
+                          step={f.step}
+                          style={{ ...INPUT_STYLE, padding: '5px 8px', fontSize: 12, fontFamily: 'var(--font-mono)' }}
+                          value={typeof value === 'number' ? value : ''}
+                          onChange={e => handleAgronomicEdit(f.key, e.target.value)}
+                          placeholder="—"
+                        />
+                      </div>
+                    )
+                  })}
                 </div>
-              ) : (genus || species) ? (
-                <div className="p-3 rounded-lg bg-zinc-100 border border-zinc-200 text-zinc-600 text-xs flex items-start gap-2">
-                  <Info className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
-                  <span>Sin ontología agronómica específica registrada. Se guardará con sus datos taxonómicos completos.</span>
-                </div>
-              ) : null}
-            </div>
+              </fieldset>
+            )}
 
             <button
               type="submit"
-              disabled={!genus.trim() || !species.trim()}
-              className="w-full mt-3 inline-flex items-center justify-center rounded-lg bg-emerald-700 text-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              disabled={!genus.trim() || !species.trim() || isFetchingDetail}
+              className="btn-press"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 7,
+                padding: '9px 16px',
+                borderRadius: 'var(--radius-md)',
+                background: (genus.trim() && species.trim() && !isFetchingDetail) ? 'var(--accent)' : 'var(--surface-muted)',
+                color: (genus.trim() && species.trim() && !isFetchingDetail) ? 'white' : 'var(--text-tertiary)',
+                fontSize: 13,
+                fontWeight: 500,
+                border: 'none',
+                cursor: (genus.trim() && species.trim() && !isFetchingDetail) ? 'pointer' : 'not-allowed',
+                boxShadow: (genus.trim() && species.trim() && !isFetchingDetail) ? 'var(--shadow-sm)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
             >
-              <Plus className="w-4 h-4 mr-2 opacity-80" />
-              Agregar al Catálogo
+              {isFetchingDetail ? (
+                <><Loader2 size={14} className="animate-spin" />Cargando datos de la especie...</>
+              ) : (
+                <><Plus size={14} strokeWidth={2.5} />Agregar al Catálogo</>
+              )}
             </button>
           </form>
         </div>
 
         {/* List of registered taxons */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          <div className="px-3 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-            Catálogo Registrado ({taxons.length})
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px 14px' }}>
+          <div style={{ padding: '4px 8px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={MONO_LABEL}>Catálogo Registrado ({taxons.length})</span>
           </div>
           {taxons.length === 0 ? (
-            <div className="p-8 text-center text-sm text-zinc-500">
+            <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>
               No hay especies registradas en el catálogo.
             </div>
           ) : (
-            taxons.map(t => (
-              <div
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
-                className={`p-3 rounded-lg cursor-pointer transition-all border flex items-center justify-between ${
-                  selectedId === t.id
-                    ? 'bg-white border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/20'
-                    : 'bg-transparent border-transparent hover:bg-zinc-100/70'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {t.imageUrl ? (
-                    <img src={t.imageUrl} alt={t.commonName || t.genus} className="w-8 h-8 rounded-md object-cover bg-zinc-100 shrink-0" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                      <LeafyGreen className="w-4 h-4" />
+            taxons.map(t => {
+              const isSelected = selectedId === t.id
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => setSelectedId(t.id)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    background: isSelected ? 'var(--accent-light)' : 'transparent',
+                    border: isSelected ? '1px solid #b7e4c7' : '1px solid transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 2,
+                    transition: 'all 0.12s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    {t.imageUrl ? (
+                      <img
+                        src={t.imageUrl}
+                        alt={t.commonName || t.genus}
+                        style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 6,
+                          background: isSelected ? 'white' : 'var(--accent-light)',
+                          color: 'var(--accent)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <LeafyGreen size={15} />
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {t.commonName || `${t.genus} ${t.species}`}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 11.5,
+                          color: 'var(--text-tertiary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <i>{t.genus} {t.species}</i> ({t.family})
+                      </p>
                     </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className={`text-sm font-medium truncate ${selectedId === t.id ? 'text-emerald-950' : 'text-zinc-800'}`}>
-                      {t.commonName || `${t.genus} ${t.species}`}
-                    </p>
-                    <p className="text-xs text-zinc-500 truncate">
-                      <i>{t.genus} {t.species}</i> ({t.family})
-                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    {t.cropCode && (
+                      <span
+                        style={{
+                          padding: '2px 7px',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: 10.5,
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          background: isSelected ? 'white' : 'var(--surface-subtle)',
+                          color: 'var(--accent)',
+                          border: '1px solid #b7e4c7',
+                        }}
+                      >
+                        {t.cropCode}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      title="Eliminar de la lista"
+                      data-testid="delete-taxon-sidebar-btn"
+                      onClick={e => {
+                        e.stopPropagation()
+                        remove(t.id)
+                        if (selectedId === t.id) setSelectedId(null)
+                      }}
+                      style={{
+                        padding: 4,
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-tertiary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
-
-                {t.cropCode && (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-100/70 text-emerald-800 shrink-0">
-                    {t.cropCode}
-                  </span>
-                )}
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </aside>
 
-      {/* Main Details Area */}
-      <main className="flex-1 bg-white overflow-y-auto relative">
-        {selectedTaxon ? (
-          <div className="p-10 max-w-4xl animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <header className="mb-8 relative flex items-start justify-between">
-              <div className="flex items-start gap-5">
-                {selectedTaxon.imageUrl ? (
-                  <img
-                    src={selectedTaxon.imageUrl}
-                    alt={selectedTaxon.commonName || selectedTaxon.genus}
-                    className="w-20 h-20 rounded-2xl object-cover bg-zinc-100 border border-zinc-200 shadow-sm"
-                  />
-                ) : (
-                  <div className="w-20 h-20 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-                    <LeafyGreen className="w-10 h-10" />
+      {/* ── Main Details Area ── */}
+      <main style={{ flex: 1, minWidth: 0, background: 'var(--surface-base)', overflowY: 'auto' }}>
+        <AnimatePresence>
+          {selectedTaxon ? (
+            <motion.div
+              key={selectedTaxon.id}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              style={{ padding: '36px 44px', maxWidth: 860 }}
+            >
+              <header style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18 }}>
+                  {selectedTaxon.imageUrl ? (
+                    <img
+                      src={selectedTaxon.imageUrl}
+                      alt={selectedTaxon.commonName || selectedTaxon.genus}
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 'var(--radius-lg)',
+                        objectFit: 'cover',
+                        border: '1px solid var(--border)',
+                        boxShadow: 'var(--shadow-sm)',
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 'var(--radius-lg)',
+                        background: 'var(--accent-light)',
+                        color: 'var(--accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px solid #b7e4c7',
+                      }}
+                    >
+                      <LeafyGreen size={34} />
+                    </div>
+                  )}
+                  <div>
+                    <h1
+                      style={{
+                        fontSize: 28,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        letterSpacing: '-0.02em',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <i>{selectedTaxon.genus} {selectedTaxon.species}</i>
+                    </h1>
+                    <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      {selectedTaxon.commonName || 'Sin nombre común registrado'} ·{' '}
+                      <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{selectedTaxon.family}</span>
+                    </p>
+                    {selectedTaxon.cropCode && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          marginTop: 8,
+                          padding: '3px 10px',
+                          borderRadius: 99,
+                          background: 'var(--accent-light)',
+                          color: '#1b4332',
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Sparkles size={12} color="var(--accent)" />
+                        {activeTraits.length > 0 ? (
+                          <>Ontología Vinculada: {selectedTaxon.cropCode}</>
+                        ) : (
+                          <>Prefijo de Accesión: {selectedTaxon.cropCode}</>
+                        )}
+                      </span>
+                    )}
                   </div>
+                </div>
+
+                {deletingId === selectedTaxon.id ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '5px 10px',
+                      background: '#fff1f2',
+                      border: '1px solid #fca5a5',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: '#991b1b', fontWeight: 500 }}>¿Eliminar especie?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        remove(selectedTaxon.id)
+                        setSelectedId(null)
+                        setDeletingId(null)
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        color: 'white',
+                        background: '#dc2626',
+                        border: 'none',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Sí, eliminar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(null)}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 11.5,
+                        fontWeight: 500,
+                        color: 'var(--text-secondary)',
+                        background: 'white',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="delete-taxon-header-btn"
+                    onClick={() => setDeletingId(selectedTaxon.id)}
+                    className="btn-press"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '7px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid #fca5a5',
+                      background: '#fff1f2',
+                      color: '#991b1b',
+                      fontSize: 12.5,
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Trash2 size={13} />
+                    Eliminar especie
+                  </button>
                 )}
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 mb-1">
-                    <i>{selectedTaxon.genus} {selectedTaxon.species}</i>
-                  </h1>
-                  <p className="text-base text-zinc-600 font-medium">
-                    {selectedTaxon.commonName || 'Sin nombre común registrado'} · <span className="text-zinc-500 font-normal">{selectedTaxon.family}</span>
-                  </p>
-                  {selectedTaxon.cropCode && (
-                    <span className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-md bg-emerald-100/80 text-emerald-900 text-xs font-semibold">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-                      Ontología Vinculada: {selectedTaxon.cropCode}
-                    </span>
+              </header>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+                {/* Botanical Info */}
+                <div style={CARD}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+                    <Info size={13} color="var(--accent)" />
+                    <span style={MONO_LABEL}>Información Taxonómica</span>
+                  </div>
+                  <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>FAMILIA</dt>
+                      <dd style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedTaxon.family}</dd>
+                    </div>
+                    <div>
+                      <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>GÉNERO</dt>
+                      <dd style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedTaxon.genus}</dd>
+                    </div>
+                    <div>
+                      <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>ESPECIE</dt>
+                      <dd style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedTaxon.species}</dd>
+                    </div>
+                    <div>
+                      <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>CÓDIGO CROP</dt>
+                      <dd style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>
+                        {selectedTaxon.cropCode || 'Sin código'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                {/* Agronomic Data */}
+                <div style={CARD}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+                    <Sun size={13} color="#d97706" />
+                    <span style={MONO_LABEL}>Datos Ecofisiológicos</span>
+                  </div>
+                  {selectedTaxon.agronomicData ? (
+                    <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {([
+                        { min: 'minTemp', max: 'maxTemp', label: 'Temp. absoluta', unit: ' °C', icon: Thermometer },
+                        { min: 'optTempMin', max: 'optTempMax', label: 'Temp. óptima', unit: ' °C', icon: Thermometer },
+                        { min: 'phMinimum', max: 'phMaximum', label: 'pH absoluto', unit: '', icon: Droplets },
+                        { min: 'optPhMin', max: 'optPhMax', label: 'pH óptimo', unit: '', icon: Droplets },
+                        { min: 'rainfallMin', max: 'rainfallMax', label: 'Precipitación', unit: ' mm/año', icon: CloudRain },
+                        { min: 'cycleDaysMin', max: 'cycleDaysMax', label: 'Ciclo', unit: ' días', icon: CalendarDays },
+                      ] as const).map(row => {
+                        const a = selectedTaxon.agronomicData!
+                        const lo = a[row.min]
+                        const hi = a[row.max]
+                        if (lo === undefined && hi === undefined) return null
+                        const Icon = row.icon
+                        const src = a.sources?.[row.min] ?? a.sources?.[row.max]
+                        return (
+                          <div
+                            key={row.label}
+                            style={{
+                              background: 'var(--surface-elevated)',
+                              padding: '8px 10px',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--border)',
+                            }}
+                          >
+                            <dt style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                <Icon size={11} color="var(--text-tertiary)" /> {row.label}
+                              </span>
+                              <SourceBadge source={src} />
+                            </dt>
+                            <dd style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+                              {lo ?? '?'} – {hi ?? '?'}{row.unit}
+                            </dd>
+                          </div>
+                        )
+                      })}
+                    </dl>
+                  ) : (
+                    <p style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>
+                      Sin datos ecofisiológicos en Trefle ni FAO EcoCrop para esta especie.
+                    </p>
                   )}
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  if (confirm('¿Estás seguro de que quieres eliminar esta especie del catálogo?')) {
-                    remove(selectedTaxon.id)
-                    setSelectedId(null)
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Eliminar
-              </button>
-            </header>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
-              {/* Botanical Info */}
-              <div className="p-5 rounded-xl bg-zinc-50 border border-zinc-200/70">
-                <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 uppercase tracking-wider mb-4">
-                  <Info className="w-4 h-4 text-emerald-600" />
-                  Información Taxonómica
-                </div>
-                <dl className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <dt className="text-zinc-500 mb-0.5">Familia</dt>
-                    <dd className="font-medium text-zinc-900">{selectedTaxon.family}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-zinc-500 mb-0.5">Género</dt>
-                    <dd className="font-medium text-zinc-900">{selectedTaxon.genus}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-zinc-500 mb-0.5">Especie</dt>
-                    <dd className="font-medium text-zinc-900">{selectedTaxon.species}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-zinc-500 mb-0.5">Código Crop</dt>
-                    <dd className="font-medium text-zinc-900">{selectedTaxon.cropCode || 'Sin código'}</dd>
-                  </div>
-                </dl>
+              {/* Ficha de Aptitud Agroclimática */}
+              <div style={{ marginBottom: 18 }}>
+                <AgroSuitabilityCard
+                  assessment={agroAssessment}
+                  climate={climate}
+                  isLoading={isLoadingClimate}
+                  error={climateError}
+                  onDetectLocation={detectBrowserLocation}
+                />
               </div>
 
-              {/* Agronomic Data */}
-              <div className="p-5 rounded-xl bg-zinc-50 border border-zinc-200/70">
-                <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 uppercase tracking-wider mb-4">
-                  <Sun className="w-4 h-4 text-amber-600" />
-                  Datos Agronómicos (API)
+              {/* Ontology Traits Sheet */}
+              <div style={{ ...CARD, marginBottom: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Layers size={13} color="var(--accent)" />
+                    <span style={MONO_LABEL}>Ficha de Descriptores Fenotípicos ({activeTraits.length})</span>
+                  </div>
+                  {selectedTaxon.cropCode && (
+                    <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>
+                      Crop Ontology: {selectedTaxon.cropCode}
+                    </span>
+                  )}
                 </div>
-                {selectedTaxon.agronomicData ? (
-                  <dl className="grid grid-cols-2 gap-3 text-xs">
-                    {selectedTaxon.agronomicData.minTemp !== undefined && (
-                      <div>
-                        <dt className="text-zinc-500 mb-0.5 flex items-center gap-1"><Thermometer className="w-3 h-3" /> Temp. Mín</dt>
-                        <dd className="font-medium text-zinc-900">{selectedTaxon.agronomicData.minTemp} °C</dd>
-                      </div>
-                    )}
-                    {selectedTaxon.agronomicData.maxTemp !== undefined && (
-                      <div>
-                        <dt className="text-zinc-500 mb-0.5 flex items-center gap-1"><Thermometer className="w-3 h-3" /> Temp. Máx</dt>
-                        <dd className="font-medium text-zinc-900">{selectedTaxon.agronomicData.maxTemp} °C</dd>
-                      </div>
-                    )}
-                    {selectedTaxon.agronomicData.phMinimum !== undefined && (
-                      <div>
-                        <dt className="text-zinc-500 mb-0.5 flex items-center gap-1"><Droplets className="w-3 h-3" /> pH Mín</dt>
-                        <dd className="font-medium text-zinc-900">{selectedTaxon.agronomicData.phMinimum}</dd>
-                      </div>
-                    )}
-                    {selectedTaxon.agronomicData.phMaximum !== undefined && (
-                      <div>
-                        <dt className="text-zinc-500 mb-0.5 flex items-center gap-1"><Droplets className="w-3 h-3" /> pH Máx</dt>
-                        <dd className="font-medium text-zinc-900">{selectedTaxon.agronomicData.phMaximum}</dd>
-                      </div>
-                    )}
-                  </dl>
+
+                {activeTraits.length === 0 ? (
+                  <div style={{ padding: 14, borderRadius: 'var(--radius-sm)', background: 'var(--surface-elevated)', border: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12.5 }}>
+                    No hay variables fenotípicas predefinidas para esta especie en el catálogo de ontologías.
+                  </div>
                 ) : (
-                  <p className="text-xs text-zinc-500">Sin datos ecofisiológicos provistos por la API para esta especie.</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {activeTraits.map(trait => (
+                      <div
+                        key={trait.id}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--surface-elevated)',
+                          border: '1px solid var(--border)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{trait.name}</span>
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              fontFamily: 'var(--font-mono)',
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                              background: 'var(--surface-subtle)',
+                              color: 'var(--text-secondary)',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {trait.type}
+                          </span>
+                        </div>
+                        {trait.description && (
+                          <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 6 }}>{trait.description}</p>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                          {trait.unit && <span>Unidad: {trait.unit}</span>}
+                          {trait.min !== undefined && <span>Mín: {trait.min}</span>}
+                          {trait.max !== undefined && <span>Máx: {trait.max}</span>}
+                          {trait.options && <span>Opciones: {trait.options.length}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
 
-            {/* Ontology Traits Sheet */}
-            <div className="p-6 rounded-xl bg-zinc-50/70 border border-zinc-200/80 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 uppercase tracking-wider">
-                  <Layers className="w-4 h-4 text-emerald-600" />
-                  Ficha de Descriptores Fenotípicos ({activeTraits.length})
-                </div>
-                {selectedTaxon.cropCode && (
-                  <span className="text-xs text-emerald-800 font-medium">
-                    Crop Ontology: {selectedTaxon.cropCode}
-                  </span>
-                )}
+              {/* Metadata */}
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Database size={12} /> ID Interno: {selectedTaxon.id}
               </div>
-
-              {activeTraits.length === 0 ? (
-                <div className="p-4 rounded-lg bg-zinc-100 text-zinc-500 text-xs">
-                  No hay variables fenotípicas predefinidas para esta especie en el catálogo de ontologías.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {activeTraits.map(trait => (
-                    <div key={trait.id} className="p-3 rounded-lg bg-white border border-zinc-200/80 shadow-xs">
-                      <div className="flex items-start justify-between mb-1">
-                        <span className="text-xs font-semibold text-zinc-900">{trait.name}</span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 uppercase">
-                          {trait.type}
-                        </span>
-                      </div>
-                      {trait.description && (
-                        <p className="text-[11px] text-zinc-500 mb-1.5">{trait.description}</p>
-                      )}
-                      <div className="flex items-center gap-2 text-[10px] text-zinc-600 font-mono">
-                        {trait.unit && <span>Unidad: {trait.unit}</span>}
-                        {trait.min !== undefined && <span>Mín: {trait.min}</span>}
-                        {trait.max !== undefined && <span>Máx: {trait.max}</span>}
-                        {trait.options && <span>Opciones: {trait.options.length}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Metadata */}
-            <div className="text-xs text-zinc-400 font-mono flex items-center gap-2">
-              <Database className="w-3.5 h-3.5" /> ID Interno: {selectedTaxon.id}
-            </div>
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center text-zinc-400">
-            <div className="text-center">
-              <LeafyGreen className="w-12 h-12 mx-auto mb-3 opacity-20 text-emerald-600" />
-              <p className="text-sm font-medium text-zinc-500">Seleccione una especie para ver su ficha biológica y ontológica</p>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+              <LeafyGreen size={52} strokeWidth={1} color="var(--surface-muted)" />
+              <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-tertiary)' }}>
+                Seleccione una especie para ver su ficha biológica y ontológica
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
+      </div>
     </div>
   )
 }

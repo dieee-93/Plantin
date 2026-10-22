@@ -9,6 +9,8 @@ interface SeedLotState {
   update: (id: string, patch: Partial<SeedLot>) => void
   remove: (id: string) => void
   getById: (id: string) => SeedLot | undefined
+  getByAccession: (accessionId: string) => SeedLot[]
+  consumeSeeds: (id: string, count?: number) => void
 }
 
 export const useSeedLotStore = create<SeedLotState>()(
@@ -34,6 +36,22 @@ export const useSeedLotStore = create<SeedLotState>()(
       },
       getById: (id) => {
         return get().seedLots.find((lot) => lot.id === id)
+      },
+      getByAccession: (accessionId) => {
+        return get().seedLots.filter((lot) => lot.accessionId === accessionId)
+      },
+      consumeSeeds: (id, count = 1) => {
+        set((state) => ({
+          seedLots: state.seedLots.map((lot) => {
+            if (lot.id !== id || lot.currentCount === undefined) return lot
+            const nextCount = Math.max(0, lot.currentCount - count)
+            return {
+              ...lot,
+              currentCount: nextCount,
+              status: nextCount === 0 ? 'exhausted' : lot.status,
+            }
+          }),
+        }))
       },
     }),
     {

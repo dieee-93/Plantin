@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useIndividualStore } from '@/store/individualStore'
 import { useAccessionStore } from '@/store/accessionStore'
@@ -7,6 +8,8 @@ import { useObservationStore } from '@/store/observationStore'
 import { useLocationStore } from '@/store/locationStore'
 import { getTraitsForCrop } from '@/domain/ontology/index'
 import type { TraitDefinition } from '@/domain/ontology/types'
+import { getIndividualDisplayName } from '@/domain/individual'
+import { ActiveCropTabs } from '@/components/ActiveCropTabs'
 import { Search, FlaskConical, CheckCircle2, History, Sprout, ChevronRight } from 'lucide-react'
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -144,10 +147,19 @@ export function PhenotypingPage() {
   const { observations, add: addObservation } = useObservationStore()
   const { locations } = useLocationStore()
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const initialIndividualId = searchParams.get('individualId')
+
+  const [selectedId, setSelectedId] = useState<string | null>(initialIndividualId)
   const [searchQuery, setSearchQuery] = useState('')
   const [formData, setFormData] = useState<Record<string, any>>({})
   const [successMsg, setSuccessMsg] = useState('')
+
+  useEffect(() => {
+    if (initialIndividualId) {
+      setSelectedId(initialIndividualId)
+    }
+  }, [initialIndividualId])
 
   const resolveLocationName = (locId?: string) => {
     if (!locId) return null
@@ -190,6 +202,7 @@ export function PhenotypingPage() {
           traitId: trait.id,
           value: val,
           date: new Date().toISOString(),
+          bbchAtObservation: selectedIndividual?.currentBBCH,
         })
         added++
       }
@@ -214,7 +227,9 @@ export function PhenotypingPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--surface-base)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)' }}>
+      <ActiveCropTabs active="phenotyping" />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
       {/* ── Individual list (left sidebar) ── */}
       <aside
         style={{
@@ -260,18 +275,19 @@ export function PhenotypingPage() {
               </p>
             </div>
           ) : (
-            filteredIndividuals.map(ind => {
+            filteredIndividuals.map((ind, idx) => {
               const acc = accessions.find(a => a.id === ind.accessionId)
               const locName = resolveLocationName(ind.locationId)
               const isSelected = ind.id === selectedId
               const obsCount = observations.filter(o => o.individualId === ind.id).length
+              const dispName = getIndividualDisplayName(ind, acc?.accessionNumber, idx)
 
               return (
                 <motion.button
                   key={ind.id}
                   onClick={() => { setSelectedId(ind.id); setFormData({}); setSuccessMsg('') }}
                   whileTap={{ scale: 0.99 }}
-                  whileHover={!isSelected ? { backgroundColor: 'var(--surface-subtle)' } : {}}
+                  whileHover={!isSelected ? { backgroundColor: '#f2f1ef' } : {}}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -297,7 +313,7 @@ export function PhenotypingPage() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {acc?.accessionNumber ?? 'N/A'}
+                        {dispName}
                       </p>
                       {locName && (
                         <p style={{ fontSize: 11, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -621,20 +637,37 @@ export function PhenotypingPage() {
                                   {displayVal}
                                 </span>
                               </div>
-                              <p
-                                style={{
-                                  fontSize: 10.5,
-                                  color: 'var(--text-tertiary)',
-                                  fontFamily: 'var(--font-mono)',
-                                }}
-                              >
-                                {new Date(obs.date).toLocaleString('es-AR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </p>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <p
+                                  style={{
+                                    fontSize: 10.5,
+                                    color: 'var(--text-tertiary)',
+                                    fontFamily: 'var(--font-mono)',
+                                  }}
+                                >
+                                  {new Date(obs.date).toLocaleString('es-AR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </p>
+                                {obs.bbchAtObservation !== undefined && (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontFamily: 'var(--font-mono)',
+                                      color: 'var(--text-secondary)',
+                                      background: 'var(--surface-elevated)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: 99,
+                                      padding: '1px 6px',
+                                    }}
+                                  >
+                                    BBCH {obs.bbchAtObservation}
+                                  </span>
+                                )}
+                              </div>
                             </motion.div>
                           )
                         })}
@@ -669,6 +702,7 @@ export function PhenotypingPage() {
           )}
         </AnimatePresence>
       </main>
+      </div>
     </div>
   )
 }

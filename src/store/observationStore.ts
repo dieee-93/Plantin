@@ -7,6 +7,7 @@ export interface PhenotypeObservation {
   traitId: string
   value: string | number | boolean
   date: string
+  bbchAtObservation?: number
   notes?: string
 }
 

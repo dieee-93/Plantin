@@ -19,4 +19,9 @@ export interface TaxonomySearchResult {
   imageUrl?: string
   /** Agronomic data like temp, pH, light (mostly from Trefle) */
   agronomicData?: AgronomicData
+  /**
+   * Trefle slug (e.g. "solanum-lycopersicum") used to fetch species detail.
+   * Only present for results that come from or were matched with Trefle.
+   */
+  trefleSlug?: string
 }

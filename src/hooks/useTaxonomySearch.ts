@@ -53,6 +53,7 @@ async function searchUnifiedTaxonomy(query: string): Promise<TaxonomySearchResul
         commonName: existing.commonName || item.commonName, 
         imageUrl: item.imageUrl || existing.imageUrl,
         agronomicData: item.agronomicData || existing.agronomicData,
+        trefleSlug: item.trefleSlug || existing.trefleSlug, // ← preserve for detail fetch
         source: 'GBIF', // Keep it marked as GBIF since it has the strict taxonomy
       })
     } else {

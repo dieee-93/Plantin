@@ -75,6 +75,23 @@ export const CROP_ALIASES: Record<string, string> = {
   'ALFALFA': 'ALF',
   'CLOVER': 'CLO',
   'OATS': 'OAT',
+  'CANNABIS': 'HEMP',
+  'CAN_SAT': 'HEMP',
+  'HEM': 'HEMP',
+  'COF': 'COFFEE',
+  'CAC': 'CACAO',
+  'TOB': 'TOBACCO',
+  'COTTON': 'COT',
+  'TEA': 'TEA',
+  'MATE': 'YERBA_MATE',
+  'AVO': 'AVOCADO',
+  'BAN': 'BANANA',
+  'MAN': 'MANGO',
+  'PIN': 'PINEAPPLE',
+  'OLI': 'OLIVE',
+  'HOP': 'HOPS',
+  'SUG': 'SUG_CANE',
+  'SUGARCANE': 'SUG_CANE',
 };
 
 // Funciones de utilidad para el motor

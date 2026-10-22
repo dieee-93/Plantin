@@ -1,14 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useAccessionStore } from '@/store/accessionStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useLocationStore } from '@/store/locationStore'
+import { useIndividualStore } from '@/store/individualStore'
 import type { SeedLot, SeedLotStatus } from '@/domain/seedLot'
+import { SeedBankTabs } from '@/components/SeedBankTabs'
 import {
   Package, Plus, Search, Trash2, Thermometer, Droplets,
-  ChevronRight, Calendar, Activity, AlertTriangle, CheckCircle2
+  ChevronRight, Calendar, Activity, AlertTriangle, CheckCircle2,
+  Sprout, Users
 } from 'lucide-react'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -82,22 +85,47 @@ function GerminationBar({ rate }: { rate?: number }) {
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
 function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }) {
+  const navigate = useNavigate()
   const { accessions } = useAccessionStore()
   const { taxons } = useTaxonStore()
   const { locations } = useLocationStore()
+  const { individuals } = useIndividualStore()
   const { update } = useSeedLotStore()
 
   const accession = accessions.find(a => a.id === lot.accessionId)
   const taxon = accession ? taxons.find(t => t.id === accession.taxonId) : undefined
   const location = lot.locationId ? locations.find(l => l.id === lot.locationId) : undefined
+  const harvestMother = lot.harvestIndividualId
+    ? individuals.find(i => i.id === lot.harvestIndividualId)
+    : undefined
+  const sownIndividuals = individuals.filter(i => i.seedLotId === lot.id)
   const cfg = STATUS_CONFIG[lot.status]
 
   const stockPct = lot.initialCount && lot.currentCount !== undefined
     ? Math.round((lot.currentCount / lot.initialCount) * 100)
     : undefined
 
+  const canSow = lot.status === 'active' && (lot.currentCount === undefined || lot.currentCount > 0)
+
   const [editCount, setEditCount] = useState(false)
   const [newCount, setNewCount] = useState(String(lot.currentCount ?? ''))
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // Viability test inline editor
+  const [editViability, setEditViability] = useState(false)
+  const [germRateDraft, setGermRateDraft] = useState(String(lot.germinationRate ?? ''))
+  const [germDateDraft, setGermDateDraft] = useState(
+    lot.lastGerminationTest ?? new Date().toISOString().slice(0, 10)
+  )
+
+  useEffect(() => {
+    setEditCount(false)
+    setConfirmDelete(false)
+    setEditViability(false)
+    setNewCount(String(lot.currentCount ?? ''))
+    setGermRateDraft(String(lot.germinationRate ?? ''))
+    setGermDateDraft(lot.lastGerminationTest ?? new Date().toISOString().slice(0, 10))
+  }, [lot.id, lot.currentCount, lot.germinationRate, lot.lastGerminationTest])
 
   const handleSaveCount = () => {
     const n = parseInt(newCount, 10)
@@ -110,13 +138,24 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
     setEditCount(false)
   }
 
+  const handleSaveViability = () => {
+    const rate = parseFloat(germRateDraft)
+    if (!isNaN(rate) && rate >= 0 && rate <= 100) {
+      update(lot.id, {
+        germinationRate: rate,
+        lastGerminationTest: germDateDraft || new Date().toISOString().slice(0, 10),
+      })
+    }
+    setEditViability(false)
+  }
+
   return (
     <div style={{ padding: '36px 44px', maxWidth: 780, height: '100%', overflowY: 'auto' }}>
       {/* Header */}
       <header style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5, flexWrap: 'wrap' }}>
               <h1
                 style={{
                   fontSize: 26,
@@ -150,27 +189,91 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
               )}
             </p>
           </div>
-          <button
-            onClick={onDelete}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '7px 14px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid #fca5a5',
-              background: '#fff1f2',
-              color: '#991b1b',
-              fontSize: 12.5,
-              fontWeight: 500,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-            className="btn-press"
-          >
-            <Trash2 size={13} strokeWidth={2} />
-            Eliminar
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              disabled={!canSow}
+              onClick={() => navigate(`/individuals?accessionId=${lot.accessionId}&seedLotId=${lot.id}`)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '7px 14px',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                background: canSow ? 'var(--accent)' : 'var(--surface-muted)',
+                color: canSow ? 'white' : 'var(--text-tertiary)',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: canSow ? 'pointer' : 'not-allowed',
+              }}
+              className="btn-press"
+              title="Sembrar una nueva planta descontando semilla de este lote"
+            >
+              <Sprout size={13} strokeWidth={2.2} />
+              Sembrar desde lote
+            </button>
+
+            {confirmDelete ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 'var(--radius-md)', background: '#fff1f2', border: '1px solid #fca5a5' }}>
+                <span style={{ fontSize: 11.5, color: '#991b1b', fontWeight: 500 }}>¿Eliminar?</span>
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  style={{
+                    padding: '4px 9px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    background: '#dc2626',
+                    color: 'white',
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Sí, eliminar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    background: 'white',
+                    color: 'var(--text-secondary)',
+                    fontSize: 11.5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid #fca5a5',
+                  background: '#fff1f2',
+                  color: '#991b1b',
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                className="btn-press"
+              >
+                <Trash2 size={13} strokeWidth={2} />
+                Eliminar
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -276,7 +379,7 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
         {/* Almacenamiento */}
         <div style={CARD}>
-          <p style={{ ...MONO_LABEL, marginBottom: 14 }}>Almacenamiento</p>
+          <p style={{ ...MONO_LABEL, marginBottom: 14 }}>Almacenamiento y Trazabilidad</p>
           <dl style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {location && (
               <div>
@@ -308,12 +411,90 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
                 </dd>
               </div>
             )}
+            {harvestMother && (
+              <div>
+                <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>PLANTA MADRE COSECHADA</dt>
+                <dd>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/individuals?selectedId=${harvestMother.id}`)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      padding: '2px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--accent-light)',
+                      color: 'var(--accent)',
+                      border: '1px solid #b7e4c7',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Sprout size={11} />
+                    {accession?.accessionNumber ?? 'Planta'} {harvestMother.location ? `(${harvestMother.location})` : ''}
+                  </button>
+                </dd>
+              </div>
+            )}
+            {sownIndividuals.length > 0 && (
+              <div>
+                <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>
+                  PLANTAS SEMBRADAS ({sownIndividuals.length})
+                </dt>
+                <dd style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {sownIndividuals.map(ind => (
+                    <button
+                      key={ind.id}
+                      type="button"
+                      onClick={() => navigate(`/individuals?selectedId=${ind.id}`)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '2px 7px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--surface-elevated)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                        fontSize: 11,
+                        fontFamily: 'var(--font-mono)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Users size={10} />
+                      {ind.location || ind.position || ind.id.slice(0, 6)}
+                    </button>
+                  ))}
+                </dd>
+              </div>
+            )}
           </dl>
         </div>
 
         {/* Viabilidad */}
         <div style={CARD}>
-          <p style={{ ...MONO_LABEL, marginBottom: 14 }}>Viabilidad</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <p style={{ ...MONO_LABEL, marginBottom: 0 }}>Viabilidad</p>
+            <button
+              type="button"
+              onClick={() => setEditViability(v => !v)}
+              style={{
+                padding: '3px 8px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-elevated)',
+                color: 'var(--text-secondary)',
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              {editViability ? 'Cancelar' : 'Registrar Test'}
+            </button>
+          </div>
           <dl style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {lot.harvestDate && (
               <div>
@@ -324,7 +505,7 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
                 </dd>
               </div>
             )}
-            {lot.lastGerminationTest && (
+            {lot.lastGerminationTest && !editViability && (
               <div>
                 <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>ULTIMO TEST</dt>
                 <dd style={{ fontSize: 13, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -333,10 +514,54 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
                 </dd>
               </div>
             )}
-            <div>
-              <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>TASA DE GERMINACION</dt>
-              <GerminationBar rate={lot.germinationRate} />
-            </div>
+            {editViability ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+                <div>
+                  <label htmlFor="viability-rate-input" style={LABEL_STYLE}>Tasa de Germinación (%)</label>
+                  <input
+                    id="viability-rate-input"
+                    aria-label="Tasa de Germinación (%)"
+                    type="number"
+                    min={0}
+                    max={100}
+                    style={INPUT_STYLE}
+                    value={germRateDraft}
+                    onChange={e => setGermRateDraft(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="viability-date-input" style={LABEL_STYLE}>Fecha del Ensayo</label>
+                  <input
+                    id="viability-date-input"
+                    type="date"
+                    style={INPUT_STYLE}
+                    value={germDateDraft}
+                    onChange={e => setGermDateDraft(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveViability}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    background: 'var(--accent)',
+                    color: 'white',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Guardar Ensayo
+                </button>
+              </div>
+            ) : (
+              <div>
+                <dt style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>TASA DE GERMINACION</dt>
+                <GerminationBar rate={lot.germinationRate} />
+              </div>
+            )}
           </dl>
         </div>
       </div>
@@ -354,7 +579,6 @@ function SeedLotDetail({ lot, onDelete }: { lot: SeedLot; onDelete: () => void }
 export function SeedLotsPage() {
   const { seedLots, add, remove } = useSeedLotStore()
   const { accessions } = useAccessionStore()
-  const { taxons } = useTaxonStore()
   const { locations } = useLocationStore()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -380,7 +604,6 @@ export function SeedLotsPage() {
     if (!id) return
     const acc = accessions.find(a => a.id === id)
     if (!acc) return
-    const year = new Date().getFullYear()
     const existing = seedLots.filter(l => l.accessionId === id).length + 1
     setLotCode(`${acc.accessionNumber}-L${existing}`)
   }
@@ -434,10 +657,8 @@ export function SeedLotsPage() {
 
   const handleDelete = () => {
     if (!selectedLot) return
-    if (confirm('Eliminar este lote de semillas?')) {
-      remove(selectedLot.id)
-      setSelectedId(null)
-    }
+    remove(selectedLot.id)
+    setSelectedId(null)
   }
 
   const SECTION_MONO: React.CSSProperties = {
@@ -450,7 +671,9 @@ export function SeedLotsPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--surface-base)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)' }}>
+      <SeedBankTabs active="seedlots" />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
       {/* ── Sidebar ── */}
       <aside
         style={{
@@ -665,7 +888,7 @@ export function SeedLotsPage() {
                     key={lot.id}
                     onClick={() => setSelectedId(lot.id)}
                     whileTap={{ scale: 0.99 }}
-                    whileHover={!isSelected ? { backgroundColor: 'var(--surface-subtle)' } : {}}
+                    whileHover={!isSelected ? { backgroundColor: '#f2f1ef' } : {}}
                     style={{
                       width: '100%',
                       textAlign: 'left',
@@ -773,6 +996,7 @@ export function SeedLotsPage() {
           )}
         </AnimatePresence>
       </main>
+      </div>
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TaxonsPage } from './TaxonsPage'
-import { useTaxonStore, INITIAL_TAXONS } from '@/store/taxonStore'
+import { useTaxonStore } from '@/store/taxonStore'
 import * as useTaxonomySearchModule from '@/hooks/useTaxonomySearch'
 
 // Mock the hook
@@ -62,7 +62,7 @@ describe('TaxonsPage', () => {
     expect(screen.getByDisplayValue('Rosaceae')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Malus')).toBeInTheDocument()
 
-    const submitBtn = screen.getByRole('button', { name: /agregar/i })
+    const submitBtn = await screen.findByRole('button', { name: /agregar/i })
     await user.click(submitBtn)
 
     // The store should have it
@@ -83,5 +83,33 @@ describe('TaxonsPage', () => {
     const detailsHeading = screen.getByRole('heading', { name: /Solanum lycopersicum/i })
     expect(detailsHeading).toBeInTheDocument()
     expect(screen.getAllByText('TOM').length).toBeGreaterThan(0)
+  })
+
+  it('deletes a taxon via inline confirmation in the detail header', async () => {
+    const user = userEvent.setup()
+    render(<TaxonsPage />)
+
+    const items = screen.getAllByText(/Tomate/i)
+    await user.click(items[0])
+
+    const deleteBtn = screen.getByTestId('delete-taxon-header-btn')
+    await user.click(deleteBtn)
+
+    const confirmBtn = screen.getByRole('button', { name: /sí, eliminar/i })
+    await user.click(confirmBtn)
+
+    expect(useTaxonStore.getState().taxons.some(t => t.id === 'tax-1')).toBe(false)
+  })
+
+  it('deletes a taxon directly from the sidebar list button', async () => {
+    const user = userEvent.setup()
+    render(<TaxonsPage />)
+
+    const sidebarDeleteBtns = screen.getAllByTestId('delete-taxon-sidebar-btn')
+    expect(sidebarDeleteBtns.length).toBe(2)
+
+    await user.click(sidebarDeleteBtns[0])
+
+    expect(useTaxonStore.getState().taxons.some(t => t.id === 'tax-1')).toBe(false)
   })
 })

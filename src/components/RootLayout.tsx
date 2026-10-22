@@ -1,5 +1,9 @@
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
+import { useAgroClimateStore } from '@/store/agroClimateStore'
+import { reverseGeocode } from '@/services/climate/geocodingClient'
+import { LocationSetupModal } from '@/components/LocationSetupModal'
 import {
   LayoutDashboard,
   Sprout,
@@ -9,21 +13,100 @@ import {
   GitBranch,
   Leaf,
   Package,
+  MapPin,
+  CloudRain,
+  Snowflake,
+  Sun,
 } from 'lucide-react'
 
-const NAV_ITEMS = [
-  { to: '/',            label: 'Dashboard',       icon: LayoutDashboard, end: true },
-  { to: '/accessions',  label: 'Accesiones',      icon: Sprout },
-  { to: '/individuals', label: 'Individuos',       icon: Users },
-  { to: '/taxons',      label: 'Taxonomía',        icon: Leaf },
-  { to: '/phenotyping', label: 'Fenotipado',       icon: FlaskConical },
-  { to: '/locations',   label: 'Ubicaciones',      icon: Map },
-  { to: '/seedlots',    label: 'Lotes de Semillas', icon: Package },
-  { to: '/breeding',    label: 'Mejoramiento',     icon: GitBranch },
+interface NavItem {
+  to: string
+  step?: string
+  label: string
+  sub?: string
+  icon: React.ElementType
+  end?: boolean
+  matchPaths?: string[]
+  children?: { to: string; label: string; icon: React.ElementType }[]
+}
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    to: '/',
+    label: 'Inicio y Guía',
+    sub: 'Visión del ciclo',
+    icon: LayoutDashboard,
+    end: true,
+  },
+  {
+    to: '/locations',
+    step: '01',
+    label: 'Mis Espacios',
+    sub: 'Ubicaciones y clima',
+    icon: Map,
+  },
+  {
+    to: '/accessions',
+    step: '02',
+    label: 'Banco de Semillas',
+    sub: 'Variedades y lotes',
+    icon: Sprout,
+    matchPaths: ['/accessions', '/seedlots', '/taxons'],
+    children: [
+      { to: '/accessions', label: 'Variedades (Accesiones)', icon: Sprout },
+      { to: '/seedlots',   label: 'Sobres / Lotes',          icon: Package },
+      { to: '/taxons',     label: 'Catálogo Botánico',       icon: Leaf },
+    ],
+  },
+  {
+    to: '/individuals',
+    step: '03',
+    label: 'Cultivo Activo',
+    sub: 'Plantas y fenotipado',
+    icon: Users,
+    matchPaths: ['/individuals', '/phenotyping'],
+    children: [
+      { to: '/individuals', label: 'Plantas en Cultivo', icon: Users },
+      { to: '/phenotyping', label: 'Cuaderno de Campo',  icon: FlaskConical },
+    ],
+  },
+  {
+    to: '/breeding',
+    step: '04',
+    label: 'Lab. de Cruzas',
+    sub: 'Hibridación y pedigrí',
+    icon: GitBranch,
+  },
 ]
 
 export function RootLayout() {
   const location = useLocation()
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false)
+  const {
+    farmCoordinates,
+    currentClimate,
+    currentWeather,
+    isLoadingClimate,
+    climateError,
+    setFarmCoordinates,
+    loadClimateForCoordinates,
+  } = useAgroClimateStore()
+
+  useEffect(() => {
+    if (farmCoordinates && (!currentClimate || !currentWeather) && !isLoadingClimate && !climateError) {
+      loadClimateForCoordinates(farmCoordinates)
+    }
+  }, [farmCoordinates, currentClimate, currentWeather, isLoadingClimate, climateError, loadClimateForCoordinates])
+
+  useEffect(() => {
+    if (farmCoordinates && !farmCoordinates.name) {
+      reverseGeocode(farmCoordinates.latitude, farmCoordinates.longitude).then((approxName) => {
+        if (approxName) {
+          setFarmCoordinates({ ...farmCoordinates, name: approxName })
+        }
+      })
+    }
+  }, [farmCoordinates, setFarmCoordinates])
 
   return (
     <div
@@ -35,10 +118,14 @@ export function RootLayout() {
         fontFamily: 'var(--font-sans)',
       }}
     >
+      <LocationSetupModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+      />
       {/* ── Sidebar ── */}
       <nav
         style={{
-          width: 220,
+          width: 244,
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -72,16 +159,29 @@ export function RootLayout() {
           >
             <Sprout size={14} color="white" strokeWidth={2} />
           </div>
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              letterSpacing: '-0.01em',
-            }}
-          >
-            Plantin
-          </span>
+          <div>
+            <span
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                letterSpacing: '-0.01em',
+                display: 'block',
+                lineHeight: 1.1,
+              }}
+            >
+              Plantin
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--text-tertiary)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              Germoplasma & Cultivo
+            </span>
+          </div>
         </div>
 
         {/* Nav group label */}
@@ -96,7 +196,7 @@ export function RootLayout() {
               fontFamily: 'var(--font-mono)',
             }}
           >
-            Módulos
+            Flujo de Trabajo
           </span>
         </div>
 
@@ -108,56 +208,261 @@ export function RootLayout() {
             padding: '0 10px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 2,
+            gap: 4,
           }}
         >
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              style={{ textDecoration: 'none' }}
+          {NAV_ITEMS.map(({ to, step, label, sub, icon: Icon, end, matchPaths, children }) => {
+            const isGroupActive = matchPaths
+              ? matchPaths.some(p => location.pathname.startsWith(p))
+              : end
+                ? location.pathname === to
+                : location.pathname.startsWith(to)
+
+            return (
+              <div key={to}>
+                <NavLink
+                  to={to}
+                  end={end}
+                  style={{ textDecoration: 'none' }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 11px',
+                      borderRadius: 'var(--radius-md)',
+                      background: isGroupActive ? 'var(--accent-light)' : 'transparent',
+                      color: isGroupActive ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontWeight: isGroupActive ? 600 : 450,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <Icon
+                      size={15}
+                      strokeWidth={isGroupActive ? 2.1 : 1.75}
+                      style={{ flexShrink: 0 }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {label}
+                        </span>
+                        {step && (
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 700,
+                              padding: '1px 5px',
+                              borderRadius: 4,
+                              background: isGroupActive ? 'white' : 'var(--surface-subtle)',
+                              color: isGroupActive ? 'var(--accent)' : 'var(--text-tertiary)',
+                            }}
+                          >
+                            {step}
+                          </span>
+                        )}
+                      </div>
+                      {sub && (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: 10.5,
+                            fontWeight: 400,
+                            color: isGroupActive ? 'var(--accent)' : 'var(--text-tertiary)',
+                            opacity: isGroupActive ? 0.85 : 0.9,
+                            marginTop: 1,
+                          }}
+                        >
+                          {sub}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </NavLink>
+
+                {/* Sub-links when group is active */}
+                {children && isGroupActive && (
+                  <div
+                    style={{
+                      marginLeft: 20,
+                      marginTop: 3,
+                      marginBottom: 4,
+                      paddingLeft: 10,
+                      borderLeft: '1.5px solid #b7e4c7',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                    }}
+                  >
+                    {children.map(child => {
+                      const ChildIcon = child.icon
+                      const isChildActive = location.pathname.startsWith(child.to)
+                      return (
+                        <NavLink
+                          key={child.to}
+                          to={child.to}
+                          style={{ textDecoration: 'none' }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 7,
+                              padding: '5px 9px',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: 11.5,
+                              fontWeight: isChildActive ? 600 : 400,
+                              color: isChildActive ? 'var(--accent)' : 'var(--text-secondary)',
+                              background: isChildActive ? 'var(--surface-subtle)' : 'transparent',
+                            }}
+                          >
+                            <ChildIcon size={12} />
+                            <span>{child.label}</span>
+                          </div>
+                        </NavLink>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Widget Fijo de Ubicación y Clima en Sidebar */}
+        <div
+          style={{
+            margin: '8px 10px',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--surface-subtle)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--text-tertiary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
             >
-              {({ isActive }) => (
+              <MapPin size={11} color="var(--accent)" />
+              Ubicación Activa
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsLocationModalOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--accent)',
+                cursor: 'pointer',
+              }}
+            >
+              Cambiar
+            </button>
+          </div>
+
+          {farmCoordinates ? (
+            <>
+              <p
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={farmCoordinates.name || `${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`}
+              >
+                {farmCoordinates.name || `Coord. ${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`}
+              </p>
+              <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 1 }}>
+                {farmCoordinates.latitude.toFixed(2)}°, {farmCoordinates.longitude.toFixed(2)}°
+              </p>
+
+              {currentWeather && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    padding: '5px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 4,
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#78350f' }}>
+                    <Sun size={11} color="#d97706" />
+                    {currentWeather.temperature.toFixed(1)}°C
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: '#92400e',
+                      fontWeight: 500,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`${currentWeather.conditionLabel} · ${Math.round(currentWeather.humidity)}% HR`}
+                  >
+                    {currentWeather.conditionLabel} · {Math.round(currentWeather.humidity)}%
+                  </span>
+                </div>
+              )}
+
+              {currentClimate ? (
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    background: isActive ? 'var(--accent-light)' : 'transparent',
-                    color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                    fontWeight: isActive ? 500 : 400,
-                    fontSize: 13.5,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    userSelect: 'none',
-                  }}
-                  className={!isActive ? 'hover-nav-item' : ''}
-                  onMouseEnter={e => {
-                    if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--surface-subtle)'
-                      ;(e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.background = 'transparent'
-                      ;(e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'
-                    }
+                    gap: 8,
+                    marginTop: 5,
+                    fontSize: 10.5,
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-secondary)',
                   }}
                 >
-                  <Icon
-                    size={15}
-                    strokeWidth={isActive ? 2 : 1.75}
-                    style={{ flexShrink: 0 }}
-                  />
-                  {label}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <CloudRain size={10} color="#0284c7" />
+                    {Math.round(currentClimate.annualRainfall)} mm/año
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <Snowflake size={10} color="#38bdf8" />
+                    {Math.round(currentClimate.annualFrostDays)} d. helada
+                  </span>
                 </div>
+              ) : (
+                <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
+                  {isLoadingClimate ? 'Calculando clima...' : 'Clima pendiente'}
+                </p>
               )}
-            </NavLink>
-          ))}
+            </>
+          ) : (
+            <p style={{ fontSize: 11.5, color: '#b45309', fontWeight: 500 }}>
+              Pendiente de configurar
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -174,7 +479,7 @@ export function RootLayout() {
               fontFamily: 'var(--font-mono)',
             }}
           >
-            Plantin v0.1
+            Plantin v0.2 · Flujo Unificado
           </p>
         </div>
       </nav>

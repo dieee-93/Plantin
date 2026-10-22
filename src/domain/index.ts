@@ -8,6 +8,7 @@ export type {
   CrossType,
   BBCHStage,
 } from './individual'
+export { getIndividualDisplayName } from './individual'
 export type {
   PhenotypicVariable,
   TraitClass,

@@ -23,6 +23,8 @@ export interface Individual {
   id: string
   accessionId: string
   seedLotId?: string
+  /** Identificador legible de la planta física. Ej: "TOM-2026-001 #01" */
+  label?: string
   /** ISO 8601 */
   plantingDate?: string
   /** Referencia estructural a un FacilityLocation (Invernadero, Sala, etc) */
@@ -95,4 +97,22 @@ export function createIndividual(input: CreateIndividualInput): Individual {
     id,
     status: input.status ?? 'active',
   }
+}
+
+/**
+ * Devuelve un nombre legible y único para mostrar una planta en listas y selectores.
+ */
+export function getIndividualDisplayName(
+  individual: Individual,
+  accessionNumber?: string,
+  indexInAccession?: number
+): string {
+  if (individual.label && individual.label.trim()) {
+    return individual.label.trim()
+  }
+  const base = accessionNumber || 'PLT'
+  if (indexInAccession !== undefined && indexInAccession >= 0) {
+    return `${base} #${String(indexInAccession + 1).padStart(2, '0')}`
+  }
+  return `${base} #${individual.id.slice(0, 4).toUpperCase()}`
 }
