@@ -951,4 +951,169 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       }
     }
   })
+
+  it('renderiza Leguminosas y Trepadoras (Poroto/Soja/Vid) con zarcillos espiralados, floración papilionácea y vainas de legumbre con semillas en relieve', async () => {
+    const user = userEvent.setup()
+
+    const beanTaxon = useTaxonStore.getState().add({
+      family: 'Fabaceae',
+      genus: 'Phaseolus',
+      species: 'vulgaris',
+      cropCode: 'BEA_DRY',
+      commonName: 'Poroto Negro',
+    })
+
+    const room = useLocationStore.getState().add({
+      name: 'Sector Legumbres',
+      type: 'field',
+      rows: 2,
+      cols: 2,
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'BEA-2026-HQ',
+      taxonId: beanTaxon.id,
+      acquisitionSource: 'breeding',
+    })
+
+    // Poroto en floración papilionácea (BBCH 65)
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Poroto Flor #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 65,
+    })
+
+    // Poroto en llenado de vainas con semillas visibles (BBCH 85)
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Poroto Vainas #02',
+      locationId: room.id,
+      position: 'A-02',
+      location: 'A-02',
+      currentBBCH: 85,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al Sector Legumbres
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sector Legumbres/i }))
+
+    // Verifica zarcillos trepadores, flor papilionácea y vainas de legumbre con relieve
+    expect(container.querySelectorAll('[data-botanical-feature="vine-tendril"]').length).toBeGreaterThanOrEqual(1)
+    expect(container.querySelector('[data-botanical-feature="papilionaceous-flower"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-botanical-feature="legume-pod"]')).toBeInTheDocument()
+  })
+
+  it('renderiza Palmeadas/Industriales (Cannabis/Cáñamo) con caña erecta segmentada, hojas digitadas de folíolos aserrados y cola apical resinosa', async () => {
+    const user = userEvent.setup()
+
+    const hempTaxon = useTaxonStore.getState().add({
+      family: 'Cannabaceae',
+      genus: 'Cannabis',
+      species: 'sativa',
+      cropCode: 'HEMP',
+      commonName: 'Cáñamo Industrial',
+    })
+
+    const room = useLocationStore.getState().add({
+      name: 'Sector Cáñamo',
+      type: 'greenhouse',
+      rows: 2,
+      cols: 2,
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'HEMP-2026-HQ',
+      taxonId: hempTaxon.id,
+      acquisitionSource: 'breeding',
+    })
+
+    // Cáñamo en fase vegetativa con hojas palmadas (BBCH 35)
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Cáñamo Veg #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 35,
+    })
+
+    // Cáñamo en floración avanzada con cola resinosa apical (BBCH 85)
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Cáñamo Cola #02',
+      locationId: room.id,
+      position: 'A-02',
+      location: 'A-02',
+      currentBBCH: 85,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al Sector Cáñamo
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sector Cáñamo/i }))
+
+    // Verifica caña erecta, hojas palmadas digitadas aserradas y cola apical resinosa
+    expect(container.querySelectorAll('[data-botanical-feature="palmate-cane"]').length).toBeGreaterThanOrEqual(1)
+    expect(container.querySelectorAll('[data-botanical-feature="palmate-serrated-leaf"]').length).toBeGreaterThanOrEqual(1)
+    expect(container.querySelector('[data-botanical-feature="resin-cola"]')).toBeInTheDocument()
+  })
+
+  it('renderiza Leñosas y Frutales Perennes (Cítricos/Frutales) con tronco leñoso bifurcado, floración de azahar y frutos esféricos con ombligo y reflejo', async () => {
+    const user = userEvent.setup()
+
+    const orangeTaxon = useTaxonStore.getState().add({
+      family: 'Rutaceae',
+      genus: 'Citrus',
+      species: 'sinensis',
+      cropCode: 'CITRUS_ORANGE',
+      commonName: 'Naranjo Dulce',
+    })
+
+    const room = useLocationStore.getState().add({
+      name: 'Sector Cítricos',
+      type: 'field',
+      rows: 2,
+      cols: 2,
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'ORA-2026-HQ',
+      taxonId: orangeTaxon.id,
+      acquisitionSource: 'breeding',
+    })
+
+    // Naranjo en floración azahar (BBCH 65)
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Naranjo Azahar #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 65,
+    })
+
+    // Naranjo con frutos maduros esféricos (BBCH 85)
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Naranjo Fruto #02',
+      locationId: room.id,
+      position: 'A-02',
+      location: 'A-02',
+      currentBBCH: 85,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al Sector Cítricos
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sector Cítricos/i }))
+
+    // Verifica tronco leñoso, flores de azahar y frutos esféricos con reflejo
+    expect(container.querySelectorAll('[data-botanical-feature="woody-trunk"]').length).toBeGreaterThanOrEqual(1)
+    expect(container.querySelector('[data-botanical-feature="blossom-flower"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-botanical-feature="spherical-fruit"]')).toBeInTheDocument()
+  })
 })
