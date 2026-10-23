@@ -890,4 +890,65 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(undoBtn).toBeDisabled()
     expect(redoBtn).toBeDisabled()
   })
+
+  it('Caso de Borde: los atajos de teclado (Delete, R, Backspace) se ignoran si el foco del usuario está dentro de un input', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Sala Input Focus',
+      type: 'field',
+      rows: 2,
+      cols: 2,
+    })
+
+    act(() => {
+      useRoomLayoutStore.getState().addObject(room.id, {
+        id: 'protected-furrow',
+        typeId: 'furrow',
+        x: 20,
+        y: 20,
+        z: 0,
+        rotation: 0,
+        params: { lengthCm: 200, plantSpacingCm: 40 },
+      })
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sala Input Focus/i }))
+    await user.click(screen.getByRole('button', { name: /Modo Diseñar Espacio y Mobiliario/i }))
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-placed-object="furrow"]')).toBeInTheDocument()
+    })
+
+    const furrowEl = container.querySelector('[data-placed-object="furrow"]')
+    if (furrowEl) {
+      await user.click(furrowEl)
+
+      // El input numérico de espaciado está en la barra contextual
+      const spacingInput = container.querySelector('input[type="number"]')
+      expect(spacingInput).toBeInTheDocument()
+
+      if (spacingInput) {
+        // Enfocar el input
+        await user.click(spacingInput)
+
+        // Presionar Delete y Backspace mientras se escribe
+        await user.keyboard('{Delete}{Backspace}')
+
+        // El objeto NO debe haberse eliminado
+        expect(container.querySelector('[data-placed-object="furrow"]')).toBeInTheDocument()
+        const objAfterDelete = useRoomLayoutStore.getState().getLayout(room.id)?.objects.find(o => o.id === 'protected-furrow')
+        expect(objAfterDelete).toBeDefined()
+
+        // Presionar 'r' mientras se escribe en el input
+        await user.keyboard('r')
+
+        // La rotación NO debe haber cambiado (sigue en 0°)
+        const objAfterRotate = useRoomLayoutStore.getState().getLayout(room.id)?.objects.find(o => o.id === 'protected-furrow')
+        expect(objAfterRotate?.rotation).toBe(0)
+      }
+    }
+  })
 })

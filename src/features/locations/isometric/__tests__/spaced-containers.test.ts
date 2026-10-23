@@ -120,6 +120,36 @@ describe('Fase E4 — Contenedores con Espaciado y Grids Derivados', () => {
       expect(zHeights).toContain(60)
       expect(zHeights).toContain(120)
     })
+
+    it('garantiza que micro-trazados o longitudes mínimas produzcan al menos 1 puesto válido sin colapso ni NaN', () => {
+      const microFurrow: PlacedObject = {
+        id: 'micro-furrow',
+        typeId: 'furrow',
+        x: 0,
+        y: 0,
+        z: 0,
+        rotation: 0,
+        params: {
+          lengthCm: 15, // Micro-arrastre menor al espaciado de 40 cm
+          plantSpacingCm: 40,
+        },
+      }
+      const layout: RoomLayout = {
+        schemaVersion: 1,
+        locationId: 'loc-field',
+        shape: { kind: 'rect', widthCm: 1000, depthCm: 1000 },
+        snapCm: 10,
+        wallHeightCm: 0,
+        floor: 'soil',
+        objects: [microFurrow],
+      }
+
+      const slots = deriveSlots(layout, OBJECT_CATALOG)
+      expect(slots).toHaveLength(1)
+      expect(Number.isNaN(slots[0].x)).toBe(false)
+      expect(Number.isNaN(slots[0].y)).toBe(false)
+      expect(slots[0].label).toContain('Surco · P01')
+    })
   })
 
   describe('Marco de plantación y avisos agronómicos', () => {
