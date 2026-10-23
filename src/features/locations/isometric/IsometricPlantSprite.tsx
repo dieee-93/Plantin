@@ -33,7 +33,7 @@ export const IsometricPlantSprite: React.FC<IsometricPlantSpriteProps> = React.m
   individualId = 'plant-default',
   bbch,
   status,
-  label,
+  label: _label,
   isSelected = false,
   taxon,
   locationType = 'greenhouse',
@@ -183,32 +183,6 @@ export const IsometricPlantSprite: React.FC<IsometricPlantSpriteProps> = React.m
           </text>
         </g>
       ) : null}
-
-      {/* ── Etiqueta Compacta en la Base con Indicador de Color por Especie ── */}
-      <g transform="translate(0, 20)">
-        <rect
-          x="-30"
-          y="-8"
-          width="60"
-          height="15"
-          rx="4"
-          fill={isSelected ? '#1b4332' : 'rgba(255, 255, 255, 0.94)'}
-          stroke={isSelected ? '#2d6a4f' : '#cbd5e1'}
-          strokeWidth="1"
-        />
-        <circle cx="-23" cy="-0.5" r="3" fill={spec.palette.badgeColor} />
-        <text
-          x="3"
-          y="2.5"
-          textAnchor="middle"
-          fontSize="8.2"
-          fontWeight="700"
-          fontFamily="monospace"
-          fill={isSelected ? '#ffffff' : '#1e293b'}
-        >
-          {label ? (label.length > 9 ? label.slice(-8) : label) : ''}
-        </text>
-      </g>
     </g>
   )
 })

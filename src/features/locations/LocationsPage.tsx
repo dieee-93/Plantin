@@ -21,7 +21,7 @@ import { IndividualDetail } from '@/features/individuals/IndividualsPage'
 import { IsometricCampusMap } from './isometric/IsometricCampusMap'
 import { IsometricRoomInterior } from './isometric/IsometricRoomInterior'
 import {
-  Plus, Building2, Sprout, ArrowLeft, Layers, Sparkles
+  Plus, Building2, Sprout, Layers, Sparkles, X
 } from 'lucide-react'
 
 const INPUT_STYLE: React.CSSProperties = {
@@ -62,7 +62,7 @@ const TYPE_AGRO_BUFFER: Record<LocationType, { label: string; bg: string; border
   lab:            { label: 'Laboratorio / Conservación controlada',    bg: '#ede9fe', border: '#ddd6fe', text: '#4c1d95' },
 }
 
-type DrawerMode = 'new-location' | 'sow' | 'inspect'
+type DrawerMode = 'new-location' | 'sow' | 'inspect' | null
 
 export function LocationsPage() {
   const navigate = useNavigate()
@@ -83,7 +83,7 @@ export function LocationsPage() {
 
   // Estado de navegación gráfica (Nivel 1: Mapa de Salas | Nivel 2: Interior Isométrico de Sala)
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
-  const [drawerMode, setDrawerMode] = useState<DrawerMode>('new-location')
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>(null)
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [selectedIndividualId, setSelectedIndividualId] = useState<string | null>(null)
 
@@ -182,16 +182,16 @@ export function LocationsPage() {
     setColsInput('')
     setDescription('')
     setSelectedTemplateId('')
+    setDrawerMode(null)
   }
 
   // ── Handlers de Navegación e Interacciones Gráficas ──
   const handleEnterRoom = (locationId: string) => {
     setSelectedRoomId(locationId)
-    const freeSlots = getFreeSlotsForRoom(locationId)
-    setSelectedSlot(freeSlots[0] ?? 'A-01')
-    setSowPosition(freeSlots[0] ?? 'A-01')
+    setSelectedSlot(null)
+    setSowPosition('')
     setSelectedIndividualId(null)
-    setDrawerMode('sow')
+    setDrawerMode(null)
   }
 
   const handleClickEmptySlot = (posLabel: string) => {
@@ -298,71 +298,123 @@ export function LocationsPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--surface-base)' }}>
-      {/* ── Panel Lateral Contextual (Drawer: Nueva Sala | Sembrar en Celda | Inspector de Planta) ── */}
-      <aside
-        style={{
-          width: drawerMode === 'inspect' ? 430 : 360,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--surface-elevated)',
-          borderRight: '1px solid var(--border)',
-          overflowY: 'auto',
-          transition: 'width 0.2s ease',
-        }}
-      >
-        {/* Selector de modo del Drawer cuando estamos dentro de una sala */}
-        {selectedRoom && (
+    <div style={{ position: 'relative', display: 'flex', height: '100%', width: '100%', background: 'var(--surface-base)', overflow: 'hidden' }}>
+      {/* ── Panel Lateral Deslizante (Drawer: Nueva Sala | Sembrar en Celda | Inspector de Planta) ── */}
+      {drawerMode && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
+          {/* Backdrop con clic para cerrar */}
           <div
+            onClick={() => {
+              setDrawerMode(null)
+              setSelectedIndividualId(null)
+            }}
             style={{
-              padding: '12px 18px',
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--surface-subtle)',
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.35)',
+              backdropFilter: 'blur(2px)',
+            }}
+          />
+
+          <aside
+            style={{
+              position: 'relative',
+              width: drawerMode === 'inspect' ? 440 : 380,
+              maxWidth: '92vw',
+              height: '100%',
               display: 'flex',
-              gap: 6,
+              flexDirection: 'column',
+              background: 'var(--surface-elevated)',
+              boxShadow: '-4px 0 24px rgba(0, 0, 0, 0.16)',
+              borderLeft: '1px solid var(--border)',
+              overflowY: 'auto',
+              zIndex: 10,
             }}
           >
-            <button
-              type="button"
-              onClick={() => setDrawerMode('sow')}
+            {/* Header del Drawer con selector y botón cerrar */}
+            <div
               style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-sm)',
-                border: drawerMode === 'sow' ? '1px solid var(--accent)' : '1px solid var(--border)',
-                background: drawerMode === 'sow' ? 'var(--accent-light)' : 'var(--surface-elevated)',
-                color: drawerMode === 'sow' ? 'var(--accent)' : 'var(--text-secondary)',
-                fontSize: 11.5,
-                fontWeight: 600,
-                cursor: 'pointer',
+                padding: '12px 18px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--surface-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
               }}
             >
-              + Sembrar en Celda
-            </button>
-            <button
-              type="button"
-              onClick={() => setDrawerMode('new-location')}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-sm)',
-                border: drawerMode === 'new-location' ? '1px solid var(--accent)' : '1px solid var(--border)',
-                background: drawerMode === 'new-location' ? 'var(--accent-light)' : 'var(--surface-elevated)',
-                color: drawerMode === 'new-location' ? 'var(--accent)' : 'var(--text-secondary)',
-                fontSize: 11.5,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              + Nueva Sala
-            </button>
-          </div>
-        )}
+              <div style={{ display: 'flex', gap: 6, flex: 1, alignItems: 'center' }}>
+                {selectedRoom ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setDrawerMode('sow')}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: drawerMode === 'sow' ? '1px solid var(--accent)' : '1px solid var(--border)',
+                        background: drawerMode === 'sow' ? 'var(--accent-light)' : 'var(--surface-elevated)',
+                        color: drawerMode === 'sow' ? 'var(--accent)' : 'var(--text-secondary)',
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + Sembrar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDrawerMode('new-location')}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: drawerMode === 'new-location' ? '1px solid var(--accent)' : '1px solid var(--border)',
+                        background: drawerMode === 'new-location' ? 'var(--accent-light)' : 'var(--surface-elevated)',
+                        color: drawerMode === 'new-location' ? 'var(--accent)' : 'var(--text-secondary)',
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + Nueva Sala
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {drawerMode === 'new-location' && '🌱 Nueva Instalación / Sala'}
+                    {drawerMode === 'sow' && '🌾 Sembrar en Celda'}
+                    {drawerMode === 'inspect' && '🔍 Inspector de Planta'}
+                  </span>
+                )}
+              </div>
 
-        {/* ── MODO 1: Formulario de Nueva Ubicación ── */}
-        {drawerMode === 'new-location' && (
-          <div style={{ padding: '24px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <button
+                type="button"
+                aria-label="Cerrar panel"
+                onClick={() => {
+                  setDrawerMode(null)
+                  setSelectedIndividualId(null)
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 16,
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Cerrar"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* ── MODO 1: Formulario de Nueva Ubicación ── */}
+            {drawerMode === 'new-location' && (
+              <div style={{ padding: '24px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <div
                 style={{
                   width: 30,
@@ -766,97 +818,99 @@ export function LocationsPage() {
           </div>
         )}
       </aside>
+      </div>
+      )}
 
       {/* ── Área Principal: Mapa Isométrico 2.5D de Salas (Nivel 1) o Interior Isométrico (Nivel 2) ── */}
       <main
         style={{
           flex: 1,
-          overflowY: 'auto',
-          padding: '28px 36px',
+          height: '100%',
+          overflowY: selectedRoom ? 'hidden' : 'auto',
+          padding: selectedRoom ? 0 : '28px 36px',
           background: 'var(--surface-base)',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        <header style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  fontFamily: 'var(--font-mono)',
-                  fontWeight: 700,
-                  padding: '2px 7px',
-                  borderRadius: 6,
-                  background: 'var(--accent-light)',
-                  color: 'var(--accent)',
-                }}
-              >
-                PASO 01 · VISTA ISOMÉTRICA 2.5D
-              </span>
-              <h1
-                style={{
-                  fontSize: 25,
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                {selectedRoom ? `Interior de ${selectedRoom.name}` : 'Mis Espacios e Instalaciones'}
-              </h1>
+        {!selectedRoom && (
+          <header style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    padding: '2px 7px',
+                    borderRadius: 6,
+                    background: 'var(--accent-light)',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  PASO 01 · VISTA ISOMÉTRICA 2.5D
+                </span>
+                <h1
+                  style={{
+                    fontSize: 25,
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    letterSpacing: '-0.02em',
+                    margin: 0,
+                  }}
+                >
+                  Mis Espacios e Instalaciones
+                </h1>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setDrawerMode('new-location')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '7px 13px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--accent)',
+                    background: 'var(--accent)',
+                    color: 'white',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Building2 size={13} />
+                  + Nueva Ubicación
+                </button>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 10px',
+                    borderRadius: 99,
+                    background: 'var(--surface-subtle)',
+                    border: '1px solid var(--border)',
+                    fontSize: 11.5,
+                    color: 'var(--text-secondary)',
+                    fontWeight: 500,
+                  }}
+                >
+                  <Layers size={13} color="var(--accent)" />
+                  Haz clic en una sala para abrir su grilla isométrica
+                </span>
+              </div>
             </div>
 
-            {selectedRoom ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedRoomId(null)
-                  setSelectedIndividualId(null)
-                  setDrawerMode('new-location')
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '7px 13px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-elevated)',
-                  color: 'var(--text-primary)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <ArrowLeft size={13} />
-                Volver al Mapa General
-              </button>
-            ) : (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 10px',
-                  borderRadius: 99,
-                  background: 'var(--surface-subtle)',
-                  border: '1px solid var(--border)',
-                  fontSize: 11.5,
-                  color: 'var(--text-secondary)',
-                  fontWeight: 500,
-                }}
-              >
-                <Layers size={13} color="var(--accent)" />
-                Haz clic en cualquier sala para abrir su grilla isométrica de cultivo
-              </span>
-            )}
-          </div>
-
-          <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', marginBottom: 16 }}>
-            Dónde crecen tus plantas y se conservan tus lotes de semillas, con soporte agroclimático local y plano interactivo 2.5D.
-          </p>
-
-          {/* Tarjeta de Ubicación Aproximada y Estación Agroclimática */}
-          <LocationClimateCard />
-        </header>
+            <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Dónde crecen tus plantas y se conservan tus lotes de semillas, con soporte agroclimático local y plano interactivo 2.5D.
+            </p>
+            {/* Tarjeta de Ubicación Aproximada y Estación Agroclimática */}
+            <LocationClimateCard />
+          </header>
+        )}
 
         {/* Renderizado de Nivel 1 (Mapa de Salas) vs Nivel 2 (Interior Isométrico de Sala) */}
         {selectedRoom ? (
@@ -870,10 +924,14 @@ export function LocationsPage() {
             ambientTempC={ambientTempC}
             selectedSlot={selectedSlot}
             selectedIndividualId={selectedIndividualId}
+            onOpenSowDrawer={() => {
+              setDrawerMode('sow')
+              if (!sowPosition) setSowPosition('A-01')
+            }}
             onBackToMap={() => {
               setSelectedRoomId(null)
               setSelectedIndividualId(null)
-              setDrawerMode('new-location')
+              setDrawerMode(null)
             }}
             onSwitchRoom={roomId => handleEnterRoom(roomId)}
             onClickEmptySlot={handleClickEmptySlot}

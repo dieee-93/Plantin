@@ -1,5 +1,5 @@
 import type React from 'react'
-import { halfW, halfH, projectCell } from './iso'
+import { projectCell } from './iso'
 
 export interface Footprint {
   x: number // cm (eje columnas)
@@ -236,7 +236,7 @@ export function occludes(
   const bbch = front.bbch ?? 50
   const baseHeight = bbch < 10 ? 15 : bbch < 30 ? 35 : bbch < 60 ? 55 : 75
   const spriteHeight = baseHeight * (front.heightScale ?? 1)
-  const spriteHalfWidth = 32
+  const spriteHalfWidth = 26
 
   // Caja de pantalla del sprite delantero (crece hacia arriba desde la base del contenedor)
   const frontBox = {
@@ -246,12 +246,12 @@ export function occludes(
     bottom: frontPos.y,
   }
 
-  // Caja de pantalla de la baldosa trasera (área interactiva de la celda)
+  // Área interactiva central de la baldosa trasera (área donde el usuario interactúa)
   const backBox = {
-    left: backPos.x - halfW * 0.75,
-    right: backPos.x + halfW * 0.75,
-    top: backPos.y - halfH * 0.8,
-    bottom: backPos.y + halfH * 0.8,
+    left: backPos.x - 26,
+    right: backPos.x + 26,
+    top: backPos.y - 16,
+    bottom: backPos.y + 16,
   }
 
   // Comprobar intersección de AABB en 2D

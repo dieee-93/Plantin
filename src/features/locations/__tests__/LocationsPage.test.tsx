@@ -52,6 +52,10 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     const user = userEvent.setup()
     render(<LocationsPage />)
 
+    // Abre el Drawer contextual de Nueva Ubicación
+    const openDrawerBtn = screen.getByRole('button', { name: /\+ Nueva Ubicación/i })
+    await user.click(openDrawerBtn)
+
     const nameInput = screen.getByPlaceholderText(/Ej. Invernadero A/i)
     await user.type(nameInput, 'Invernadero Principal')
 

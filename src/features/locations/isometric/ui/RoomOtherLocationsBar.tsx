@@ -37,14 +37,17 @@ export const RoomOtherLocationsBar: React.FC<RoomOtherLocationsBarProps> = React
   return (
     <div
       style={{
-        background: 'var(--surface-elevated)',
+        background: 'rgba(255, 255, 255, 0.90)',
+        backdropFilter: 'blur(16px)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-md)',
-        padding: '8px 14px',
+        padding: '7px 14px',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
         overflowX: 'auto',
+        boxShadow: '0 4px 16px rgba(15, 23, 42, 0.06)',
+        pointerEvents: 'auto',
       }}
     >
       <span

@@ -8,7 +8,6 @@ import { ObjectContextBar } from './ui/ObjectContextBar'
 import { EditorHelpFooter } from './ui/EditorHelpFooter'
 
 import type { LocationType } from '@/domain/location'
-import { getTemplatesForLocationType } from '../templates'
 
 export interface SpaceEditorOverlayProps {
   locationId: string
@@ -22,7 +21,6 @@ export interface SpaceEditorOverlayProps {
 
 export const SpaceEditorOverlay: React.FC<SpaceEditorOverlayProps> = ({
   locationId,
-  locationType = 'greenhouse',
   roomWidthCm,
   roomDepthCm,
   state,
@@ -31,7 +29,6 @@ export const SpaceEditorOverlay: React.FC<SpaceEditorOverlayProps> = ({
 }) => {
   const layout = useRoomLayoutStore(s => s.getLayout(locationId))
   const objects = layout?.objects ?? []
-  const templates = getTemplatesForLocationType(locationType)
 
   const selectedObject = objects.find(o => o.id === state.selectedObjectId)
 
@@ -209,62 +206,6 @@ export const SpaceEditorOverlay: React.FC<SpaceEditorOverlayProps> = ({
           onDeselect={() => dispatch({ type: 'SELECT_OBJECT', id: null })}
           onUpdateParams={handleUpdateParams}
         />
-      )}
-
-      {/* Estado vacío: sugerir plantillas y herramientas */}
-      {objects.length === 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '40%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'rgba(15, 23, 42, 0.94)',
-            color: '#f8fafc',
-            padding: '16px 20px',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: 'var(--shadow-xl)',
-            zIndex: 35,
-            maxWidth: 420,
-            width: '90%',
-            textAlign: 'center',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', marginBottom: 4 }}>
-            🌱 Espacio sin objetos
-          </div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 12 }}>
-            Aplicá una plantilla recomendada o elegí un elemento del catálogo inferior:
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {templates.slice(0, 3).map((tpl) => (
-              <button
-                key={tpl.id}
-                type="button"
-                onClick={() => {
-                  const newLayout = useRoomLayoutStore.getState().createFromTemplate(locationId, tpl.id)
-                  dispatch({ type: 'PUSH_HISTORY', objects: newLayout.objects })
-                }}
-                style={{
-                  background: '#1e293b',
-                  color: '#f8fafc',
-                  border: '1px solid #334155',
-                  borderRadius: 6,
-                  padding: '7px 10px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'background 0.15s ease',
-                }}
-              >
-                📐 {tpl.label}
-              </button>
-            ))}
-          </div>
-        </div>
       )}
 
       {/* Toast informativo de plantas pasadas a "Sin ubicar" con botón Deshacer */}

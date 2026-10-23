@@ -21,12 +21,13 @@ import { PlanViewLayer } from './editor/layers/PlanViewLayer'
 import { useIsometricCamera } from './hooks/useIsometricCamera'
 import { useSpaceEditorController } from './editor/useSpaceEditorController'
 import { SpaceEditorOverlay } from './editor/SpaceEditorOverlay'
+import { useRoomLayoutStore } from '@/store/roomLayoutStore'
 import { RoomHoverTooltip } from './RoomHoverTooltip'
-import { RoomTopBar } from './ui/RoomTopBar'
-import { RoomLensBar } from './ui/RoomLensBar'
-import { RoomOtherLocationsBar } from './ui/RoomOtherLocationsBar'
-import { RoomSeedTray } from './ui/RoomSeedTray'
-import { RoomPlantStrip } from './ui/RoomPlantStrip'
+import { RoomHeaderNav } from './ui/RoomHeaderNav'
+import { RoomOverlayControls } from './ui/RoomOverlayControls'
+import { RoomCameraWidget } from './ui/RoomCameraWidget'
+import { RoomCommandDock } from './ui/RoomCommandDock'
+import { RoomBottomDock } from './ui/RoomBottomDock'
 
 export interface IsometricRoomInteriorProps {
   location: FacilityLocation
@@ -38,6 +39,7 @@ export interface IsometricRoomInteriorProps {
   ambientTempC?: number
   selectedSlot: string | null
   selectedIndividualId: string | null
+  onOpenSowDrawer?: () => void
   onBackToMap: () => void
   onSwitchRoom: (locationId: string) => void
   onClickEmptySlot: (posLabel: string) => void
@@ -59,6 +61,7 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   ambientTempC = 20,
   selectedSlot,
   selectedIndividualId,
+  onOpenSowDrawer,
   onBackToMap,
   onSwitchRoom,
   onClickEmptySlot,
@@ -72,10 +75,12 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   const {
     camera,
     setZoom,
+    resetCamera,
     handlePointerDown,
     handlePointerMove: handlePointerMoveCamera,
     handlePointerUp,
     handleWheel,
+    handleDoubleClick,
   } = useIsometricCamera()
 
   const [lensMode, setLensMode] = useState<IsometricLensMode>('species')
@@ -83,6 +88,9 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   const [showPlantNames, setShowPlantNames] = useState(false)
   const [dragOverSlot, setDragOverSlot] = useState<string | null>(null)
   const [movingPlantId, setMovingPlantId] = useState<string | null>(null)
+  const [showLensBar, setShowLensBar] = useState(true)
+  const [showOtherRooms, setShowOtherRooms] = useState(true)
+  const [isBottomDockOpen, setIsBottomDockOpen] = useState(false)
 
   // Estado de luz diurna ambiental persistido en localStorage
   const [ambientLightingEnabled, setAmbientLightingEnabled] = useState(() => {
@@ -119,6 +127,19 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
     return () => observer.disconnect()
   }, [])
 
+  // Listener nativo no-pasivo para rueda del mouse: zoom sin scrollear la página web
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      handleWheel(e)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [handleWheel])
+
   const roomIndividuals = useMemo(
     () => individuals.filter(ind => ind.locationId === location.id),
     [individuals, location.id]
@@ -138,6 +159,11 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
     () => roomViewBox(rows, cols),
     [rows, cols]
   )
+
+  // Inicializar o recuperar el layout con macetas para salas existentes
+  useEffect(() => {
+    useRoomLayoutStore.getState().getOrCreateLayout(location.id, location.type, rows, cols)
+  }, [location.id, location.type, rows, cols])
 
   // Controlador de edición de espacio (Fase E3)
   const {
@@ -302,53 +328,13 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   const wallColors = useMemo(() => {
     switch (location.type) {
       case 'greenhouse':
-        return {
-          leftWall: 'url(#interior-glass-left)',
-          rightWall: 'url(#interior-glass-right)',
-          topCap: '#bae6fd',
-          sideCap: '#38bdf8',
-          wallStroke: '#0284c7',
-          baseboard: '#0369a1',
-          floor: 'url(#interior-floor-greenhouse)',
-          floorSideLeft: '#86efac',
-          floorSideRight: '#4ade80',
-        }
+        return { leftWall: 'url(#interior-glass-left)', rightWall: 'url(#interior-glass-right)', topCap: '#bae6fd', sideCap: '#38bdf8', wallStroke: '#0284c7', baseboard: '#0369a1', floor: 'url(#interior-floor-greenhouse)', floorSideLeft: '#86efac', floorSideRight: '#4ade80' }
       case 'growth_chamber':
-        return {
-          leftWall: 'url(#interior-chamber-left)',
-          rightWall: 'url(#interior-chamber-right)',
-          topCap: '#6366f1',
-          sideCap: '#4f46e5',
-          wallStroke: '#a855f7',
-          baseboard: '#3b0764',
-          floor: 'url(#interior-floor-chamber)',
-          floorSideLeft: '#312e81',
-          floorSideRight: '#1e1b4b',
-        }
+        return { leftWall: 'url(#interior-chamber-left)', rightWall: 'url(#interior-chamber-right)', topCap: '#6366f1', sideCap: '#4f46e5', wallStroke: '#a855f7', baseboard: '#3b0764', floor: 'url(#interior-floor-chamber)', floorSideLeft: '#312e81', floorSideRight: '#1e1b4b' }
       case 'field':
-        return {
-          leftWall: 'transparent',
-          rightWall: 'transparent',
-          topCap: 'transparent',
-          sideCap: 'transparent',
-          wallStroke: 'transparent',
-          baseboard: 'transparent',
-          floor: 'url(#interior-floor-field)',
-          floorSideLeft: '#78350f',
-          floorSideRight: '#451a03',
-        }
+        return { leftWall: 'transparent', rightWall: 'transparent', topCap: 'transparent', sideCap: 'transparent', wallStroke: 'transparent', baseboard: 'transparent', floor: 'url(#interior-floor-field)', floorSideLeft: '#78350f', floorSideRight: '#451a03' }
       default:
-        return {
-          leftWall: 'url(#interior-wall-left)',
-          rightWall: 'url(#interior-wall-right)',
-          topCap: '#cbd5e1',
-          sideCap: '#94a3b8',
-          wallStroke: '#64748b',
-          baseboard: '#475569',
-          floor: 'url(#interior-floor-room)',
-          floorSideLeft: '#94a3b8',
-          floorSideRight: '#64748b',
-        }
+        return { leftWall: 'url(#interior-wall-left)', rightWall: 'url(#interior-wall-right)', topCap: '#cbd5e1', sideCap: '#94a3b8', wallStroke: '#64748b', baseboard: '#475569', floor: 'url(#interior-floor-room)', floorSideLeft: '#94a3b8', floorSideRight: '#64748b' }
     }
   }, [location.type])
 
@@ -366,204 +352,213 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   }, [roomIndividuals, accessions, accessionToTaxon])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* ── Barra Superior de la Sala (Navegación + Dimensiones + Controles) ── */}
-      <RoomTopBar
+    <div
+      ref={containerRef}
+      className={isRoomVisible ? undefined : 'iso-paused'}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        flex: 1,
+        minHeight: 0,
+        background:
+          location.type === 'field'
+            ? 'radial-gradient(circle at 50% 30%, #fefce8 0%, #dcfce7 100%)'
+            : location.type === 'growth_chamber'
+              ? 'radial-gradient(circle at 50% 30%, #2e1065 0%, #0f172a 100%)'
+              : 'radial-gradient(circle at 50% 30%, #ffffff 0%, #e2e8f0 100%)',
+        border: 'none',
+        borderRadius: 0,
+        padding: '0',
+        overflow: 'hidden',
+        boxShadow: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {/* ── Cuadrante 1: Superior Izquierdo (Identidad & Navegación) ── */}
+      <RoomHeaderNav
         location={location}
         roomIndividualsCount={roomIndividuals.length}
         totalSlots={totalSlots}
         rows={rows}
         cols={cols}
-        zoom={camera.zoom}
-        showPlantNames={showPlantNames}
-        movingPlantId={movingPlantId}
         onBackToMap={onBackToMap}
         onUpdateGridDimensions={onUpdateGridDimensions}
-        setZoom={setZoom}
-        setShowPlantNames={setShowPlantNames}
-        setMovingPlantId={setMovingPlantId}
-        ambientLightingEnabled={ambientLightingEnabled}
-        onToggleAmbientLighting={handleToggleAmbientLighting}
-        mode={editorState.mode}
-        viewMode={editorState.viewMode}
-        canUndo={editorState.historyIndex > 0}
-        canRedo={editorState.historyIndex < editorState.history.length - 1}
-        onToggleMode={(m) => dispatchEditor({ type: 'SET_MODE', mode: m })}
-        onToggleViewMode={(v) => dispatchEditor({ type: 'SET_VIEW_MODE', viewMode: v })}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
       />
 
-      {/* ── Barra de Lentes Visuales y Filtro por Especie ── */}
-      <RoomLensBar
+      {/* ── Cuadrante 2: Superior Derecho (Capas, Lentes & Filtros) ── */}
+      <RoomOverlayControls
+        showPlantNames={showPlantNames}
+        setShowPlantNames={setShowPlantNames}
+        ambientLightingEnabled={ambientLightingEnabled}
+        onToggleAmbientLighting={handleToggleAmbientLighting}
+        showLensBar={showLensBar}
+        onToggleLensBar={() => setShowLensBar(prev => !prev)}
         lensMode={lensMode}
         setLensMode={setLensMode}
         speciesInRoom={speciesInRoom}
         speciesFilterId={speciesFilterId}
         setSpeciesFilterId={setSpeciesFilterId}
-      />
-
-      {/* ── Barra de Acceso Rápido y Drop a Otras Salas ── */}
-      <RoomOtherLocationsBar
         otherLocations={otherLocations}
+        showOtherRooms={showOtherRooms}
+        onToggleOtherRooms={() => setShowOtherRooms(prev => !prev)}
         onSwitchRoom={onSwitchRoom}
         onMovePlantToRoom={onMovePlantToRoom}
         setMovingPlantId={setMovingPlantId}
       />
 
-      {/* ── Bandeja de Semillas Activas para Drag & Drop ── */}
-      <RoomSeedTray
-        accessions={accessions}
-        seedLots={seedLots}
-        accessionToTaxon={accessionToTaxon}
+      {/* ── Cuadrante 3: Inferior Central (Floating Tool Dock) ── */}
+      <RoomCommandDock
+        mode={editorState.mode}
+        onToggleMode={(m) => dispatchEditor({ type: 'SET_MODE', mode: m })}
+        canUndo={editorState.historyIndex > 0}
+        canRedo={editorState.historyIndex < editorState.history.length - 1}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onOpenSowDrawer={onOpenSowDrawer}
+        hasDockContent={accessions.length > 0 || roomIndividuals.length > 0}
+        isDockOpen={isBottomDockOpen}
+        onToggleDockOpen={() => setIsBottomDockOpen(prev => !prev)}
       />
 
-      {/* ── Lienzo Isométrico 2.5D de la Sala (Cutaway 3D Diorama) ── */}
-      <div
-        ref={containerRef}
-        className={isRoomVisible ? undefined : 'iso-paused'}
+      {/* ── Cuadrante 4: Inferior Derecho (Camera & Viewport Controls) ── */}
+      <RoomCameraWidget
+        zoom={camera.zoom}
+        setZoom={setZoom}
+        viewMode={editorState.viewMode}
+        onToggleViewMode={(v) => dispatchEditor({ type: 'SET_VIEW_MODE', viewMode: v })}
+        onResetCamera={resetCamera}
+      />
+
+      {/* HUD Botánico Flotante (Rich Hover Tooltip optimizado) */}
+      <RoomHoverTooltip
+        slotToPlant={slotToPlant}
+        accessions={accessions}
+        accessionToTaxon={accessionToTaxon}
+        locationType={location.type}
+        ambientTempC={ambientTempC}
+      />
+
+      <svg
+        viewBox={`${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}`}
+        data-room-type={location.type}
+        data-lens-mode={lensMode}
         style={{
-          background:
-            location.type === 'field'
-              ? 'radial-gradient(circle at 50% 30%, #fefce8 0%, #dcfce7 100%)'
-              : location.type === 'growth_chamber'
-                ? 'radial-gradient(circle at 50% 30%, #2e1065 0%, #0f172a 100%)'
-                : 'radial-gradient(circle at 50% 30%, #ffffff 0%, #e2e8f0 100%)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '16px',
-          minHeight: 470,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'auto',
-          position: 'relative',
-          boxShadow: 'inset 0 2px 10px rgba(15, 23, 42, 0.06)',
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          overflow: 'visible',
+          cursor: editorState.mode === 'space' ? (editorState.tool === 'place' ? 'crosshair' : 'default') : 'grab',
         }}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        role="region"
+        aria-label={`Plano isométrico interior de ${location.name}`}
       >
-        {/* HUD Botánico Flotante (Rich Hover Tooltip optimizado) */}
-        <RoomHoverTooltip
-          slotToPlant={slotToPlant}
-          accessions={accessions}
-          accessionToTaxon={accessionToTaxon}
-          locationType={location.type}
-          ambientTempC={ambientTempC}
-        />
+        {/* ── Definiciones de Gradientes Direccionales y Sombreado 3D ── */}
+        <defs>
+          <RoomGradients />
+          <SharedDefs palettes={plantPalettes} />
+        </defs>
 
-        <svg
-          viewBox={`${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}`}
-          data-room-type={location.type}
-          data-lens-mode={lensMode}
+        {/* ── Contenedor Isométrico con soporte de Cámara Pan y Zoom centrado ── */}
+        <g
+          transform={`translate(${camera.x}, ${camera.y}) scale(${camera.zoom})`}
           style={{
-            width: '100%',
-            maxWidth: Math.round(780 * camera.zoom),
-            height: 'auto',
-            minHeight: 400,
-            overflow: 'visible',
-            transition: 'max-width 0.2s ease',
-            cursor: editorState.mode === 'space' ? (editorState.tool === 'place' ? 'crosshair' : 'default') : 'grab',
+            transformOrigin: `${minX + viewBoxWidth / 2}px ${minY + viewBoxHeight / 2}px`,
           }}
-          onClick={handleClick}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onWheel={handleWheel}
-          role="region"
-          aria-label={`Plano isométrico interior de ${location.name}`}
         >
-          {/* ── Definiciones de Gradientes Direccionales y Sombreado 3D ── */}
-          <defs>
-            <RoomGradients />
-            <SharedDefs palettes={plantPalettes} />
-          </defs>
+          {editorState.viewMode === 'plan' ? (
+            <PlanViewLayer
+              roomWidthCm={roomWidthCm}
+              roomDepthCm={roomDepthCm}
+              placedObjects={placedObjects}
+              selectedObjectId={editorState.selectedObjectId}
+              ghost={editorState.ghost}
+              drawPreview={
+                editorState.dragDrawStart && editorState.dragDrawCurrent
+                  ? { tool: editorState.tool, start: editorState.dragDrawStart, current: editorState.dragDrawCurrent }
+                  : null
+              }
+              onSelectObject={(id) => {
+                if (editorState.mode === 'space') dispatchEditor({ type: 'SELECT_OBJECT', id })
+              }}
+            />
+          ) : (
+            <RoomSceneLayers
+              location={location}
+              rows={rows}
+              cols={cols}
+              wallColors={wallColors}
+              roomSeedLots={roomSeedLots}
+              onNavigateSeedLot={onNavigateSeedLot}
+              placedObjects={placedObjects}
+              selectedObjectId={editorState.selectedObjectId}
+              ghost={editorState.ghost}
+              drawPreview={
+                editorState.dragDrawStart && editorState.dragDrawCurrent
+                  ? { tool: editorState.tool, start: editorState.dragDrawStart, current: editorState.dragDrawCurrent }
+                  : null
+              }
+              isSpaceMode={editorState.mode === 'space'}
+              onSelectObject={(id) => {
+                if (editorState.mode === 'space') dispatchEditor({ type: 'SELECT_OBJECT', id })
+              }}
+              lensMode={lensMode}
+              speciesFilterId={speciesFilterId}
+              ambientTempC={ambientTempC}
+              slotToPlant={slotToPlant}
+              accessions={accessions}
+              accessionToTaxon={accessionToTaxon}
+              selectedSlot={selectedSlot}
+              selectedIndividualId={selectedIndividualId}
+              dragOverSlot={dragOverSlot}
+              movingPlantId={movingPlantId}
+              setDragOverSlot={setDragOverSlot}
+              setMovingPlantId={setMovingPlantId}
+              onSelectPlant={onSelectPlant}
+              onClickEmptySlot={onClickEmptySlot}
+              onMovePlantToSlot={onMovePlantToSlot}
+              onDropSeedInSlot={onDropSeedInSlot}
+              showPlantNames={showPlantNames}
+              pedigreeLinks={pedigreeLinks}
+              viewBox={{ minX, minY, width: viewBoxWidth, height: viewBoxHeight }}
+              ambientLightingEnabled={ambientLightingEnabled}
+            />
+          )}
+        </g>
+      </svg>
 
-          {/* ── Contenedor Isométrico con soporte de Cámara Pan (translate) ── */}
-          <g transform={`translate(${camera.x}, ${camera.y})`}>
-            {editorState.viewMode === 'plan' ? (
-              <PlanViewLayer
-                roomWidthCm={roomWidthCm}
-                roomDepthCm={roomDepthCm}
-                placedObjects={placedObjects}
-                selectedObjectId={editorState.selectedObjectId}
-                ghost={editorState.ghost}
-                drawPreview={
-                  editorState.dragDrawStart && editorState.dragDrawCurrent
-                    ? { tool: editorState.tool, start: editorState.dragDrawStart, current: editorState.dragDrawCurrent }
-                    : null
-                }
-                onSelectObject={(id) => {
-                  if (editorState.mode === 'space') dispatchEditor({ type: 'SELECT_OBJECT', id })
-                }}
-              />
-            ) : (
-              <RoomSceneLayers
-                location={location}
-                rows={rows}
-                cols={cols}
-                wallColors={wallColors}
-                roomSeedLots={roomSeedLots}
-                onNavigateSeedLot={onNavigateSeedLot}
-                placedObjects={placedObjects}
-                selectedObjectId={editorState.selectedObjectId}
-                ghost={editorState.ghost}
-                drawPreview={
-                  editorState.dragDrawStart && editorState.dragDrawCurrent
-                    ? { tool: editorState.tool, start: editorState.dragDrawStart, current: editorState.dragDrawCurrent }
-                    : null
-                }
-                isSpaceMode={editorState.mode === 'space'}
-                onSelectObject={(id) => {
-                  if (editorState.mode === 'space') dispatchEditor({ type: 'SELECT_OBJECT', id })
-                }}
-                lensMode={lensMode}
-                speciesFilterId={speciesFilterId}
-                ambientTempC={ambientTempC}
-                slotToPlant={slotToPlant}
-                accessions={accessions}
-                accessionToTaxon={accessionToTaxon}
-                selectedSlot={selectedSlot}
-                selectedIndividualId={selectedIndividualId}
-                dragOverSlot={dragOverSlot}
-                movingPlantId={movingPlantId}
-                setDragOverSlot={setDragOverSlot}
-                setMovingPlantId={setMovingPlantId}
-                onSelectPlant={onSelectPlant}
-                onClickEmptySlot={onClickEmptySlot}
-                onMovePlantToSlot={onMovePlantToSlot}
-                onDropSeedInSlot={onDropSeedInSlot}
-                showPlantNames={showPlantNames}
-                pedigreeLinks={pedigreeLinks}
-                viewBox={{ minX, minY, width: viewBoxWidth, height: viewBoxHeight }}
-                ambientLightingEnabled={ambientLightingEnabled}
-              />
-            )}
-          </g>
-        </svg>
+      {/* ── Controles y Drawer del Editor de Espacio (Fase E3) ── */}
+      <SpaceEditorOverlay
+        locationId={location.id}
+        locationType={location.type}
+        roomWidthCm={roomWidthCm}
+        roomDepthCm={roomDepthCm}
+        state={editorState}
+        dispatch={dispatchEditor}
+        activeCropCode={speciesInRoom[0]?.taxon.cropCode}
+      />
 
-        {/* ── Controles y Drawer del Editor de Espacio (Fase E3) ── */}
-        <SpaceEditorOverlay
-          locationId={location.id}
+      {/* ── HUD Inferior Integrado: Dock de Semillas y Plantas ── */}
+      {editorState.mode !== 'space' && (
+        <RoomBottomDock
           locationType={location.type}
-          roomWidthCm={roomWidthCm}
-          roomDepthCm={roomDepthCm}
-          state={editorState}
-          dispatch={dispatchEditor}
-          activeCropCode={speciesInRoom[0]?.taxon.cropCode}
+          roomIndividuals={roomIndividuals}
+          accessions={accessions}
+          seedLots={seedLots}
+          accessionToTaxon={accessionToTaxon}
+          selectedIndividualId={selectedIndividualId}
+          onSelectPlant={onSelectPlant}
+          isOpen={isBottomDockOpen}
+          onClose={() => setIsBottomDockOpen(false)}
         />
-
-        {/* ── Tira de Plantas en esta Sala (Drag & Drop nativo para mover) ── */}
-        {editorState.mode !== 'space' && (
-          <RoomPlantStrip
-            locationType={location.type}
-            roomIndividuals={roomIndividuals}
-            accessions={accessions}
-            accessionToTaxon={accessionToTaxon}
-            selectedIndividualId={selectedIndividualId}
-            onSelectPlant={onSelectPlant}
-          />
-        )}
-      </div>
+      )}
     </div>
   )
 }

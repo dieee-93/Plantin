@@ -33,29 +33,32 @@ export const RoomLensBar: React.FC<RoomLensBarProps> = React.memo(({
   return (
     <div
       style={{
-        background: 'var(--surface-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md)',
-        padding: '10px 14px',
+        background: 'rgba(255, 255, 255, 0.94)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        border: '1px solid rgba(226, 232, 240, 0.95)',
+        borderRadius: 16,
+        padding: '7px 12px',
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
         alignItems: 'center',
-        gap: 10,
+        gap: 8,
+        boxShadow: '0 8px 24px -4px rgba(15, 23, 42, 0.08)',
+        pointerEvents: 'auto',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {/* Selector de Capa Analítica */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <span
           style={{
-            fontSize: 10.5,
-            fontFamily: 'var(--font-mono)',
-            fontWeight: 700,
+            fontSize: 11,
+            fontWeight: 600,
             color: 'var(--text-tertiary)',
-            textTransform: 'uppercase',
-            marginRight: 4,
+            marginRight: 2,
           }}
         >
-          Lente Visual:
+          Capa:
         </span>
         {LENS_OPTIONS.map(opt => {
           const Icon = opt.icon
@@ -71,41 +74,40 @@ export const RoomLensBar: React.FC<RoomLensBarProps> = React.memo(({
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 5,
-                padding: '5px 10px',
+                gap: 4,
+                padding: '4px 9px',
                 borderRadius: 99,
-                border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                border: active ? '1px solid var(--accent)' : '1px solid transparent',
                 background: active ? 'var(--accent-light)' : 'var(--surface-subtle)',
                 color: active ? 'var(--accent)' : 'var(--text-secondary)',
-                fontSize: 11.5,
-                fontWeight: 600,
+                fontSize: 11,
+                fontWeight: active ? 700 : 500,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
             >
               <Icon size={12} />
-              {opt.label}
+              <span>{opt.label}</span>
             </button>
           )
         })}
       </div>
 
+      {/* Filtro por Especie si hay plantas */}
       {speciesInRoom.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
           <span
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 4,
-              fontSize: 10.5,
-              fontFamily: 'var(--font-mono)',
-              fontWeight: 700,
+              gap: 3,
+              fontSize: 11,
+              fontWeight: 600,
               color: 'var(--text-tertiary)',
-              textTransform: 'uppercase',
             }}
           >
-            <Filter size={11} />
-            Especies en sala:
+            <Filter size={10} />
+            <span>Filtrar:</span>
           </span>
           {speciesInRoom.map(({ taxon, count, badgeColor }) => {
             const isFiltered = speciesFilterId === taxon.id
@@ -121,28 +123,29 @@ export const RoomLensBar: React.FC<RoomLensBarProps> = React.memo(({
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 5,
-                  padding: '3px 9px',
+                  gap: 4,
+                  padding: '3px 8px',
                   borderRadius: 99,
                   border: isFiltered ? `1.5px solid ${badgeColor}` : '1px solid var(--border)',
                   background: isFiltered ? 'var(--surface-elevated)' : 'var(--surface-subtle)',
                   color: 'var(--text-primary)',
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: isFiltered ? 700 : 500,
                   cursor: 'pointer',
                   boxShadow: isFiltered ? `0 0 0 2px ${badgeColor}22` : 'none',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <span
                   style={{
-                    width: 7,
-                    height: 7,
+                    width: 6,
+                    height: 6,
                     borderRadius: '50%',
                     background: badgeColor,
                     display: 'inline-block',
                   }}
                 />
-                {taxon.commonName || `${taxon.genus} ${taxon.species}`} ({count})
+                <span>{taxon.commonName || `${taxon.genus} ${taxon.species}`} ({count})</span>
               </button>
             )
           })}
@@ -153,10 +156,11 @@ export const RoomLensBar: React.FC<RoomLensBarProps> = React.memo(({
               style={{
                 background: 'none',
                 border: 'none',
-                fontSize: 11,
+                fontSize: 10.5,
                 color: 'var(--accent)',
                 fontWeight: 600,
                 cursor: 'pointer',
+                padding: '2px 4px',
               }}
             >
               Ver todas
@@ -167,4 +171,5 @@ export const RoomLensBar: React.FC<RoomLensBarProps> = React.memo(({
     </div>
   )
 })
+
 RoomLensBar.displayName = 'RoomLensBar'

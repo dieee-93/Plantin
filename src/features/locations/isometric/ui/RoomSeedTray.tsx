@@ -19,13 +19,18 @@ export const RoomSeedTray: React.FC<RoomSeedTrayProps> = React.memo(({
   return (
     <div
       style={{
-        background: 'var(--surface-elevated)',
+        background: 'rgba(255, 255, 255, 0.92)',
+        backdropFilter: 'blur(16px)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-md)',
         padding: '10px 14px',
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
+        boxShadow: '0 4px 20px rgba(15, 23, 42, 0.08)',
+        pointerEvents: 'auto',
+        maxWidth: 880,
+        width: '100%',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
