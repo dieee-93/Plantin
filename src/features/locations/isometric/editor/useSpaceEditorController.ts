@@ -22,7 +22,7 @@ export function useSpaceEditorController({
   viewBox,
   handlePointerMoveCamera,
 }: UseSpaceEditorControllerOptions) {
-  const roomLayout = useRoomLayoutStore(state => state.getLayout(locationId))
+  const roomLayout = useRoomLayoutStore(state => state.layouts[locationId])
   const placedObjects = useMemo(() => roomLayout?.objects ?? [], [roomLayout?.objects])
 
   const [editorState, dispatchEditor] = useReducer(

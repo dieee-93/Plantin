@@ -124,32 +124,30 @@ export const RoomSceneLayers: React.FC<RoomSceneLayersProps> = React.memo((props
       <GhostOverlayLayer ghost={ghost} drawPreview={drawPreview} />
 
       {/* ── Capa 3: Baldosas e interacción de celda ── */}
-      {!isSpaceMode && (
-        <CellsLayer
-          rows={rows}
-          cols={cols}
-          locationType={location.type}
-          lensMode={lensMode}
-          speciesFilterId={speciesFilterId}
-          ambientTempC={ambientTempC}
-          slotToPlant={slotToPlant}
-          accessions={accessions}
-          accessionToTaxon={accessionToTaxon}
-          selectedSlot={selectedSlot}
-          selectedIndividualId={selectedIndividualId}
-          dragOverSlot={dragOverSlot}
-          movingPlantId={movingPlantId}
-          setDragOverSlot={setDragOverSlot}
-          setMovingPlantId={setMovingPlantId}
-          onSelectPlant={onSelectPlant}
-          onClickEmptySlot={onClickEmptySlot}
-          onMovePlantToSlot={onMovePlantToSlot}
-          onDropSeedInSlot={onDropSeedInSlot}
-        />
-      )}
+      <CellsLayer
+        rows={rows}
+        cols={cols}
+        locationType={location.type}
+        lensMode={lensMode}
+        speciesFilterId={speciesFilterId}
+        ambientTempC={ambientTempC}
+        slotToPlant={slotToPlant}
+        accessions={accessions}
+        accessionToTaxon={accessionToTaxon}
+        selectedSlot={selectedSlot}
+        selectedIndividualId={selectedIndividualId}
+        dragOverSlot={dragOverSlot}
+        movingPlantId={movingPlantId}
+        setDragOverSlot={setDragOverSlot}
+        setMovingPlantId={setMovingPlantId}
+        onSelectPlant={onSelectPlant}
+        onClickEmptySlot={onClickEmptySlot}
+        onMovePlantToSlot={onMovePlantToSlot}
+        onDropSeedInSlot={onDropSeedInSlot}
+      />
 
-      {/* ── Capa 4: Plantas ordenadas por profundidad (atenuadas en modo espacio) ── */}
-      <g opacity={isSpaceMode ? 0.35 : 1}>
+      {/* ── Capa 4: Plantas ordenadas por profundidad ── */}
+      <g opacity={isSpaceMode ? 0.9 : 1}>
         <PlantsLayer
           rows={rows}
           cols={cols}

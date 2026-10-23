@@ -61,6 +61,11 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(({
         return (
           <g
             key={obj.id}
+            data-placed-object={obj.typeId}
+            data-object-id={obj.id}
+            aria-label={`Objeto colocado ${def.label || obj.typeId}`}
+            role="button"
+            style={{ cursor: 'pointer' }}
             transform={`translate(${pos.x}, ${pos.y}) ${isFlipped ? 'scale(-1, 1)' : ''}`}
             onClick={(e) => {
               e.stopPropagation()

@@ -233,6 +233,7 @@ export const SpaceEditorOverlay: React.FC<SpaceEditorOverlayProps> = ({
           <span>{unplacedToast.count} planta(s) pasaron a "Sin ubicar"</span>
           <button
             type="button"
+            aria-label="Deshacer reubicación de plantas"
             onClick={handleUndoToast}
             style={{
               background: '#ffffff',

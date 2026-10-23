@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { LocationType } from '@/domain/location'
 import type { RoomLayout, PlacedObject, PlantSlot } from '@/domain/roomLayout'
-import { deriveSlots, gridToLayout } from '@/domain/roomLayout'
+import { deriveSlots, gridToLayout, DEFAULT_SNAP_CM } from '@/domain/roomLayout'
 import { getDefaultTemplateForType, getTemplateById } from '@/features/locations/isometric/templates'
 import { OBJECT_CATALOG } from '@/features/locations/isometric/catalog'
 
@@ -85,8 +85,15 @@ export const useRoomLayoutStore = create<RoomLayoutState>()(
 
       addObject: (locationId, obj) => {
         set((state) => {
-          const current = state.layouts[locationId]
-          if (!current) return state
+          const current = state.layouts[locationId] ?? {
+            schemaVersion: 1,
+            locationId,
+            shape: { kind: 'rect', widthCm: 500, depthCm: 500 },
+            snapCm: DEFAULT_SNAP_CM,
+            wallHeightCm: 250,
+            floor: 'soil',
+            objects: [],
+          }
           return {
             layouts: {
               ...state.layouts,

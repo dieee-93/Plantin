@@ -186,6 +186,8 @@ export const CatalogDrawer: React.FC<CatalogDrawerProps> = React.memo(({
               <button
                 key={item.id}
                 type="button"
+                data-catalog-item={item.id}
+                aria-label={`Seleccionar ${item.label}`}
                 onClick={() => onSelectObjectToPlace(item.id)}
                 style={{
                   display: 'inline-flex',

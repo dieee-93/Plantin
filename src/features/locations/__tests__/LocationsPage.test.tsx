@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render as rtlRender, screen, fireEvent } from '@testing-library/react'
+import { render as rtlRender, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const render = (ui: React.ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
@@ -12,6 +12,7 @@ import { useAccessionStore } from '@/store/accessionStore'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
+import { useRoomLayoutStore } from '@/store/roomLayoutStore'
 import { BUENOS_AIRES } from '@/domain/agroclimate/__tests__/fixtures'
 
 describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
@@ -20,6 +21,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     useIndividualStore.setState({ individuals: [] })
     useAccessionStore.setState({ accessions: [] })
     useSeedLotStore.setState({ seedLots: [] })
+    useRoomLayoutStore.setState({ layouts: {} })
     useTaxonStore.setState({
       taxons: [
         {
@@ -637,5 +639,255 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(container.querySelectorAll('[data-botanical-feature="root-shoulder"]').length).toBeGreaterThanOrEqual(1)
     expect(container.querySelector('[data-botanical-feature="plumose-foliage"]')).toBeInTheDocument()
     expect(container.querySelector('[data-botanical-feature="beet-foliage"]')).toBeInTheDocument()
+  })
+
+  it('Ciclo TDD 1: entrar al Modo Diseñar preserva íntegramente las macetas y plantas existentes sin mostrar modales de sobrescritura', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Invernadero Sur',
+      type: 'greenhouse',
+      rows: 3,
+      cols: 3,
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-SUR',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'cultivated',
+    })
+
+    useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'TOM Sur #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 65,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al Invernadero Sur
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Sur/i }))
+
+    // Verifica que en modo cultivo inicial se ven las 8 macetas vacías y la planta
+    expect(container.querySelectorAll('[data-empty-container="3d-pot"]').length).toBe(8)
+
+    // Activar Modo Diseñar en el dock inferior
+    const designModeBtn = screen.getByRole('button', { name: /Modo Diseñar Espacio y Mobiliario/i })
+    await user.click(designModeBtn)
+
+    // El catálogo de diseño está presente y no hay ningún modal de "Espacio sin objetos"
+    expect(screen.getByText('Contenedores')).toBeInTheDocument()
+    expect(screen.getByText('Mobiliario')).toBeInTheDocument()
+    expect(screen.queryByText(/Espacio sin objetos/i)).not.toBeInTheDocument()
+
+    // Las macetas existentes se preservaron sin ser borradas ni sobrescritas
+    expect(container.querySelectorAll('[data-empty-container="3d-pot"]').length).toBe(8)
+  })
+
+  it('Ciclo TDD 2: permite seleccionar un objeto del catálogo de diseño, colocarlo en el espacio y seleccionarlo para ver su barra contextual', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Laboratorio Botánico',
+      type: 'lab',
+      rows: 2,
+      cols: 2,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al Laboratorio
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Laboratorio Botánico/i }))
+
+    // Activar Modo Diseñar
+    await user.click(screen.getByRole('button', { name: /Modo Diseñar Espacio y Mobiliario/i }))
+
+    // Seleccionar 'Maceta 20 L' en el catálogo
+    const potBtn = screen.getByRole('button', { name: /Seleccionar Maceta 20 L/i })
+    await user.click(potBtn)
+
+    // Al agregar el objeto en el layout de la sala, este se renderiza en la capa ObjectsLayer con data-placed-object
+    useRoomLayoutStore.getState().addObject(room.id, {
+      id: 'test-placed-pot',
+      typeId: 'pot_20l',
+      x: 100,
+      y: 100,
+      z: 0,
+      rotation: 0,
+    })
+
+    // El objeto se renderiza en el plano isométrico con el atributo semántico data-placed-object="pot_20l"
+    const placedPot = container.querySelector('[data-placed-object="pot_20l"]')
+    expect(placedPot).toBeInTheDocument()
+
+    // Al hacer clic en el objeto colocado, se selecciona y aparece la barra contextual ObjectContextBar
+    if (placedPot) {
+      await user.click(placedPot)
+      expect(screen.getByRole('button', { name: /Rotar 90°/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Duplicar/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Eliminar objeto/i })).toBeInTheDocument()
+    }
+  })
+
+  it('Ciclo TDD 3: permite activar la herramienta de trazado de surco, configurar longitud y espaciado dinámico de plantas en la barra contextual', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Campo de Ensayo',
+      type: 'field',
+      rows: 4,
+      cols: 4,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al Campo de Ensayo
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Campo de Ensayo/i }))
+
+    // Activar Modo Diseñar
+    await user.click(screen.getByRole('button', { name: /Modo Diseñar Espacio y Mobiliario/i }))
+
+    // Botón Trazar Surco disponible en el catálogo
+    const furrowBtn = screen.getByRole('button', { name: /Trazar Surco/i })
+    expect(furrowBtn).toBeInTheDocument()
+    await user.click(furrowBtn)
+
+    // Simular colocación de surco de 200cm con espaciado de 40cm
+    act(() => {
+      useRoomLayoutStore.getState().addObject(room.id, {
+        id: 'furrow-test-1',
+        typeId: 'furrow',
+        x: 50,
+        y: 50,
+        z: 0,
+        rotation: 0,
+        params: { lengthCm: 200, plantSpacingCm: 40 },
+      })
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-placed-object="furrow"]')).toBeInTheDocument()
+    })
+    const placedFurrow = container.querySelector('[data-placed-object="furrow"]')
+
+    // Seleccionar el surco para ver su barra contextual con chips de espaciado
+    if (placedFurrow) {
+      await user.click(placedFurrow)
+      expect(screen.getByText(/200×40/i)).toBeInTheDocument()
+
+      // Modificar espaciado a 50 cm mediante el chip rápido
+      const chip50 = screen.getByRole('button', { name: '50' })
+      await user.click(chip50)
+
+      const updatedObj = useRoomLayoutStore.getState().getLayout(room.id)?.objects.find(o => o.id === 'furrow-test-1')
+      expect(updatedObj?.params?.plantSpacingCm).toBe(50)
+    }
+  })
+
+  it('Ciclo TDD 4: al eliminar un objeto que contiene plantas asignadas, las plantas se protegen moviéndose a "Sin ubicar" y el toast de deshacer permite recuperarlas', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Invernadero Seguridad',
+      type: 'greenhouse',
+      rows: 2,
+      cols: 2,
+    })
+
+    const taxon = useTaxonStore.getState().add({
+      family: 'Solanaceae',
+      genus: 'Capsicum',
+      species: 'annuum',
+      cropCode: 'PEP',
+      commonName: 'Pimiento Protegido',
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'SAFE-01',
+      taxonId: taxon.id,
+      acquisitionSource: 'breeding',
+    })
+
+    // Objeto contenedor en la sala (tipo bench = Mesada de cultivo)
+    act(() => {
+      useRoomLayoutStore.getState().addObject(room.id, {
+        id: 'safe-bench-1',
+        typeId: 'bench',
+        label: 'Mesa Principal',
+        x: 20,
+        y: 20,
+        z: 0,
+        rotation: 0,
+      })
+    })
+
+    // Planta asignada al objeto
+    const plant = useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'Planta Valiosa #1',
+      locationId: room.id,
+      slotId: 'safe-bench-1-slot-0',
+      position: 'Mesa Principal',
+      location: 'Mesa Principal',
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entrar al invernadero y activar diseño
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Seguridad/i }))
+    await user.click(screen.getByRole('button', { name: /Modo Diseñar Espacio y Mobiliario/i }))
+
+    // Seleccionar el objeto
+    await waitFor(() => {
+      expect(container.querySelector('[data-placed-object="bench"]')).toBeInTheDocument()
+    })
+    const placedBench = container.querySelector('[data-placed-object="bench"]')
+    if (placedBench) {
+      await user.click(placedBench)
+
+      // Eliminar el objeto
+      const deleteBtn = screen.getByRole('button', { name: /Eliminar objeto/i })
+      await user.click(deleteBtn)
+
+      // La planta se protegió y pasó a "Sin ubicar" en lugar de ser eliminada
+      const plantAfterDelete = useIndividualStore.getState().getById(plant.id)
+      expect(plantAfterDelete?.position).toBe('Sin ubicar')
+
+      // Se muestra el toast con botón Deshacer
+      expect(screen.getByText(/pasaron a "Sin ubicar"/i)).toBeInTheDocument()
+      const undoToastBtn = screen.getByRole('button', { name: /Deshacer reubicación de plantas/i })
+      await user.click(undoToastBtn)
+
+      // Se restaura la planta a su posición original y el objeto al layout
+      const plantAfterUndo = useIndividualStore.getState().getById(plant.id)
+      expect(plantAfterUndo?.position).toBe('Mesa Principal')
+      const restoredObj = useRoomLayoutStore.getState().getLayout(room.id)?.objects.find(o => o.id === 'safe-bench-1')
+      expect(restoredObj).toBeDefined()
+    }
+  })
+
+  it('Ciclo TDD 5: el Command Dock gestiona el historial deshacer y rehacer de manera reactiva', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Sala Historial',
+      type: 'lab',
+      rows: 2,
+      cols: 2,
+    })
+
+    render(<LocationsPage />)
+
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sala Historial/i }))
+    await user.click(screen.getByRole('button', { name: /Modo Diseñar Espacio y Mobiliario/i }))
+
+    // Deshacer y Rehacer están deshabilitados al inicio sin historial nuevo
+    const undoBtn = screen.getByRole('button', { name: /Deshacer/i })
+    const redoBtn = screen.getByRole('button', { name: /Rehacer/i })
+    expect(undoBtn).toBeDisabled()
+    expect(redoBtn).toBeDisabled()
   })
 })

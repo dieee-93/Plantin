@@ -170,6 +170,7 @@ export const ObjectContextBar: React.FC<ObjectContextBarProps> = React.memo(({
         type="button"
         onClick={onRotate}
         title="Rotar 90° (Tecla R)"
+        aria-label="Rotar 90°"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -190,6 +191,7 @@ export const ObjectContextBar: React.FC<ObjectContextBarProps> = React.memo(({
         type="button"
         onClick={onDuplicate}
         title="Duplicar objeto (Ctrl+D)"
+        aria-label="Duplicar"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -210,6 +212,7 @@ export const ObjectContextBar: React.FC<ObjectContextBarProps> = React.memo(({
         type="button"
         onClick={onDelete}
         title="Eliminar objeto (Supr o Backspace)"
+        aria-label="Eliminar objeto"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
