@@ -33,6 +33,8 @@ export interface Individual {
   location?: string
   /** Row/col si hay diseño experimental — BrAPI observationUnitPosition */
   position?: string
+  /** ID único y estable del puesto en el layout de la sala (PlantSlot.id: `${objectId}:${index}`) */
+  slotId?: string
   /** Estadio fenológico actual — escala BBCH */
   currentBBCH?: BBCHStage
   status: IndividualStatus

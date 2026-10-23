@@ -13,15 +13,14 @@ import {
   type IsometricLensMode,
 } from './botanicalArchetypes'
 import { SharedDefs } from './visual/SharedDefs'
+import { RoomGradients } from './visual/RoomGradients'
 import { resolvePlantPalette, type PlantPaletteData } from './visual/paletteKey'
 import { halfW, halfH, roomViewBox } from './geometry/iso'
-import { FloorLayer } from './layers/FloorLayer'
-import { SceneryLayer } from './layers/SceneryLayer'
-import { CellsLayer } from './layers/CellsLayer'
-import { PlantsLayer } from './layers/PlantsLayer'
-import { LabelsLayer } from './layers/LabelsLayer'
-import { OverlayLayer } from './layers/OverlayLayer'
-import { AmbientLayer } from './layers/AmbientLayer'
+import { RoomSceneLayers } from './layers/RoomSceneLayers'
+import { PlanViewLayer } from './editor/layers/PlanViewLayer'
+import { useIsometricCamera } from './hooks/useIsometricCamera'
+import { useSpaceEditorController } from './editor/useSpaceEditorController'
+import { SpaceEditorOverlay } from './editor/SpaceEditorOverlay'
 import { RoomHoverTooltip } from './RoomHoverTooltip'
 import { RoomTopBar } from './ui/RoomTopBar'
 import { RoomLensBar } from './ui/RoomLensBar'
@@ -70,7 +69,15 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   onUpdateGridDimensions,
   onNavigateSeedLot,
 }) => {
-  const [zoom, setZoom] = useState(1)
+  const {
+    camera,
+    setZoom,
+    handlePointerDown,
+    handlePointerMove: handlePointerMoveCamera,
+    handlePointerUp,
+    handleWheel,
+  } = useIsometricCamera()
+
   const [lensMode, setLensMode] = useState<IsometricLensMode>('species')
   const [speciesFilterId, setSpeciesFilterId] = useState<string | null>(null)
   const [showPlantNames, setShowPlantNames] = useState(false)
@@ -126,6 +133,31 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
     () => getLocationGridDimensions(location, roomIndividuals.length),
     [location, roomIndividuals.length]
   )
+
+  const { minX, minY, viewBoxWidth, viewBoxHeight } = useMemo(
+    () => roomViewBox(rows, cols),
+    [rows, cols]
+  )
+
+  // Controlador de edición de espacio (Fase E3)
+  const {
+    editorState,
+    dispatchEditor,
+    placedObjects,
+    roomWidthCm,
+    roomDepthCm,
+    handlePointerMove,
+    handleClick,
+    handleUndo,
+    handleRedo,
+  } = useSpaceEditorController({
+    locationId: location.id,
+    rows,
+    cols,
+    camera,
+    viewBox: { minX, minY, width: viewBoxWidth, height: viewBoxHeight },
+    handlePointerMoveCamera,
+  })
 
   const accessionToTaxon = useMemo(() => {
     const map = new Map<string, Taxon>()
@@ -262,14 +294,10 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   }, [plantCoordinates, lensMode, selectedIndividualId])
 
   const otherLocations = useMemo(
-    () => allLocations.filter(l => l.id !== location.id),
+    () => allLocations.filter(loc => loc.id !== location.id),
     [allLocations, location.id]
   )
 
-  const { minX, minY, viewBoxWidth, viewBoxHeight } = useMemo(
-    () => roomViewBox(rows, cols),
-    [rows, cols]
-  )
 
   const wallColors = useMemo(() => {
     switch (location.type) {
@@ -282,50 +310,38 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
           wallStroke: '#0284c7',
           baseboard: '#0369a1',
           floor: 'url(#interior-floor-greenhouse)',
-          floorSideLeft: '#64748b',
-          floorSideRight: '#475569',
+          floorSideLeft: '#86efac',
+          floorSideRight: '#4ade80',
         }
       case 'growth_chamber':
         return {
           leftWall: 'url(#interior-chamber-left)',
           rightWall: 'url(#interior-chamber-right)',
-          topCap: '#818cf8',
+          topCap: '#6366f1',
           sideCap: '#4f46e5',
           wallStroke: '#a855f7',
-          baseboard: '#6366f1',
+          baseboard: '#3b0764',
           floor: 'url(#interior-floor-chamber)',
-          floorSideLeft: '#4c1d95',
-          floorSideRight: '#2e1065',
+          floorSideLeft: '#312e81',
+          floorSideRight: '#1e1b4b',
         }
       case 'field':
         return {
           leftWall: 'transparent',
           rightWall: 'transparent',
-          topCap: '#a16207',
-          sideCap: '#78350f',
-          wallStroke: '#a16207',
-          baseboard: '#78350f',
+          topCap: 'transparent',
+          sideCap: 'transparent',
+          wallStroke: 'transparent',
+          baseboard: 'transparent',
           floor: 'url(#interior-floor-field)',
           floorSideLeft: '#78350f',
           floorSideRight: '#451a03',
-        }
-      case 'lab':
-        return {
-          leftWall: '#f5f3ff',
-          rightWall: '#ede9fe',
-          topCap: '#c4b5fd',
-          sideCap: '#8b5cf6',
-          wallStroke: '#7c3aed',
-          baseboard: '#6d28d9',
-          floor: 'url(#interior-floor-room)',
-          floorSideLeft: '#94a3b8',
-          floorSideRight: '#64748b',
         }
       default:
         return {
           leftWall: 'url(#interior-wall-left)',
           rightWall: 'url(#interior-wall-right)',
-          topCap: '#f8fafc',
+          topCap: '#cbd5e1',
           sideCap: '#94a3b8',
           wallStroke: '#64748b',
           baseboard: '#475569',
@@ -358,7 +374,7 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
         totalSlots={totalSlots}
         rows={rows}
         cols={cols}
-        zoom={zoom}
+        zoom={camera.zoom}
         showPlantNames={showPlantNames}
         movingPlantId={movingPlantId}
         onBackToMap={onBackToMap}
@@ -368,6 +384,14 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
         setMovingPlantId={setMovingPlantId}
         ambientLightingEnabled={ambientLightingEnabled}
         onToggleAmbientLighting={handleToggleAmbientLighting}
+        mode={editorState.mode}
+        viewMode={editorState.viewMode}
+        canUndo={editorState.historyIndex > 0}
+        canRedo={editorState.historyIndex < editorState.history.length - 1}
+        onToggleMode={(m) => dispatchEditor({ type: 'SET_MODE', mode: m })}
+        onToggleViewMode={(v) => dispatchEditor({ type: 'SET_VIEW_MODE', viewMode: v })}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
       />
 
       {/* ── Barra de Lentes Visuales y Filtro por Especie ── */}
@@ -433,153 +457,112 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
           data-lens-mode={lensMode}
           style={{
             width: '100%',
-            maxWidth: Math.round(780 * zoom),
+            maxWidth: Math.round(780 * camera.zoom),
             height: 'auto',
             minHeight: 400,
             overflow: 'visible',
             transition: 'max-width 0.2s ease',
+            cursor: editorState.mode === 'space' ? (editorState.tool === 'place' ? 'crosshair' : 'default') : 'grab',
           }}
+          onClick={handleClick}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onWheel={handleWheel}
           role="region"
           aria-label={`Plano isométrico interior de ${location.name}`}
         >
           {/* ── Definiciones de Gradientes Direccionales y Sombreado 3D ── */}
           <defs>
-            <linearGradient id="interior-wall-left" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#f8fafc" />
-              <stop offset="100%" stopColor="#cbd5e1" />
-            </linearGradient>
-            <linearGradient id="interior-wall-right" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#e2e8f0" />
-              <stop offset="100%" stopColor="#94a3b8" />
-            </linearGradient>
-            <linearGradient id="interior-glass-left" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="rgba(224, 242, 254, 0.78)" />
-              <stop offset="50%" stopColor="rgba(186, 230, 253, 0.42)" />
-              <stop offset="100%" stopColor="rgba(125, 211, 252, 0.65)" />
-            </linearGradient>
-            <linearGradient id="interior-glass-right" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="rgba(186, 230, 253, 0.68)" />
-              <stop offset="100%" stopColor="rgba(56, 189, 248, 0.45)" />
-            </linearGradient>
-            <linearGradient id="interior-chamber-left" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#3730a3" />
-              <stop offset="100%" stopColor="#1e1b4b" />
-            </linearGradient>
-            <linearGradient id="interior-chamber-right" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#312e81" />
-              <stop offset="100%" stopColor="#0f172a" />
-            </linearGradient>
-            <linearGradient id="interior-floor-room" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#f8fafc" />
-              <stop offset="100%" stopColor="#e2e8f0" />
-            </linearGradient>
-            <linearGradient id="interior-floor-greenhouse" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#f0fdf4" />
-              <stop offset="100%" stopColor="#dcfce7" />
-            </linearGradient>
-            <linearGradient id="interior-floor-chamber" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#1e1b4b" />
-              <stop offset="100%" stopColor="#0f172a" />
-            </linearGradient>
-            <linearGradient id="interior-floor-field" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#92400e" />
-              <stop offset="100%" stopColor="#5c2d0c" />
-            </linearGradient>
+            <RoomGradients />
             <SharedDefs palettes={plantPalettes} />
           </defs>
 
-          {/* ── Capa 1: Suelo y losa 3D ── */}
-          <FloorLayer
-            rows={rows}
-            cols={cols}
-            locationType={location.type}
-            wallColors={wallColors}
-          />
-
-          {/* ── Capa 2: Escenografía perimetral, muros y equipamiento ── */}
-          <SceneryLayer
-            location={location}
-            rows={rows}
-            cols={cols}
-            wallColors={wallColors}
-            roomSeedLots={roomSeedLots}
-            onNavigateSeedLot={onNavigateSeedLot}
-          />
-
-          {/* ── Capa 3: Baldosas e interacción de celda ── */}
-          <CellsLayer
-            rows={rows}
-            cols={cols}
-            locationType={location.type}
-            lensMode={lensMode}
-            speciesFilterId={speciesFilterId}
-            ambientTempC={ambientTempC}
-            slotToPlant={slotToPlant}
-            accessions={accessions}
-            accessionToTaxon={accessionToTaxon}
-            selectedSlot={selectedSlot}
-            selectedIndividualId={selectedIndividualId}
-            dragOverSlot={dragOverSlot}
-            movingPlantId={movingPlantId}
-            setDragOverSlot={setDragOverSlot}
-            setMovingPlantId={setMovingPlantId}
-            onSelectPlant={onSelectPlant}
-            onClickEmptySlot={onClickEmptySlot}
-            onMovePlantToSlot={onMovePlantToSlot}
-            onDropSeedInSlot={onDropSeedInSlot}
-          />
-
-          {/* ── Capa 4: Plantas ordenadas por profundidad con rayos X ── */}
-          <PlantsLayer
-            rows={rows}
-            cols={cols}
-            locationType={location.type}
-            lensMode={lensMode}
-            speciesFilterId={speciesFilterId}
-            slotToPlant={slotToPlant}
-            accessions={accessions}
-            accessionToTaxon={accessionToTaxon}
-            selectedSlot={selectedSlot}
-            selectedIndividualId={selectedIndividualId}
-            dragOverSlot={dragOverSlot}
-          />
-
-          {/* ── Capa 5: Etiquetas de coordenadas y nombres (por encima de plantas) ── */}
-          <LabelsLayer
-            rows={rows}
-            cols={cols}
-            locationType={location.type}
-            slotToPlant={slotToPlant}
-            accessions={accessions}
-            selectedSlot={selectedSlot}
-            selectedIndividualId={selectedIndividualId}
-            showPlantNames={showPlantNames}
-          />
-
-          {/* ── Capa 6: Vínculos parentales y overlays ── */}
-          <OverlayLayer
-            pedigreeLinks={pedigreeLinks}
-            lensMode={lensMode}
-            selectedIndividualId={selectedIndividualId}
-          />
-
-          {/* ── Capa 7: Luz diurna ambiental (Fase 5) ── */}
-          <AmbientLayer
-            locationType={location.type}
-            viewBox={{ minX, minY, width: viewBoxWidth, height: viewBoxHeight }}
-            enabled={ambientLightingEnabled}
-          />
+          {/* ── Contenedor Isométrico con soporte de Cámara Pan (translate) ── */}
+          <g transform={`translate(${camera.x}, ${camera.y})`}>
+            {editorState.viewMode === 'plan' ? (
+              <PlanViewLayer
+                roomWidthCm={roomWidthCm}
+                roomDepthCm={roomDepthCm}
+                placedObjects={placedObjects}
+                selectedObjectId={editorState.selectedObjectId}
+                ghost={editorState.ghost}
+                drawPreview={
+                  editorState.dragDrawStart && editorState.dragDrawCurrent
+                    ? { tool: editorState.tool, start: editorState.dragDrawStart, current: editorState.dragDrawCurrent }
+                    : null
+                }
+                onSelectObject={(id) => {
+                  if (editorState.mode === 'space') dispatchEditor({ type: 'SELECT_OBJECT', id })
+                }}
+              />
+            ) : (
+              <RoomSceneLayers
+                location={location}
+                rows={rows}
+                cols={cols}
+                wallColors={wallColors}
+                roomSeedLots={roomSeedLots}
+                onNavigateSeedLot={onNavigateSeedLot}
+                placedObjects={placedObjects}
+                selectedObjectId={editorState.selectedObjectId}
+                ghost={editorState.ghost}
+                drawPreview={
+                  editorState.dragDrawStart && editorState.dragDrawCurrent
+                    ? { tool: editorState.tool, start: editorState.dragDrawStart, current: editorState.dragDrawCurrent }
+                    : null
+                }
+                isSpaceMode={editorState.mode === 'space'}
+                onSelectObject={(id) => {
+                  if (editorState.mode === 'space') dispatchEditor({ type: 'SELECT_OBJECT', id })
+                }}
+                lensMode={lensMode}
+                speciesFilterId={speciesFilterId}
+                ambientTempC={ambientTempC}
+                slotToPlant={slotToPlant}
+                accessions={accessions}
+                accessionToTaxon={accessionToTaxon}
+                selectedSlot={selectedSlot}
+                selectedIndividualId={selectedIndividualId}
+                dragOverSlot={dragOverSlot}
+                movingPlantId={movingPlantId}
+                setDragOverSlot={setDragOverSlot}
+                setMovingPlantId={setMovingPlantId}
+                onSelectPlant={onSelectPlant}
+                onClickEmptySlot={onClickEmptySlot}
+                onMovePlantToSlot={onMovePlantToSlot}
+                onDropSeedInSlot={onDropSeedInSlot}
+                showPlantNames={showPlantNames}
+                pedigreeLinks={pedigreeLinks}
+                viewBox={{ minX, minY, width: viewBoxWidth, height: viewBoxHeight }}
+                ambientLightingEnabled={ambientLightingEnabled}
+              />
+            )}
+          </g>
         </svg>
 
-        {/* ── Tira de Plantas en esta Sala (Drag & Drop nativo para mover) ── */}
-        <RoomPlantStrip
+        {/* ── Controles y Drawer del Editor de Espacio (Fase E3) ── */}
+        <SpaceEditorOverlay
+          locationId={location.id}
           locationType={location.type}
-          roomIndividuals={roomIndividuals}
-          accessions={accessions}
-          accessionToTaxon={accessionToTaxon}
-          selectedIndividualId={selectedIndividualId}
-          onSelectPlant={onSelectPlant}
+          roomWidthCm={roomWidthCm}
+          roomDepthCm={roomDepthCm}
+          state={editorState}
+          dispatch={dispatchEditor}
+          activeCropCode={speciesInRoom[0]?.taxon.cropCode}
         />
+
+        {/* ── Tira de Plantas en esta Sala (Drag & Drop nativo para mover) ── */}
+        {editorState.mode !== 'space' && (
+          <RoomPlantStrip
+            locationType={location.type}
+            roomIndividuals={roomIndividuals}
+            accessions={accessions}
+            accessionToTaxon={accessionToTaxon}
+            selectedIndividualId={selectedIndividualId}
+            onSelectPlant={onSelectPlant}
+          />
+        )}
       </div>
     </div>
   )

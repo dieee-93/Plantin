@@ -1,6 +1,20 @@
 import React, { useState } from 'react'
 import type { FacilityLocation } from '@/domain/location'
-import { ArrowLeft, Move, ZoomIn, ZoomOut, Grid, Tag, Sun, Moon } from 'lucide-react'
+import {
+  ArrowLeft,
+  Move,
+  ZoomIn,
+  ZoomOut,
+  Grid,
+  Tag,
+  Sun,
+  Moon,
+  Sprout,
+  Pencil,
+  Compass,
+  Undo2,
+  Redo2,
+} from 'lucide-react'
 
 export interface RoomTopBarProps {
   location: FacilityLocation
@@ -12,6 +26,14 @@ export interface RoomTopBarProps {
   showPlantNames: boolean
   movingPlantId: string | null
   ambientLightingEnabled?: boolean
+  mode?: 'plants' | 'space'
+  viewMode?: 'iso' | 'plan'
+  canUndo?: boolean
+  canRedo?: boolean
+  onToggleMode?: (mode: 'plants' | 'space') => void
+  onToggleViewMode?: (viewMode: 'iso' | 'plan') => void
+  onUndo?: () => void
+  onRedo?: () => void
   onToggleAmbientLighting?: () => void
   onBackToMap: () => void
   onUpdateGridDimensions?: (rows: number, cols: number) => void
@@ -30,6 +52,14 @@ export const RoomTopBar: React.FC<RoomTopBarProps> = React.memo(({
   showPlantNames,
   movingPlantId,
   ambientLightingEnabled = true,
+  mode = 'plants',
+  viewMode = 'iso',
+  canUndo = false,
+  canRedo = false,
+  onToggleMode,
+  onToggleViewMode,
+  onUndo,
+  onRedo,
   onToggleAmbientLighting,
   onBackToMap,
   onUpdateGridDimensions,
@@ -131,8 +161,132 @@ export const RoomTopBar: React.FC<RoomTopBarProps> = React.memo(({
           </div>
         </div>
 
-        {/* Controles de Zoom, Modo Nombres y Modo Trasplante */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* Conmutador de Modos: Plantas vs Editar Espacio */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {onToggleMode && (
+            <div
+              style={{
+                display: 'inline-flex',
+                background: 'var(--surface-subtle)',
+                padding: 2,
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => onToggleMode('plants')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: mode === 'plants' ? 'var(--surface-elevated)' : 'transparent',
+                  color: mode === 'plants' ? 'var(--accent)' : 'var(--text-secondary)',
+                  fontWeight: mode === 'plants' ? 600 : 500,
+                  fontSize: 11.5,
+                  cursor: 'pointer',
+                  boxShadow: mode === 'plants' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                <Sprout size={12} />
+                Plantas
+              </button>
+              <button
+                type="button"
+                onClick={() => onToggleMode('space')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: mode === 'space' ? 'var(--accent)' : 'transparent',
+                  color: mode === 'space' ? '#ffffff' : 'var(--text-secondary)',
+                  fontWeight: mode === 'space' ? 600 : 500,
+                  fontSize: 11.5,
+                  cursor: 'pointer',
+                  boxShadow: mode === 'space' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+                }}
+              >
+                <Pencil size={12} />
+                Editar Espacio
+              </button>
+            </div>
+          )}
+
+          {/* En modo Espacio: Conmutador Iso/Planta y Deshacer/Rehacer */}
+          {mode === 'space' && onToggleViewMode && (
+            <button
+              type="button"
+              onClick={() => onToggleViewMode(viewMode === 'iso' ? 'plan' : 'iso')}
+              title="Alternar entre perspectiva Isométrica y Planta 2D"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-subtle)',
+                color: 'var(--text-primary)',
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <Compass size={12} />
+              {viewMode === 'iso' ? 'Vista: Isométrica' : 'Vista: Planta 2D'}
+            </button>
+          )}
+
+          {mode === 'space' && onUndo && (
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Deshacer cambio (Ctrl+Z)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: 6,
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-subtle)',
+                color: canUndo ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                opacity: canUndo ? 1 : 0.45,
+                cursor: canUndo ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Undo2 size={13} />
+            </button>
+          )}
+
+          {mode === 'space' && onRedo && (
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Rehacer cambio (Ctrl+Y)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: 6,
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-subtle)',
+                color: canRedo ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                opacity: canRedo ? 1 : 0.45,
+                cursor: canRedo ? 'pointer' : 'not-allowed',
+              }}
+            >
+              <Redo2 size={13} />
+            </button>
+          )}
+
           {movingPlantId && (
             <button
               type="button"

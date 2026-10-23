@@ -6,6 +6,11 @@ import { useAccessionStore } from '@/store/accessionStore'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
+import { useRoomLayoutStore } from '@/store/roomLayoutStore'
+import {
+  getTemplatesForLocationType,
+  getTemplateById,
+} from './isometric/templates'
 import {
   getAllGridPositions,
   getLocationGridDimensions,
@@ -89,6 +94,13 @@ export function LocationsPage() {
   const [rowsInput, setRowsInput] = useState('')
   const [colsInput, setColsInput] = useState('')
   const [description, setDescription] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+
+  const availableTemplates = useMemo(() => getTemplatesForLocationType(type), [type])
+  const selectedTemplate = useMemo(
+    () => (selectedTemplateId ? getTemplateById(selectedTemplateId) : null),
+    [selectedTemplateId]
+  )
 
   // Estado del formulario contextual de Siembra en Sala
   const [sowAccessionId, setSowAccessionId] = useState('')
@@ -148,7 +160,7 @@ export function LocationsPage() {
     const parsedRows = rowsInput ? Math.max(1, Math.min(16, Number(rowsInput))) : undefined
     const parsedCols = colsInput ? Math.max(1, Math.min(16, Number(colsInput))) : undefined
 
-    addLocation({
+    const newLoc = addLocation({
       name: name.trim(),
       type,
       description: description.trim() || undefined,
@@ -158,11 +170,18 @@ export function LocationsPage() {
       coordinates: farmCoordinates,
     })
 
+    if (selectedTemplateId) {
+      useRoomLayoutStore.getState().createFromTemplate(newLoc.id, selectedTemplateId)
+    } else {
+      useRoomLayoutStore.getState().getOrCreateLayout(newLoc.id, newLoc.type, newLoc.rows, newLoc.cols)
+    }
+
     setName('')
     setCapacity('')
     setRowsInput('')
     setColsInput('')
     setDescription('')
+    setSelectedTemplateId('')
   }
 
   // ── Handlers de Navegación e Interacciones Gráficas ──
@@ -201,9 +220,12 @@ export function LocationsPage() {
 
   // Interacción 4a: Mover planta a otra celda de la misma sala
   const handleMovePlantToSlot = (individualId: string, targetPosLabel: string) => {
+    const slots = selectedRoomId ? useRoomLayoutStore.getState().getSlots(selectedRoomId) : []
+    const matchingSlot = slots.find(s => s.label === targetPosLabel)
     updateIndividual(individualId, {
       position: targetPosLabel,
       location: targetPosLabel,
+      slotId: matchingSlot?.id,
     })
     setSelectedSlot(targetPosLabel)
     setSelectedIndividualId(individualId)
@@ -214,10 +236,13 @@ export function LocationsPage() {
   const handleMovePlantToRoom = (individualId: string, targetLocationId: string) => {
     const freeSlots = getFreeSlotsForRoom(targetLocationId)
     const nextSlot = freeSlots[0] ?? 'A-01'
+    const targetRoomSlots = useRoomLayoutStore.getState().getSlots(targetLocationId)
+    const matchingSlot = targetRoomSlots.find(s => s.label === nextSlot)
     updateIndividual(individualId, {
       locationId: targetLocationId,
       position: nextSlot,
       location: nextSlot,
+      slotId: matchingSlot?.id,
     })
   }
 
@@ -230,12 +255,14 @@ export function LocationsPage() {
     const existingForAcc = individuals.filter(ind => ind.accessionId === sowAccessionId).length
     const countToSow = Math.max(1, Math.min(100, parseInt(sowCount, 10) || 1))
     const targetSlots = getFreeSlotsForRoom(selectedRoom.id, sowPosition.trim().toUpperCase())
+    const roomSlots = useRoomLayoutStore.getState().getSlots(selectedRoom.id)
 
     let firstCreatedId: string | null = null
     for (let i = 0; i < countToSow; i++) {
       const seqNum = String(existingForAcc + i + 1).padStart(2, '0')
       const autoLabel = `${acc?.accessionNumber ?? 'PLT'} #${seqNum}`
       const assignedSlot = targetSlots[i] ?? `${sowPosition}-${i + 1}`
+      const matchingSlot = roomSlots.find(s => s.label === assignedSlot)
 
       const created = addIndividual({
         accessionId: sowAccessionId,
@@ -244,6 +271,7 @@ export function LocationsPage() {
         locationId: selectedRoom.id,
         location: assignedSlot,
         position: assignedSlot,
+        slotId: matchingSlot?.id,
         plantingDate: new Date().toISOString().slice(0, 10),
         currentBBCH: sowBbch !== '' ? Number(sowBbch) : 0,
         status: 'active',
@@ -396,6 +424,29 @@ export function LocationsPage() {
                     onChange={e => setCapacity(e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="location-template-select" style={LABEL_STYLE}>Plantilla de Espacio (Opcional)</label>
+                <select
+                  id="location-template-select"
+                  aria-label="Plantilla de Espacio"
+                  style={INPUT_STYLE}
+                  value={selectedTemplateId}
+                  onChange={e => setSelectedTemplateId(e.target.value)}
+                >
+                  <option value="">Grilla estándar / Personalizada</option>
+                  {availableTemplates.map(tmpl => (
+                    <option key={tmpl.id} value={tmpl.id}>
+                      {tmpl.label} ({tmpl.widthCm / 100}×{tmpl.depthCm / 100} m)
+                    </option>
+                  ))}
+                </select>
+                {selectedTemplate && (
+                  <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.4 }}>
+                    {selectedTemplate.description}
+                  </p>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

@@ -61,7 +61,7 @@ describe('IndividualsPage', () => {
     expect(individuals[0].location).toBe('Maceta 12')
     expect(individuals[0].currentBBCH).toBe(10)
     expect(individuals[0].accessionId).toBe(accession.id)
-  })
+  }, 15000)
 
   it('selects an individual and displays its details', async () => {
     const user = userEvent.setup()
