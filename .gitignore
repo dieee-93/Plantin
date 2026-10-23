@@ -26,3 +26,6 @@ recover.json
 *.njsproj
 *.sln
 *.sw?
+
+# Generated sprite sheets
+scripts/out/

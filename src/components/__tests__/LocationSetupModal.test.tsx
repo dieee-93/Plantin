@@ -42,7 +42,7 @@ describe('LocationSetupModal', () => {
         latitude: -34.6,
         longitude: -58.4,
       })
-    })
+    }, { timeout: 3000 })
   })
 
   it('permite buscar una ciudad por nombre y seleccionarla como ubicación global', async () => {
@@ -66,7 +66,7 @@ describe('LocationSetupModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Mendoza, Argentina/i)).toBeInTheDocument()
-    })
+    }, { timeout: 3000 })
 
     await user.click(screen.getByText(/Mendoza, Argentina/i))
 

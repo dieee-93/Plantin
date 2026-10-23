@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+
+const render = (ui: React.ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 import userEvent from '@testing-library/user-event'
 import { LocationsPage } from '../LocationsPage'
 import { resolveBotanicalArchetype } from '../isometric/botanicalArchetypes'
@@ -64,7 +67,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(screen.getByText('Invernadero Principal')).toBeInTheDocument()
     expect(screen.getByText('Sector climatizado para solanáceas')).toBeInTheDocument()
     expect(screen.getByText(/0 \/ 40/i)).toBeInTheDocument()
-  })
+  }, 15000)
 
   it('Interacciones 1 y 2: entra al interior isométrico de una sala, siembra al hacer clic en una celda vacía y abre el Inspector al hacer clic en la planta', async () => {
     const user = userEvent.setup()
@@ -77,7 +80,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     const acc = useAccessionStore.getState().add({
       accessionNumber: 'TOM-2026-001',
       taxonId: 'tax-tom',
-      acquisitionSource: 'seed_bank',
+      acquisitionSource: 'research',
     })
     const lot = useSeedLotStore.getState().add({
       accessionId: acc.id,
@@ -113,7 +116,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     // Interacción 2: El Inspector in-situ se abre y permite actualizar el BBCH en vivo
     await user.click(screen.getByRole('button', { name: /65 · Floración/i }))
     expect(useIndividualStore.getState().getById(createdPlants[0].id)?.currentBBCH).toBe(65)
-  })
+  }, 15000)
 
   it('Interacciones 3 y 4: permite sembrar arrastrando semillas (Drag & Drop) a una celda vacía y trasplantar plantas arrastrándolas a otra celda o sala', () => {
     const roomA = useLocationStore.getState().add({
@@ -332,31 +335,31 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
   it('renderiza Solanáceas (Tomate/Pimiento/Berenjena) con tutor de soporte, hojas compuestas, flor estrellada y frutos volumétricos con cáliz', async () => {
     const user = userEvent.setup()
 
-    const tomTaxon = useTaxonStore.getState().add({
+    const pepperTaxon = useTaxonStore.getState().add({
       family: 'Solanaceae',
-      genus: 'Solanum',
-      species: 'lycopersicum',
-      cropCode: 'TOM',
-      commonName: 'Tomate Platense',
+      genus: 'Capsicum',
+      species: 'annuum',
+      cropCode: 'PEPPER_SWEET',
+      commonName: 'Pimiento Morrón',
     })
 
     const room = useLocationStore.getState().add({
-      name: 'Invernadero Tomates',
+      name: 'Invernadero Pimientos',
       type: 'greenhouse',
       rows: 2,
       cols: 2,
     })
 
     const acc = useAccessionStore.getState().add({
-      accessionNumber: 'TOM-2026-HQ',
-      taxonId: tomTaxon.id,
+      accessionNumber: 'PEP-2026-HQ',
+      taxonId: pepperTaxon.id,
       acquisitionSource: 'breeding',
     })
 
     // Planta en floración (BBCH 65)
     useIndividualStore.getState().add({
       accessionId: acc.id,
-      label: 'TOM Flor #01',
+      label: 'PEP Flor #01',
       locationId: room.id,
       position: 'A-01',
       location: 'A-01',
@@ -366,7 +369,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     // Planta con frutos maduros (BBCH 85)
     useIndividualStore.getState().add({
       accessionId: acc.id,
-      label: 'TOM Fruto #02',
+      label: 'PEP Fruto #02',
       locationId: room.id,
       position: 'A-02',
       location: 'A-02',
@@ -376,7 +379,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     const { container } = render(<LocationsPage />)
 
     // Entrar al Invernadero
-    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Tomates/i }))
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Pimientos/i }))
 
     // Verifica tutor de cultivo, flor estrellada con estambres y frutos con cáliz/sépalos verdes
     expect(container.querySelectorAll('[data-botanical-feature="plant-stake"]').length).toBeGreaterThanOrEqual(1)

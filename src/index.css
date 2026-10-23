@@ -144,3 +144,70 @@
     color: var(--text-tertiary);
   }
 }
+
+/* ─── Isometric Tile Hover Optimization (Fase 1b & Fase 2) ────────────────────────── */
+.iso-cell:hover .iso-tile:not([data-selected="true"]):not([data-dragover="true"]) {
+  fill: #f0fdf4 !important;
+  stroke: #4ade80 !important;
+}
+
+.iso-cell:hover .iso-empty-pot:not([data-selected="true"]):not([data-dragover="true"]) {
+  filter: brightness(1.1);
+  opacity: 1 !important;
+}
+
+/* En reposo no se ven botones '+' en celdas vacías (V3) */
+.iso-empty-plus {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.iso-cell:hover .iso-empty-plus,
+.iso-cell:focus-visible .iso-empty-plus,
+.iso-empty-plus.iso-active {
+  opacity: 1;
+}
+
+/* ── FASE 5: ANIMACIONES SUTILES ── */
+
+/* 1. Balanceo ambiental sutil del follaje */
+@keyframes iso-sway {
+  from {
+    transform: rotate(calc(-1.2deg * var(--sway-amp, 1)));
+  }
+  to {
+    transform: rotate(calc(1.2deg * var(--sway-amp, 1)));
+  }
+}
+
+.iso-sway {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: iso-sway var(--sway-duration, 5s) ease-in-out infinite alternate;
+  animation-delay: var(--sway-delay, 0s);
+}
+
+.iso-paused .iso-sway {
+  animation-play-state: paused !important;
+}
+
+/* 2. Marcha de hormigas para el halo de selección */
+@keyframes iso-ants {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.iso-selected-halo {
+  animation: iso-ants 1.2s linear infinite;
+}
+
+/* 3. Desactivación con preferencia de movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  .iso-sway,
+  .iso-selected-halo {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+

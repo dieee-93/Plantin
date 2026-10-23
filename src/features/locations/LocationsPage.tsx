@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { useInRouterContext, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useLocationStore } from '@/store/locationStore'
 import { useIndividualStore } from '@/store/individualStore'
 import { useAccessionStore } from '@/store/accessionStore'
@@ -57,18 +57,10 @@ const TYPE_AGRO_BUFFER: Record<LocationType, { label: string; bg: string; border
   lab:            { label: 'Laboratorio / Conservación controlada',    bg: '#ede9fe', border: '#ddd6fe', text: '#4c1d95' },
 }
 
-function useSafeNavigate() {
-  const inRouter = useInRouterContext()
-  const nav = inRouter ? useNavigate() : null
-  return (to: string) => {
-    if (nav) nav(to)
-  }
-}
-
 type DrawerMode = 'new-location' | 'sow' | 'inspect'
 
 export function LocationsPage() {
-  const navigateTo = useSafeNavigate()
+  const navigate = useNavigate()
   const { locations, add: addLocation, update: updateLocation, remove: removeLocation } = useLocationStore()
   const { individuals, add: addIndividual, update: updateIndividual, remove: removeIndividual } = useIndividualStore()
   const { accessions } = useAccessionStore()
@@ -841,7 +833,7 @@ export function LocationsPage() {
             onUpdateGridDimensions={(r, c) =>
               updateLocation(selectedRoom.id, { rows: r, cols: c })
             }
-            onNavigateSeedLot={lotId => navigateTo(`/seedlots?selectedId=${lotId}`)}
+            onNavigateSeedLot={lotId => navigate(`/seedlots?selectedId=${lotId}`)}
           />
         ) : (
           <IsometricCampusMap
@@ -859,7 +851,7 @@ export function LocationsPage() {
               setSelectedIndividualId(indId)
               setDrawerMode('inspect')
             }}
-            onNavigateSeedLot={lotId => navigateTo(`/seedlots?selectedId=${lotId}`)}
+            onNavigateSeedLot={lotId => navigate(`/seedlots?selectedId=${lotId}`)}
           />
         )}
       </main>

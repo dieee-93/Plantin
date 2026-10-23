@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { useSearchParams, useNavigate, useInRouterContext } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useIndividualStore } from '@/store/individualStore'
 import { useAccessionStore } from '@/store/accessionStore'
@@ -306,11 +306,7 @@ export function IndividualDetail({
   onDelete: () => void
   compact?: boolean
 }) {
-  const inRouter = useInRouterContext()
-  const routerNavigate = inRouter ? useNavigate() : null
-  const navigate = (to: string) => {
-    if (routerNavigate) routerNavigate(to)
-  }
+  const navigate = useNavigate()
   const { accessions } = useAccessionStore()
   const { locations } = useLocationStore()
   const { taxons } = useTaxonStore()
