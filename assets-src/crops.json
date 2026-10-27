@@ -1,0 +1,222 @@
+{
+  "TOM": {
+    "label": "Tomate",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Tomato_1", "Tomato_2", "Tomato_3", "Tomato_4", "Tomato_Crop", "Tomato_Harvested"]
+    },
+    "stages": {
+      "germination": "Tomato_1",
+      "leaf": "Tomato_2",
+      "structure": "Tomato_3",
+      "flowering": "Tomato_Flowering",
+      "fruiting": "Tomato_4",
+      "harvested": "Tomato_Harvested"
+    },
+    "editedFile": "crops/TOM.blend",
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 135,
+    "modified": true,
+    "notes": "Modelo personalizado con copa tupida, flores amarillas, frutos escalados y altura 135px."
+  },
+  "HEMP": {
+    "label": "Cannabis",
+    "stages": {
+      "germination": "Hemp_1",
+      "leaf": "Hemp_2",
+      "structure": "Hemp_3",
+      "flowering": "Hemp_4",
+      "fruiting": "Hemp_5"
+    },
+    "editedFile": "crops/HEMP.blend",
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 135,
+    "modified": true,
+    "notes": "Modelo botánico personalizado de Cannabis con caña erecta segmentada, hojas palmeadas digitadas y colas resinosas con pistilos ámbar."
+  },
+  "MAI": {
+    "label": "Maíz",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Corn_1", "Corn_2", "Corn_3", "Corn_4", "Corn_Crop", "Corn_Harvested"]
+    },
+    "stages": {
+      "germination": "Corn_1",
+      "leaf": "Corn_2",
+      "structure": "Corn_3",
+      "flowering": "Corn_4",
+      "fruiting": "Corn_5"
+    },
+    "editedFile": "crops/MAI.blend",
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 135,
+    "modified": true,
+    "notes": "Modelo botánico personalizado de Maíz con caña segmentada, raíces fúlcreas, hojas acintadas arqueadas, mazorcas doradas y panoja apical."
+  },
+  "WHT": {
+    "label": "Trigo",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Wheat_1", "Wheat_2", "Wheat_3", "Wheat_4", "Wheat_Crop"]
+    },
+    "stages": {
+      "germination": "Wheat_1",
+      "leaf": "Wheat_2",
+      "structure": "Wheat_3",
+      "flowering": "Wheat_3",
+      "fruiting": "Wheat_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 110,
+    "modified": false,
+    "notes": "Cereal de porte medio con espiga dorada en fructificación."
+  },
+  "LETTUCE": {
+    "label": "Lechuga",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Lettuce_1", "Lettuce_2", "Lettuce_3", "Lettuce_4", "Lettuce_Crop", "Lettuce_Harvested"]
+    },
+    "stages": {
+      "germination": "Lettuce_1",
+      "leaf": "Lettuce_2",
+      "structure": "Lettuce_3",
+      "flowering": "Lettuce_4",
+      "fruiting": "Lettuce_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 45,
+    "modified": false,
+    "notes": "Roseta foliar baja de crecimiento compacto."
+  },
+  "CARROT": {
+    "label": "Zanahoria",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Carrot_1", "Carrot_2", "Carrot_3", "Carrot_4", "Carrot_Crop"]
+    },
+    "stages": {
+      "germination": "Carrot_1",
+      "leaf": "Carrot_2",
+      "structure": "Carrot_3",
+      "flowering": "Carrot_3",
+      "fruiting": "Carrot_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 55,
+    "modified": false,
+    "notes": "Raíz con follaje plumoso emergente."
+  },
+  "BEETROOT": {
+    "label": "Remolacha",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Beet_1", "Beet_2", "Beet_3", "Beet_4", "Beet_Crop"]
+    },
+    "stages": {
+      "germination": "Beet_1",
+      "leaf": "Beet_2",
+      "structure": "Beet_3",
+      "flowering": "Beet_3",
+      "fruiting": "Beet_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 55,
+    "modified": false,
+    "notes": "Bulbo púrpura rojizo con hojas anchas."
+  },
+  "SQUASH": {
+    "label": "Zapallo",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Squash_1", "Squash_2", "Squash_3", "Squash_Flowering", "Squash_4", "Squash_Harvested"]
+    },
+    "stages": {
+      "germination": "Squash_1",
+      "leaf": "Squash_2",
+      "structure": "Squash_3",
+      "flowering": "Squash_Flowering",
+      "fruiting": "Squash_4",
+      "harvested": "Squash_Harvested"
+    },
+    "editedFile": "crops/SQUASH.blend",
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 75,
+    "modified": true,
+    "notes": "Modelo botánico personalizado de Zapallo Criollo con hábito rastrero, hojas acorazonadas moteadas, zarcillos espiralados, flor campanulada y calabaza acanalada con pedúnculo pentagonal."
+  },
+  "CITRUS_ORANGE": {
+    "label": "Naranjo",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Orange_1", "Orange_2", "Orange_3", "Orange_4", "Orange_Crop", "Orange_Harvested"]
+    },
+    "stages": {
+      "germination": "Orange_1",
+      "leaf": "Orange_2",
+      "structure": "Orange_3",
+      "flowering": "Orange_3",
+      "fruiting": "Orange_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 120,
+    "modified": false,
+    "notes": "Árbol frutal perenne con copas densas y frutos esféricos."
+  },
+  "STRAWBERRY": {
+    "label": "Frutilla",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["BushBerries_1", "BushBerries_2", "BushBerries_3", "BushBerries_4", "BushBerries_Crop", "BushBerries_Harvested"]
+    },
+    "stages": {
+      "germination": "BushBerries_1",
+      "leaf": "BushBerries_2",
+      "structure": "BushBerries_3",
+      "flowering": "BushBerries_3",
+      "fruiting": "BushBerries_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 60,
+    "modified": false,
+    "notes": "Mata baja con bayas rojizas colgantes."
+  },
+  "SUN_OIL": {
+    "label": "Girasol",
+    "source": {
+      "pack": "Quaternius LowPoly Crops Pack",
+      "url": "https://opengameart.org/content/lowpoly-crops-pack",
+      "license": "CC0-1.0",
+      "models": ["Flower_1", "Flower_2", "Flower_3", "Flower_4", "Flowers_Crop", "Flowers_Harvested"]
+    },
+    "stages": {
+      "germination": "Flower_1",
+      "leaf": "Flower_2",
+      "structure": "Flower_3",
+      "flowering": "Flower_4",
+      "fruiting": "Flower_4"
+    },
+    "excludeObjects": ["Ground", "Soil", "Base"],
+    "targetHeightPx": 130,
+    "modified": false,
+    "notes": "Tallo erecto esbelto con inflorescencia radiante."
+  }
+}

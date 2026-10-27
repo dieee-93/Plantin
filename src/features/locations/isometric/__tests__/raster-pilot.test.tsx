@@ -17,15 +17,6 @@ describe('Fase 6 — Piloto de Sprite Raster (Tomate)', () => {
     commonName: 'Tomate',
   }
 
-  const cornTaxon: Taxon = {
-    id: 'tax-mai-1',
-    genus: 'Zea',
-    species: 'mays',
-    family: 'Poaceae',
-    cropCode: 'MAI',
-    commonName: 'Maíz',
-  }
-
   it('el manifiesto RASTER_SPRITES define las 5 fases fenológicas para TOM con rutas de assets válidas', () => {
     expect(RASTER_SPRITES.TOM).toBeDefined()
     const phases: BbchPhase[] = ['germination', 'leaf', 'structure', 'flowering', 'fruiting']
@@ -36,6 +27,16 @@ describe('Fase 6 — Piloto de Sprite Raster (Tomate)', () => {
       expect(typeof url).toBe('string')
       expect(url).toContain(phase)
       expect(url).toContain('.webp')
+    }
+  })
+
+  it('todos los archivos referenciados en RASTER_SPRITES tienen URLs y nombres válidos', () => {
+    for (const [cropCode, phases] of Object.entries(RASTER_SPRITES)) {
+      if (!phases) continue
+      for (const [phase, url] of Object.entries(phases)) {
+        expect(url).toBeDefined()
+        expect(url).toContain(`${cropCode.toLowerCase()}-${phase}.webp`)
+      }
     }
   })
 
@@ -66,10 +67,18 @@ describe('Fase 6 — Piloto de Sprite Raster (Tomate)', () => {
   })
 
   it('fallback transparente al renderer procedural cuando no hay sprite raster para el cultivo', () => {
-    // Maíz no tiene raster en el manifest
+    // Arroz no tiene raster en el manifest
+    const riceTaxon: Taxon = {
+      id: 'taxon-rice',
+      family: 'Poaceae',
+      genus: 'Oryza',
+      species: 'sativa',
+      cropCode: 'ORY',
+      commonName: 'Arroz',
+    }
     const spec = buildPlantVisualSpec({
-      individualId: 'plant-corn-1',
-      taxon: cornTaxon,
+      individualId: 'plant-rice-1',
+      taxon: riceTaxon,
       bbch: 60,
       status: 'active',
       locationType: 'field',

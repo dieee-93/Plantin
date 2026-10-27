@@ -11,7 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "sprites:sheet": "tsx --tsconfig tsconfig.app.json scripts/render-sprite-sheet.tsx"
+    "sprites:sheet": "tsx --tsconfig tsconfig.app.json scripts/render-sprite-sheet.tsx",
+    "assets:render": "tsx scripts/assets/render-all.ts",
+    "assets:build": "tsx scripts/assets/build-sprites.ts && tsx scripts/assets/build-manifest.ts",
+    "assets": "npm run assets:render && npm run assets:build"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -38,6 +41,7 @@
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
     "oxlint": "^1.81.0",
+    "sharp": "^0.35.5",
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",

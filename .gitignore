@@ -29,3 +29,12 @@ recover.json
 
 # Generated sprite sheets
 scripts/out/
+
+# Assets pipeline (raw vendor models & intermediate renders)
+assets-src/vendor/
+assets-src/out/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class

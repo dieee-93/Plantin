@@ -400,7 +400,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Poaceae',
       genus: 'Zea',
       species: 'mays',
-      cropCode: 'MAI',
+      cropCode: 'MAI_SWEET',
       commonName: 'Maíz Criollo',
     })
 
@@ -455,7 +455,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Asteraceae',
       genus: 'Helianthus',
       species: 'annuus',
-      cropCode: 'SUN_OIL',
+      cropCode: 'SUN',
       commonName: 'Girasol Gigante',
     })
 
@@ -510,7 +510,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Asteraceae',
       genus: 'Lactuca',
       species: 'sativa',
-      cropCode: 'LETTUCE',
+      cropCode: 'SPINACH',
       commonName: 'Lechuga Mantecosa',
     })
 
@@ -518,7 +518,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Rosaceae',
       genus: 'Fragaria',
       species: 'ananassa',
-      cropCode: 'STRAWBERRY',
+      cropCode: 'BERRY',
       commonName: 'Frutilla Criolla',
     })
 
@@ -579,7 +579,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Apiaceae',
       genus: 'Daucus',
       species: 'carota',
-      cropCode: 'CARROT',
+      cropCode: 'CARROT_WILD',
       commonName: 'Zanahoria Chantenay',
     })
 
@@ -587,7 +587,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Amaranthaceae',
       genus: 'Beta',
       species: 'vulgaris',
-      cropCode: 'BEETROOT',
+      cropCode: 'RADISH',
       commonName: 'Remolacha Detroit',
     })
 
@@ -872,7 +872,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
   it('Ciclo TDD 5: el Command Dock gestiona el historial deshacer y rehacer de manera reactiva', async () => {
     const user = userEvent.setup()
 
-    const room = useLocationStore.getState().add({
+    useLocationStore.getState().add({
       name: 'Sala Historial',
       type: 'lab',
       rows: 2,
@@ -1007,44 +1007,44 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(container.querySelector('[data-botanical-feature="legume-pod"]')).toBeInTheDocument()
   })
 
-  it('renderiza Palmeadas/Industriales (Cannabis/Cáñamo) con caña erecta segmentada, hojas digitadas de folíolos aserrados y cola apical resinosa', async () => {
+  it('renderiza Palmeadas/Industriales (Humulus/Cannabaceae procedural) con caña erecta segmentada, hojas digitadas de folíolos aserrados y cola apical resinosa', async () => {
     const user = userEvent.setup()
 
     const hempTaxon = useTaxonStore.getState().add({
       family: 'Cannabaceae',
-      genus: 'Cannabis',
-      species: 'sativa',
-      cropCode: 'HEMP',
-      commonName: 'Cáñamo Industrial',
+      genus: 'Humulus',
+      species: 'lupulus',
+      cropCode: 'HOPS',
+      commonName: 'Lúpulo Industrial',
     })
 
     const room = useLocationStore.getState().add({
-      name: 'Sector Cáñamo',
+      name: 'Sector Lúpulo',
       type: 'greenhouse',
       rows: 2,
       cols: 2,
     })
 
     const acc = useAccessionStore.getState().add({
-      accessionNumber: 'HEMP-2026-HQ',
+      accessionNumber: 'HOPS-2026-HQ',
       taxonId: hempTaxon.id,
       acquisitionSource: 'breeding',
     })
 
-    // Cáñamo en fase vegetativa con hojas palmadas (BBCH 35)
+    // Palmeada en fase vegetativa con hojas palmadas (BBCH 35)
     useIndividualStore.getState().add({
       accessionId: acc.id,
-      label: 'Cáñamo Veg #01',
+      label: 'Lúpulo Veg #01',
       locationId: room.id,
       position: 'A-01',
       location: 'A-01',
       currentBBCH: 35,
     })
 
-    // Cáñamo en floración avanzada con cola resinosa apical (BBCH 85)
+    // Palmeada en floración avanzada con cola apical (BBCH 85)
     useIndividualStore.getState().add({
       accessionId: acc.id,
-      label: 'Cáñamo Cola #02',
+      label: 'Lúpulo Flor #02',
       locationId: room.id,
       position: 'A-02',
       location: 'A-02',
@@ -1053,8 +1053,8 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
 
     const { container } = render(<LocationsPage />)
 
-    // Entrar al Sector Cáñamo
-    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sector Cáñamo/i }))
+    // Entrar al Sector Lúpulo
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sector Lúpulo/i }))
 
     // Verifica caña erecta, hojas palmadas digitadas aserradas y cola apical resinosa
     expect(container.querySelectorAll('[data-botanical-feature="palmate-cane"]').length).toBeGreaterThanOrEqual(1)
@@ -1065,12 +1065,12 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
   it('renderiza Leñosas y Frutales Perennes (Cítricos/Frutales) con tronco leñoso bifurcado, floración de azahar y frutos esféricos con ombligo y reflejo', async () => {
     const user = userEvent.setup()
 
-    const orangeTaxon = useTaxonStore.getState().add({
+    const lemonTaxon = useTaxonStore.getState().add({
       family: 'Rutaceae',
       genus: 'Citrus',
-      species: 'sinensis',
-      cropCode: 'CITRUS_ORANGE',
-      commonName: 'Naranjo Dulce',
+      species: 'limon',
+      cropCode: 'LEMON',
+      commonName: 'Limonero Cuatro Estaciones',
     })
 
     const room = useLocationStore.getState().add({
@@ -1081,25 +1081,25 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     })
 
     const acc = useAccessionStore.getState().add({
-      accessionNumber: 'ORA-2026-HQ',
-      taxonId: orangeTaxon.id,
+      accessionNumber: 'LEM-2026-HQ',
+      taxonId: lemonTaxon.id,
       acquisitionSource: 'breeding',
     })
 
-    // Naranjo en floración azahar (BBCH 65)
+    // Limonero en floración azahar (BBCH 65)
     useIndividualStore.getState().add({
       accessionId: acc.id,
-      label: 'Naranjo Azahar #01',
+      label: 'Limonero Azahar #01',
       locationId: room.id,
       position: 'A-01',
       location: 'A-01',
       currentBBCH: 65,
     })
 
-    // Naranjo con frutos maduros esféricos (BBCH 85)
+    // Limonero con frutos maduros esféricos (BBCH 85)
     useIndividualStore.getState().add({
       accessionId: acc.id,
-      label: 'Naranjo Fruto #02',
+      label: 'Limonero Fruto #02',
       locationId: room.id,
       position: 'A-02',
       location: 'A-02',
@@ -1115,5 +1115,69 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(container.querySelectorAll('[data-botanical-feature="woody-trunk"]').length).toBeGreaterThanOrEqual(1)
     expect(container.querySelector('[data-botanical-feature="blossom-flower"]')).toBeInTheDocument()
     expect(container.querySelector('[data-botanical-feature="spherical-fruit"]')).toBeInTheDocument()
+  })
+
+  it('renderiza plantas con sprites raster cuando el cultivo cuenta con assets WebP (ej. TOM, HEMP)', async () => {
+    const user = userEvent.setup()
+
+    const tomatoTaxon = useTaxonStore.getState().add({
+      family: 'Solanaceae',
+      genus: 'Solanum',
+      species: 'lycopersicum',
+      cropCode: 'TOM',
+      commonName: 'Tomate Platense',
+    })
+
+    const hempTaxon = useTaxonStore.getState().add({
+      family: 'Cannabaceae',
+      genus: 'Cannabis',
+      species: 'sativa',
+      cropCode: 'HEMP',
+      commonName: 'Cannabis / Cáñamo',
+    })
+
+    const room = useLocationStore.getState().add({
+      name: 'Sector Cultivos Raster',
+      type: 'greenhouse',
+      rows: 2,
+      cols: 2,
+    })
+
+    const accTom = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-HQ',
+      taxonId: tomatoTaxon.id,
+      acquisitionSource: 'breeding',
+    })
+
+    const accHemp = useAccessionStore.getState().add({
+      accessionNumber: 'HEMP-2026-HQ',
+      taxonId: hempTaxon.id,
+      acquisitionSource: 'breeding',
+    })
+
+    useIndividualStore.getState().add({
+      accessionId: accTom.id,
+      label: 'TOM Raster #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 85,
+    })
+
+    useIndividualStore.getState().add({
+      accessionId: accHemp.id,
+      label: 'HEMP Raster #02',
+      locationId: room.id,
+      position: 'A-02',
+      location: 'A-02',
+      currentBBCH: 85,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sector Cultivos Raster/i }))
+
+    expect(container.querySelectorAll('[data-renderer="raster-plant"]').length).toBe(2)
+    expect(container.querySelectorAll('image').length).toBe(2)
   })
 })

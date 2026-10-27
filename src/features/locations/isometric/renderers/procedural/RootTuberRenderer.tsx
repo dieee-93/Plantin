@@ -15,12 +15,14 @@ export const RootTuberRenderer: React.FC<PlantRendererProps> = ({ spec }) => {
   }
 
   const { leaf, leafDark, leafLight, fruit } = palette
+  const isCarrotType = cropCode === 'CARROT' || cropCode.includes('CARROT') || cropCode === 'PARSNIP'
+  const isBeetType = cropCode === 'BEETROOT' || cropCode.includes('BEET') || cropCode === 'RADISH'
 
   return (
     <g>
       {/* 1. Hombro carnoso de la raíz emergente del sustrato */}
       <g data-botanical-feature="root-shoulder">
-        {cropCode === 'CARROT' ? (
+        {isCarrotType ? (
           <g>
             <path
               d="M -6,-5 C -7,-1 -2,2 0,2 C 2,2 7,-1 6,-5 C 4,-10 2,-12 0,-12 C -2,-12 -4,-10 -6,-5 Z"
@@ -33,7 +35,7 @@ export const RootTuberRenderer: React.FC<PlantRendererProps> = ({ spec }) => {
             <line x1="-3" y1="-4.5" x2="3" y2="-4.5" stroke={fruit.shadow} strokeWidth={0.8} />
             <ellipse cx="-2" cy="-7.5" rx="1" ry="2" fill={fruit.highlight} opacity="0.6" />
           </g>
-        ) : cropCode === 'BEETROOT' || cropCode === 'RADISH' ? (
+        ) : isBeetType ? (
           <g>
             <ellipse
               cx="0"
@@ -63,7 +65,7 @@ export const RootTuberRenderer: React.FC<PlantRendererProps> = ({ spec }) => {
       </g>
 
       {/* 2. Follaje específico según cultivo (altura máxima y = -33 px, ~26 px de altura) */}
-      {cropCode === 'CARROT' ? (
+      {isCarrotType ? (
         <g data-botanical-feature="plumose-foliage">
           {/* Rama central plumosa */}
           <g transform="translate(0, -10)">
