@@ -43,3 +43,26 @@ export async function searchGBIF(query: string): Promise<TaxonomySearchResult[]>
     return [] // Silently fail and return empty to not break the UI, since we'll fallback to other things or just show no results
   }
 }
+
+/**
+ * Resuelve una imagen botánica sin API key consultando la API pública de Wikipedia REST (CORS abierto).
+ */
+export async function fetchBotanicalImage(genus: string, species: string): Promise<string | undefined> {
+  if (!genus?.trim() || !species?.trim()) return undefined
+  const epithet = species.trim().split(/\s+/)[0]
+  const title = `${genus.trim()}_${epithet}`
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`
+
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return undefined
+    const data = await res.json()
+    const src = data?.thumbnail?.source || data?.originalimage?.source
+    if (typeof src === 'string' && src.startsWith('https://')) {
+      return src
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}

@@ -1,6 +1,6 @@
-import { fetchTrefleSpeciesDetail } from './trefleApi'
 import { lookupEcocrop } from './ecocrop'
 import { searchUnifiedTaxonomy } from '@/hooks/useTaxonomySearch'
+import { fetchBotanicalImage } from './gbifApi'
 import type { TaxonomySearchResult } from './types'
 import { resolveCropOntology, getTraitsForCrop, generateFallbackCropCode } from '@/domain/ontology/index'
 import { mergeAgronomicData } from '@/domain/taxon'
@@ -22,7 +22,7 @@ export interface EnrichedTaxonDraft {
 
 /**
  * Resuelve en un solo paso la ontología agronómica (Crop Code + Traits)
- * y fusiona los datos ecofisiológicos de Trefle y FAO EcoCrop.
+ * y fusiona los datos ecofisiológicos de FAO EcoCrop con imágenes botánicas libres.
  */
 export async function enrichTaxonomySearchResult(
   result: TaxonomySearchResult
@@ -41,24 +41,28 @@ export async function enrichTaxonomySearchResult(
   const traits = resolution ? getTraitsForCrop(resolution.cropCode) : []
   const cropCode = resolution?.cropCode || generateFallbackCropCode(genus, species)
 
+  const presetMatch = STARTER_SPECIES_PRESETS.find(
+    p => p.genus.toLowerCase() === genus.toLowerCase() && p.species.toLowerCase() === species.toLowerCase()
+  )
+
   let agronomicData: AgronomicData | undefined = result.agronomicData
   let ecocropMatchedName: string | null = null
+  let fetchedImage: string | undefined = undefined
 
   try {
-    const [trefle, eco] = await Promise.all([
-      result.trefleSlug ? fetchTrefleSpeciesDetail(result.trefleSlug) : Promise.resolve(result.agronomicData),
+    const shouldFetchImg = !result.imageUrl && !presetMatch?.imageUrl
+    const [eco, img] = await Promise.all([
       lookupEcocrop(genus, species),
+      shouldFetchImg ? fetchBotanicalImage(genus, species) : Promise.resolve(undefined),
     ])
-    agronomicData = mergeAgronomicData(trefle, eco?.data)
+    agronomicData = mergeAgronomicData(result.agronomicData, eco?.data)
     ecocropMatchedName = eco ? eco.matchedName : null
+    fetchedImage = img
   } catch {
     // Fallback silencioso a los datos que ya traía el resultado de búsqueda
   }
 
-  const presetMatch = STARTER_SPECIES_PRESETS.find(
-    p => p.genus.toLowerCase() === genus.toLowerCase() && p.species.toLowerCase() === species.toLowerCase()
-  )
-  const imageUrl = result.imageUrl || presetMatch?.imageUrl
+  const imageUrl = result.imageUrl || presetMatch?.imageUrl || fetchedImage
 
   return {
     family,
@@ -100,7 +104,7 @@ export function buildInitialPresetTaxon(preset: StarterSpeciesPreset): Omit<Taxo
 }
 
 /**
- * Hidrata un taxón registrado con las APIs remotas (GBIF + Trefle + FAO EcoCrop)
+ * Hidrata un taxón registrado con las APIs remotas (GBIF + FAO EcoCrop + Wikipedia)
  * y actualiza de forma reactiva el store de taxones.
  */
 export async function hydrateTaxonWithApis(taxonId: string): Promise<void> {
@@ -126,18 +130,24 @@ export async function hydrateTaxonWithApis(taxonId: string): Promise<void> {
 
   let searchResults: TaxonomySearchResult[] = []
   let eco: Awaited<ReturnType<typeof lookupEcocrop>> = undefined
+  let fetchedImage: string | undefined = undefined
 
   try {
-    const [searchRes, ecoRes] = await Promise.all([
+    const shouldFetchImg = !taxon.imageUrl && !presetFallbackImage
+    const [searchRes, ecoRes, imgRes] = await Promise.all([
       typeof searchUnifiedTaxonomy === 'function'
         ? searchUnifiedTaxonomy(`${taxon.genus} ${taxon.species}`).catch(() => [] as TaxonomySearchResult[])
         : Promise.resolve([] as TaxonomySearchResult[]),
       typeof lookupEcocrop === 'function'
         ? lookupEcocrop(taxon.genus, taxon.species).catch(() => undefined)
         : Promise.resolve(undefined),
+      shouldFetchImg
+        ? fetchBotanicalImage(taxon.genus, taxon.species).catch(() => undefined)
+        : Promise.resolve(undefined),
     ])
     searchResults = searchRes || []
     eco = ecoRes
+    fetchedImage = imgRes
   } catch {
     // API errors handled gracefully
   }
@@ -147,40 +157,15 @@ export async function hydrateTaxonWithApis(taxonId: string): Promise<void> {
          r.species?.toLowerCase() === taxon.species.toLowerCase()
   ) || (searchResults.length > 0 ? searchResults[0] : undefined)
 
-  let trefleDetail: AgronomicData | undefined = undefined
-  if (match?.trefleSlug) {
-    try {
-      trefleDetail = await fetchTrefleSpeciesDetail(match.trefleSlug)
-    } catch {
-      // fallback
-    }
-  }
-
-  let agronomicData: AgronomicData | undefined
-  let imageUrl: string | undefined
-  let commonName: string | undefined
-  let family: string
-
-  if (match) {
-    agronomicData = mergeAgronomicData(
-      trefleDetail || match.agronomicData,
-      eco?.data,
-      taxon.agronomicData,
-      presetMatch?.agronomicData
-    )
-    imageUrl = match.imageUrl || taxon.imageUrl || presetFallbackImage
-    commonName = taxon.commonName || match.commonName || resolution?.cropName
-    family = (taxon.family && taxon.family !== 'Desconocida') ? taxon.family : (match.family || taxon.family)
-  } else {
-    agronomicData = mergeAgronomicData(
-      eco?.data,
-      taxon.agronomicData,
-      presetMatch?.agronomicData
-    )
-    imageUrl = taxon.imageUrl || presetFallbackImage
-    commonName = taxon.commonName || resolution?.cropName
-    family = taxon.family
-  }
+  const agronomicData = mergeAgronomicData(
+    taxon.agronomicData,
+    eco?.data,
+    match?.agronomicData,
+    presetMatch?.agronomicData
+  )
+  const imageUrl = taxon.imageUrl || presetFallbackImage || match?.imageUrl || fetchedImage
+  const commonName = taxon.commonName || match?.commonName || resolution?.cropName
+  const family = (taxon.family && taxon.family !== 'Desconocida') ? taxon.family : (match?.family || taxon.family)
 
   const currentTaxon = useTaxonStore.getState().getById(taxonId)
   if (!currentTaxon) return
@@ -197,7 +182,7 @@ export async function hydrateTaxonWithApis(taxonId: string): Promise<void> {
 
 /**
  * Selecciona o crea un taxón a partir de un preset de especie garantizando
- * el enriquecimiento inmediato y asíncrono con GBIF, Trefle y FAO EcoCrop.
+ * el enriquecimiento inmediato y asíncrono con GBIF y FAO EcoCrop.
  */
 export function selectOrCreatePresetTaxon(preset: StarterSpeciesPreset): Taxon {
   const store = useTaxonStore.getState()

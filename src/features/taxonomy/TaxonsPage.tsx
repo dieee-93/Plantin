@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useTaxonomySearch } from '@/hooks/useTaxonomySearch'
-import { fetchTrefleSpeciesDetail } from '@/services/taxonomy/trefleApi'
+import { fetchBotanicalImage } from '@/services/taxonomy/gbifApi'
 import { lookupEcocrop } from '@/services/taxonomy/ecocrop'
 import type { TaxonomySearchResult } from '@/services/taxonomy/types'
 import { resolveCropOntology, getTraitsForCrop, generateFallbackCropCode } from '@/domain/ontology/index'
@@ -176,17 +176,20 @@ export function TaxonsPage() {
     setResolvedCrop(resolution)
     setResolvedTraits(resolution ? getTraitsForCrop(resolution.cropCode) : [])
 
-    // Datos ecofisiológicos: Trefle (detalle) + FAO EcoCrop en paralelo, fusión campo a campo
+    // Datos ecofisiológicos e imagen botánica: FAO EcoCrop + Wikipedia en paralelo
     setIsFetchingDetail(true)
     setAgronomicData(undefined)
     setEcocropMatch(null)
     try {
-      const [trefle, eco] = await Promise.all([
-        result.trefleSlug ? fetchTrefleSpeciesDetail(result.trefleSlug) : Promise.resolve(result.agronomicData),
+      const [eco, img] = await Promise.all([
         lookupEcocrop(resGenus, resSpecies),
+        !result.imageUrl ? fetchBotanicalImage(resGenus, resSpecies) : Promise.resolve(undefined),
       ])
-      setAgronomicData(mergeAgronomicData(trefle, eco?.data))
+      setAgronomicData(mergeAgronomicData(result.agronomicData, eco?.data))
       setEcocropMatch(eco ? eco.matchedName : null)
+      if (img && !result.imageUrl) {
+        setImageUrl(img)
+      }
     } finally {
       setIsFetchingDetail(false)
     }
@@ -541,7 +544,7 @@ export function TaxonsPage() {
                 }}
               >
                 <Loader2 size={14} className="animate-spin" style={{ flexShrink: 0 }} />
-                Cargando datos ecofisiológicos (Trefle + FAO EcoCrop)...
+                Cargando datos ecofisiológicos (FAO EcoCrop)...
               </div>
             )}
 
@@ -1002,7 +1005,7 @@ export function TaxonsPage() {
                     </dl>
                   ) : (
                     <p style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>
-                      Sin datos ecofisiológicos en Trefle ni FAO EcoCrop para esta especie.
+                      Sin datos ecofisiológicos en FAO EcoCrop para esta especie.
                     </p>
                   )}
                 </div>

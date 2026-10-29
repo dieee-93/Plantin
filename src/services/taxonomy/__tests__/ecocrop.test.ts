@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { findEcocropRecord, ecocropToAgronomicData, type EcocropRecord } from '../ecocrop'
+import { findEcocropRecord, ecocropToAgronomicData, deriveGrowthMonths, type EcocropRecord } from '../ecocrop'
 import { mergeAgronomicData, tagAgronomicSource } from '@/domain/taxon'
 import realDataset from '@/data/ecocrop.json'
 
 const records: EcocropRecord[] = [
-  { n: 'Zea mays', s: ['zea indurata'], t: [18, 33, 10, 47], ph: [5, 7, 4.5, 8.5], r: [600, 1200, 400, 1800], g: [65, 365] },
+  { n: 'Zea mays', s: ['zea indurata'], t: [18, 33, 10, 47], ph: [5, 7, 4.5, 8.5], r: [600, 1200, 400, 1800], g: [65, 365], li: 9, fe: 8, sa: 2, hu: 5 },
   { n: 'Zea mays ssp. saccharata', t: [16, 24, 12, 38] },
-  { n: 'Lycopersicon esculentum', s: ['solanum lycopersicum'], t: [20, 27, 7, 35], ph: [5.5, 6.8, 5, 7.5] },
+  { n: 'Lycopersicon esculentum', s: ['solanum lycopersicum'], t: [20, 27, 7, 35], ph: [5.5, 6.8, 5, 7.5], li: 8, fe: 8, sa: 2, hu: 8 },
   { n: 'Cannabis sativa ssp. indica', t: [15, 28, 6, 32], ph: [6, 7, 4.5, 8.2] },
   { n: 'Cannabis sativa ssp. indica var. longa', t: [1, 2, 3, 4] },
 ]
@@ -74,6 +74,41 @@ describe('ecocropToAgronomicData', () => {
     const d = ecocropToAgronomicData(records[0])!
     expect('killTemp' in d).toBe(false)
   })
+
+  it('mapea light, soilNutriments, soilSalinity, atmosphericHumidity y growthMonths con fuente ecocrop', () => {
+    const d = ecocropToAgronomicData(records[0])!
+    expect(d.light).toBe(9)
+    expect(d.soilNutriments).toBe(8)
+    expect(d.soilSalinity).toBe(2)
+    expect(d.atmosphericHumidity).toBe(5)
+    expect(d.growthMonths).toEqual(['sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'])
+    expect(d.sources?.light).toBe('ecocrop')
+    expect(d.sources?.soilNutriments).toBe('ecocrop')
+    expect(d.sources?.soilSalinity).toBe('ecocrop')
+    expect(d.sources?.atmosphericHumidity).toBe('ecocrop')
+    expect(d.sources?.growthMonths).toBe('ecocrop')
+  })
+
+  it('calcula growthMonths correctamente según rango térmico y duración de ciclo', () => {
+    // Cálido de ciclo normal (> 100 días)
+    expect(deriveGrowthMonths({ n: 'A', t: [20, 27, 7, 35], g: [70, 150] })).toEqual([
+      'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'
+    ])
+    // Cálido de ciclo corto (<= 100 días)
+    expect(deriveGrowthMonths({ n: 'B', t: [20, 27, 7, 35], g: [40, 60] })).toEqual([
+      'oct', 'nov', 'dec', 'jan', 'feb'
+    ])
+    // Estación fría (optTempMax <= 20)
+    expect(deriveGrowthMonths({ n: 'C', t: [13, 20, 2, 27], g: [40, 120] })).toEqual([
+      'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct'
+    ])
+    // Templado amplio (optTempMin < 18 && optTempMax > 20)
+    expect(deriveGrowthMonths({ n: 'D', t: [12, 21, 5, 30], g: [35, 85] })).toEqual([
+      'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr'
+    ])
+    // Sin t ni g
+    expect(deriveGrowthMonths({ n: 'E' })).toBeUndefined()
+  })
 })
 
 describe('mergeAgronomicData', () => {
@@ -103,5 +138,31 @@ describe('dataset real (src/data/ecocrop.json)', () => {
     const d = ecocropToAgronomicData(findEcocropRecord(g, s, data)!.record)!
     expect(d.minTemp).toBe(min)
     expect(d.maxTemp).toBe(max)
+  })
+
+  it('especies reales clave (Solanum lycopersicum, Zea mays, Citrus sinensis) traen campos agronómicos completos', () => {
+    const crops = [
+      { genus: 'Solanum', species: 'lycopersicum', expectedLight: 8, expectedFe: 8, expectedSa: 2, expectedHu: 8 },
+      { genus: 'Zea', species: 'mays', expectedLight: 9, expectedFe: 8, expectedSa: 2, expectedHu: 5 },
+      { genus: 'Citrus', species: 'sinensis', expectedLight: 9, expectedFe: 5, expectedSa: 2, expectedHu: 8 },
+    ]
+
+    for (const crop of crops) {
+      const match = findEcocropRecord(crop.genus, crop.species, data)
+      expect(match).toBeDefined()
+      const d = ecocropToAgronomicData(match!.record)!
+      expect(d).toBeDefined()
+      expect(d.light).toBe(crop.expectedLight)
+      expect(d.soilNutriments).toBe(crop.expectedFe)
+      expect(d.soilSalinity).toBe(crop.expectedSa)
+      expect(d.atmosphericHumidity).toBe(crop.expectedHu)
+      expect(d.growthMonths).toBeDefined()
+      expect(d.growthMonths!.length).toBeGreaterThan(0)
+      expect(d.sources?.light).toBe('ecocrop')
+      expect(d.sources?.soilNutriments).toBe('ecocrop')
+      expect(d.sources?.soilSalinity).toBe('ecocrop')
+      expect(d.sources?.atmosphericHumidity).toBe('ecocrop')
+      expect(d.sources?.growthMonths).toBe('ecocrop')
+    }
   })
 })

@@ -48,6 +48,61 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null
 }
 
+const LIGHT_MAP = {
+  'very bright': 9,
+  'clear skies': 8,
+  'cloudy skies': 6,
+  'light shade': 4,
+  'heavy shade': 2,
+}
+
+function parseLight(r, get) {
+  const vals = [get(r, 'LIOPMN'), get(r, 'LIOPMX'), get(r, 'LIMN'), get(r, 'LIMX')]
+    .map(v => v?.trim().toLowerCase())
+    .map(v => LIGHT_MAP[v])
+    .filter(v => v !== undefined)
+  if (!vals.length) return null
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+}
+
+const FER_MAP = {
+  'high': 8,
+  'moderate': 5,
+  'medium': 5,
+  'low': 2,
+}
+
+function parseFertility(r, get) {
+  const v = (get(r, 'FER') || get(r, 'FERR') || '').trim().toLowerCase()
+  for (const [k, score] of Object.entries(FER_MAP)) {
+    if (v.includes(k)) return score
+  }
+  return null
+}
+
+function parseSalinity(r, get) {
+  const v = (get(r, 'SAL') || get(r, 'SALR') || '').trim().toLowerCase()
+  if (!v || v === 'na') return null
+  if (v.includes('high')) return 8
+  if (v.includes('medium') || v.includes('moderate')) return 5
+  if (v.includes('low')) return 2
+  if (v.includes('none') || v.includes('nil')) return 0
+  return null
+}
+
+function parseHumidity(r, get, rain) {
+  const cliz = (get(r, 'CLIZ') || '').toLowerCase()
+  const optRain = rain && (rain[0] !== null || rain[1] !== null)
+    ? ((rain[0] ?? rain[1]) + (rain[1] ?? rain[0])) / 2
+    : null
+  if (cliz.includes('tropical wet (ar)') || (optRain !== null && optRain >= 1800)) return 8
+  if (cliz.includes('tropical wet & dry') || cliz.includes('subtropical humid') || (optRain !== null && optRain >= 1000)) return 7
+  if (cliz.includes('oceanic') || cliz.includes('subtropical') || cliz.includes('temperate') || (optRain !== null && optRain >= 500)) return 5
+  if (cliz.includes('semiarid') || cliz.includes('steppe') || (optRain !== null && optRain >= 250)) return 3
+  if (cliz.includes('arid') || cliz.includes('desert') || (optRain !== null && optRain < 250)) return 2
+  return null
+}
+
 /** "Solanum lycopersicum L., Lycopersicon lycopersicum (L.) Karst." → ["solanum lycopersicum", ...] */
 function parseSynonyms(raw) {
   if (!raw || raw === 'NA') return []
@@ -96,8 +151,17 @@ async function main() {
     const ktmp = num(get(r, 'KTMP'))
     if (ktmp !== null) rec.k = ktmp
 
+    const li = parseLight(r, get)
+    const fe = parseFertility(r, get)
+    const sa = parseSalinity(r, get)
+    const hu = parseHumidity(r, get, rain)
+    if (li !== null) rec.li = li
+    if (fe !== null) rec.fe = fe
+    if (sa !== null) rec.sa = sa
+    if (hu !== null) rec.hu = hu
+
     // Registros sin ningún dato numérico no aportan nada como fallback
-    if (rec.t || rec.ph || rec.r || rec.g) records.push(rec)
+    if (rec.t || rec.ph || rec.r || rec.g || rec.li != null || rec.fe != null || rec.sa != null || rec.hu != null) records.push(rec)
   }
 
   await mkdir(dirname(OUT_FILE), { recursive: true })

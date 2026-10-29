@@ -13,6 +13,10 @@ export interface EcocropRecord {
   r?: (number | null)[]                       // precipitación mm/año
   g?: (number | null)[]                       // ciclo [mín, máx] días
   k?: number                                  // temperatura letal °C
+  li?: number                                 // luz (0-10)
+  fe?: number                                 // fertilidad / nutrientes del suelo (0-10)
+  sa?: number                                 // salinidad del suelo (0-10)
+  hu?: number                                 // humedad atmosférica (0-10)
 }
 
 export type EcocropMatch = 'exact' | 'synonym' | 'infraspecific'
@@ -50,6 +54,49 @@ export function findEcocropRecord(
 
 const v = (x: number | null | undefined) => (x == null ? undefined : x)
 
+/**
+ * Calcula determinísticamente los meses óptimos de desarrollo (growthMonths)
+ * según el rango térmico óptimo (rec.t) y la duración de ciclo (rec.g).
+ */
+export function deriveGrowthMonths(rec: EcocropRecord): string[] | undefined {
+  if (!rec.t && !rec.g) return undefined
+  const optTempMin = rec.t?.[0] ?? rec.t?.[2]
+  const optTempMax = rec.t?.[1] ?? rec.t?.[3]
+  if (optTempMin == null && optTempMax == null) return undefined
+
+  const avgCycle = rec.g && (rec.g[0] != null || rec.g[1] != null)
+    ? ((rec.g[0] ?? rec.g[1])! + (rec.g[1] ?? rec.g[0])!) / 2
+    : undefined
+
+  // Cultivo cálido de primavera-verano
+  if (optTempMin != null && optTempMin >= 18) {
+    if (avgCycle !== undefined && avgCycle <= 100) {
+      return ['oct', 'nov', 'dec', 'jan', 'feb']
+    }
+    return ['sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar']
+  }
+
+  // Cultivo de estación fría otoño-invierno-primavera
+  if (optTempMax != null && optTempMax <= 20) {
+    return ['mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct']
+  }
+
+  // Templado amplio
+  if (optTempMin != null && optTempMax != null && optTempMin < 18 && optTempMax > 20) {
+    return ['aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr']
+  }
+
+  if (optTempMin != null && optTempMin < 18) {
+    return ['aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr']
+  }
+
+  if (optTempMax != null && optTempMax > 20) {
+    return ['sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar']
+  }
+
+  return undefined
+}
+
 /** Convierte un registro EcoCrop al modelo interno, etiquetado con source 'ecocrop'. */
 export function ecocropToAgronomicData(rec: EcocropRecord): AgronomicData | undefined {
   const values: AgronomicValues = {
@@ -60,6 +107,11 @@ export function ecocropToAgronomicData(rec: EcocropRecord): AgronomicData | unde
     phMinimum: v(rec.ph?.[2]), phMaximum: v(rec.ph?.[3]),
     rainfallMin: v(rec.r?.[2]), rainfallMax: v(rec.r?.[3]),
     cycleDaysMin: v(rec.g?.[0]), cycleDaysMax: v(rec.g?.[1]),
+    light: v(rec.li),
+    soilNutriments: v(rec.fe),
+    soilSalinity: v(rec.sa),
+    atmosphericHumidity: v(rec.hu),
+    growthMonths: deriveGrowthMonths(rec),
   }
   return tagAgronomicSource(values, 'ecocrop')
 }

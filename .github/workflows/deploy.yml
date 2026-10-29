@@ -33,7 +33,6 @@ jobs:
       - name: Build project
         env:
           GITHUB_PAGES: 'true'
-          VITE_TREFLE_TOKEN: ${{ secrets.VITE_TREFLE_TOKEN }}
         run: |
           npm run build
           cp dist/index.html dist/404.html

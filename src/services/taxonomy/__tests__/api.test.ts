@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { searchGBIF } from '../gbifApi'
+import { searchGBIF, fetchBotanicalImage } from '../gbifApi'
 import { searchTrefle } from '../trefleApi'
 
 const MOCK_GBIF_RESPONSE = {
@@ -112,6 +112,33 @@ describe('Taxonomy APIs', () => {
         species: 'lycopersicum',
         imageUrl: 'https://example.com/tomato.jpg'
       })
+    })
+  })
+
+  describe('fetchBotanicalImage (Wikipedia REST API)', () => {
+    it('returns undefined if genus or species is empty', async () => {
+      expect(await fetchBotanicalImage('', 'lycopersicum')).toBeUndefined()
+      expect(await fetchBotanicalImage('Solanum', '')).toBeUndefined()
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+    })
+
+    it('resolves image URL from Wikipedia thumbnail or originalimage', async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          thumbnail: { source: 'https://upload.wikimedia.org/wikipedia/commons/tomato_thumb.jpg' },
+        })
+      } as any)
+
+      const url = await fetchBotanicalImage('Solanum', 'lycopersicum')
+      expect(globalThis.fetch).toHaveBeenCalledWith('https://en.wikipedia.org/api/rest_v1/page/summary/Solanum_lycopersicum')
+      expect(url).toBe('https://upload.wikimedia.org/wikipedia/commons/tomato_thumb.jpg')
+    })
+
+    it('falls back silently on HTTP errors or network failures', async () => {
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('Network error'))
+      const url = await fetchBotanicalImage('Nonexistent', 'plant')
+      expect(url).toBeUndefined()
     })
   })
 })

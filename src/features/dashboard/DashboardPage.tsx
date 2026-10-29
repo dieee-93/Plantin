@@ -687,7 +687,7 @@ export function DashboardPage() {
         <StatCard
           label="2c. Catálogo Botánico (Especies)"
           value={taxons.length}
-          sub="Fichas EcoCrop / Trefle y descriptores"
+          sub="Fichas FAO EcoCrop + GBIF y descriptores"
           icon={Leaf}
           accentColor="#2d6a4f"
           onClick={() => navigate('/taxons')}

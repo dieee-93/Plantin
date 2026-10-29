@@ -1,23 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { searchGBIF } from '@/services/taxonomy/gbifApi'
-import { searchTrefle } from '@/services/taxonomy/trefleApi'
 import type { TaxonomySearchResult } from '@/services/taxonomy/types'
 
 // We create a unified search function
 export async function searchUnifiedTaxonomy(query: string): Promise<TaxonomySearchResult[]> {
   if (!query) return []
   
-  // We execute both searches in parallel
-  const [gbifResults, trefleResults] = await Promise.all([
-    searchGBIF(query),
-    searchTrefle(query)
-  ])
-
+  const gbifResults = await searchGBIF(query)
   const merged = new Map<string, TaxonomySearchResult>()
   
   // Helper function to create a bulletproof comparison key
   const generateMergeKey = (item: TaxonomySearchResult): string => {
-    // GBIF returns "species" as "Genus species", Trefle as just "species".
     // To ensure perfect matching, we always extract the first two words from scientificName.
     const parts = item.scientificName.split(' ')
     const g = parts[0] || ''
@@ -36,28 +29,10 @@ export async function searchUnifiedTaxonomy(query: string): Promise<TaxonomySear
     return `${normalize(g)}_${normalize(s)}`
   }
 
-  // 1. Process GBIF (our strong taxonomic baseline)
+  // Process GBIF (our strong taxonomic baseline)
   gbifResults.forEach(item => {
     const key = generateMergeKey(item)
-    merged.set(key, item)
-  })
-
-  // 2. Process Trefle (our rich agronomic/image source)
-  trefleResults.forEach(item => {
-    const key = generateMergeKey(item)
-    if (merged.has(key)) {
-      const existing = merged.get(key)!
-      merged.set(key, {
-        ...existing,
-        // Trefle enriches GBIF
-        commonName: existing.commonName || item.commonName, 
-        imageUrl: item.imageUrl || existing.imageUrl,
-        agronomicData: item.agronomicData || existing.agronomicData,
-        trefleSlug: item.trefleSlug || existing.trefleSlug, // ← preserve for detail fetch
-        source: 'GBIF', // Keep it marked as GBIF since it has the strict taxonomy
-      })
-    } else {
-      // If Trefle found something GBIF didn't, keep it!
+    if (!merged.has(key)) {
       merged.set(key, item)
     }
   })
