@@ -14,6 +14,7 @@ import { useTaxonStore } from '@/store/taxonStore'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
 import { useRoomLayoutStore } from '@/store/roomLayoutStore'
 import { BUENOS_AIRES } from '@/domain/agroclimate/__tests__/fixtures'
+import * as taxonomySearchModule from '@/hooks/useTaxonomySearch'
 
 describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
   beforeEach(() => {
@@ -102,10 +103,15 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
 
     expect(screen.getByRole('region', { name: /Plano isométrico interior de Invernadero Norte/i })).toBeInTheDocument()
 
-    // Interacción 1: Clic en celda vacía B-02 pre-carga el formulario en esa coordenada
+    // Interacción 1: Clic en celda vacía B-02 abre la barra contextual sin abrir el Drawer
     const emptyCellB02 = screen.getByRole('button', { name: /Celda vacía B-02/i })
     await user.click(emptyCellB02)
 
+    expect(screen.getByText(/Slot Vacío · B-02/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Celda en la grilla/i)).not.toBeInTheDocument()
+
+    // Clic en "Sembrar de Inventario" abre el Drawer pre-cargado con B-02
+    await user.click(screen.getByRole('button', { name: /Sembrar de Inventario en slot/i }))
     expect(screen.getByLabelText(/Celda en la grilla/i)).toHaveValue('B-02')
 
     await user.selectOptions(screen.getByLabelText(/Variedad a sembrar/i), acc.id)
@@ -192,6 +198,10 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(useIndividualStore.getState().getById(plant.id)?.position).toBe('B-02')
 
     // Interacción 4b: Drag & Drop de la planta hacia el chip de otra sala (Invernadero B)
+    const toggleRoomsBtn = screen.getByRole('button', { name: /Alternar barra de otras salas/i })
+    if (toggleRoomsBtn.getAttribute('aria-expanded') !== 'true') {
+      fireEvent.click(toggleRoomsBtn)
+    }
     const targetRoomChip = screen.getByRole('button', { name: /Sala destino Invernadero B/i })
     fireEvent.drop(targetRoomChip, {
       dataTransfer: {
@@ -296,6 +306,10 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
     expect(container.querySelector('[data-archetype="heliotropo_tall"]')).toBeInTheDocument()
 
     // Cambiar al Lente Genético y verificar que se dibuja el arco de pedigrí entre Madre e Hijo F1
+    const toggleLensBtn = screen.getByRole('button', { name: /Alternar barra de lentes analíticos/i })
+    if (toggleLensBtn.getAttribute('aria-expanded') !== 'true') {
+      await user.click(toggleLensBtn)
+    }
     await user.click(screen.getByRole('button', { name: /Lente Genética \/ Pedigrí/i }))
     expect(container.querySelector('[data-pedigree-link="Madre"]')).toBeInTheDocument()
 
@@ -345,7 +359,7 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
       family: 'Solanaceae',
       genus: 'Capsicum',
       species: 'annuum',
-      cropCode: 'PEPPER_SWEET',
+      cropCode: 'PEPPER_HOT',
       commonName: 'Pimiento Morrón',
     })
 
@@ -1179,5 +1193,593 @@ describe('LocationsPage — Interfaz Gráfica Isométrica 2.5D', () => {
 
     expect(container.querySelectorAll('[data-renderer="raster-plant"]').length).toBe(2)
     expect(container.querySelectorAll('image').length).toBe(2)
+  })
+
+  it('Flujo unificado "Nuevo Cultivo / Material" con filtro de colisión biológica', async () => {
+    const user = userEvent.setup()
+
+    useLocationStore.getState().add({
+      name: 'Invernadero Bio',
+      type: 'greenhouse',
+      capacity: 12,
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a una sala isométrica
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Bio/i }))
+
+    // Abre el Drawer contextual de siembra / alta unificada
+    await user.click(screen.getByRole('button', { name: /Sembrar en Celda/i }))
+
+    // Cambia a la pestaña "+ Nuevo Cultivo / Material"
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+
+    // Selecciona o agrega Naranjo Dulce (Citrus sinensis)
+    await user.click(screen.getByRole('button', { name: /Naranjo Dulce/i }))
+
+    // Verifica que se ofrecen los formatos Plantín, Gajo / Esqueje y Semillas, pero NO Bulbo / Tubérculo
+    expect(screen.getByRole('button', { name: /Plantín/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Gajo/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Semillas \/ Sobre/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Bulbo/i })).not.toBeInTheDocument()
+
+    // Selecciona o agrega Ajo (Allium sativum)
+    await user.click(screen.getByRole('button', { name: /\bAjo\b/i }))
+
+    // Verifica que SÍ aparece habilitado Bulbo / Tubérculo con BBCH 5
+    expect(screen.getByRole('button', { name: /Bulbo/i })).toBeInTheDocument()
+    expect(screen.getByText(/BBCH 5/i)).toBeInTheDocument()
+  })
+
+  it('Plantación directa de Plantín / Gajo en un solo paso', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Sala Climatizada Alpha',
+      type: 'growth_chamber',
+      capacity: 9,
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a la sala
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Sala Climatizada Alpha/i }))
+
+    // Abre el drawer de siembra y pasa a + Nuevo Cultivo / Material
+    await user.click(screen.getByRole('button', { name: /Sembrar en Celda/i }))
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+
+    // Selecciona Tomate
+    await user.click(screen.getByRole('button', { name: /Tomate/i }))
+
+    // Elige el formato Plantín (en sustrato)
+    await user.click(screen.getByRole('button', { name: /Plantín/i }))
+
+    // Escribe variedad "Platense"
+    await user.type(screen.getByLabelText(/Nombre de variedad o cultivar/i), 'Platense')
+
+    // Celda preseleccionada o establecida en A-01
+    expect(screen.getByLabelText(/Celda en la grilla/i)).toHaveValue('A-01')
+
+    // Confirma plantar en A-01
+    await user.click(screen.getByRole('button', { name: /Plantar Plantín en A-01/i }))
+
+    // Verifica que se creó automáticamente la Accession (TOM-...)
+    const accessions = useAccessionStore.getState().accessions
+    const createdAcc = accessions.find(a => a.cultivarName === 'Platense')
+    expect(createdAcc).toBeDefined()
+    expect(createdAcc?.accessionNumber).toMatch(/^TOM-/)
+
+    // Verifica que se creó el Individual vivo en A-01 con currentBBCH: 14 y tag 'plantín'
+    const individuals = useIndividualStore.getState().individuals
+    expect(individuals).toHaveLength(1)
+    const plant = individuals[0]
+    expect(plant.locationId).toBe(room.id)
+    expect(plant.position).toBe('A-01')
+    expect(plant.currentBBCH).toBe(14)
+    expect(plant.tags).toContain('plantín')
+
+    // Verifica que el Drawer pasó al modo Inspector in-situ
+    expect(screen.getByText(/Inspector In-Situ · Posición A-01/i)).toBeInTheDocument()
+  })
+
+  it('permite abrir + Nuevo Cultivo / Material desde el nivel 1 (mapa de salas) e ingresar semilla al catálogo', async () => {
+    const user = userEvent.setup()
+
+    render(<LocationsPage />)
+
+    // Clic en + Nuevo Cultivo / Material desde la cabecera del Campus
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+
+    // Selecciona Zapallo desde presets
+    await user.click(screen.getByRole('button', { name: /Zapallo/i }))
+
+    // Escribe variedad
+    await user.type(screen.getByLabelText(/Nombre de variedad o cultivar/i), 'Criollo Plomo')
+
+    // Confirmar e Ingresar Cultivo
+    await user.click(screen.getByRole('button', { name: /Confirmar e Ingresar Cultivo/i }))
+
+    // Verifica creación de Accession y Lote de Semillas
+    const acc = useAccessionStore.getState().accessions.find(a => a.cultivarName === 'Criollo Plomo')
+    expect(acc).toBeDefined()
+    expect(acc?.accessionNumber).toMatch(/^SQUASH-/)
+
+    const seedLots = useSeedLotStore.getState().seedLots
+    expect(seedLots).toHaveLength(1)
+    expect(seedLots[0].accessionId).toBe(acc?.id)
+    expect(seedLots[0].currentCount).toBe(50)
+  })
+
+  it('Formatos extendidos, etiquetas dinámicas y plantación múltiple híbrida (automática vs bandeja manual)', async () => {
+    const user = userEvent.setup()
+
+    useLocationStore.getState().add({
+      name: 'Invernadero Híbrido',
+      type: 'greenhouse',
+      capacity: 12,
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a la sala isométrica
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Híbrido/i }))
+
+    // Abre el drawer de siembra y pasa a + Nuevo Cultivo / Material
+    await user.click(screen.getByRole('button', { name: /Sembrar en Celda/i }))
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+
+    // 1. Naranjo Dulce muestra "Árbol de Vivero / Injerto"
+    await user.click(screen.getByRole('button', { name: /Naranjo Dulce/i }))
+    expect(screen.getByRole('button', { name: /Árbol de Vivero \/ Injerto/i })).toBeInTheDocument()
+
+    // 2. Ajo muestra "Diente / Bulbo / Tubérculo"
+    await user.click(screen.getByRole('button', { name: /\bAjo\b/i }))
+    expect(screen.getByRole('button', { name: /Diente \/ Bulbo/i })).toBeInTheDocument()
+
+    // 3. Tomate: 3 plantines en modo automático desde A-01
+    await user.click(screen.getByRole('button', { name: /^Tomate$/i }))
+    await user.click(screen.getByRole('button', { name: /Plantín/i }))
+    await user.type(screen.getByLabelText(/Nombre de variedad o cultivar/i), 'Platense')
+
+    const countInput = screen.getByLabelText(/Cantidad a ingresar/i)
+    await user.clear(countInput)
+    await user.type(countInput, '3')
+
+    // El modo por defecto es auto_cells
+    expect(screen.getByLabelText(/Plantar automáticamente en celdas libres/i)).toBeChecked()
+
+    // Confirma plantar
+    await user.click(screen.getByRole('button', { name: /Plantar 3 Plantines desde A-01/i }))
+
+    // Verifica que se crearon 3 individuos en A-01, A-02 y A-03
+    const allInds = useIndividualStore.getState().individuals
+    expect(allInds.filter(i => i.position === 'A-01')).toHaveLength(1)
+    expect(allInds.filter(i => i.position === 'A-02')).toHaveLength(1)
+    expect(allInds.filter(i => i.position === 'A-03')).toHaveLength(1)
+
+    // 4. Vuelve a abrir Nuevo Cultivo para probar modo "Dejar en la Bandeja Inferior para ubicar manualmente"
+    // El drawer quedó en inspect de la primera planta; cerramos para volver a siembra
+    const closeBtn = screen.getByRole('button', { name: /Cerrar ×/i })
+    await user.click(closeBtn)
+
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+    await user.click(screen.getByRole('button', { name: /^Tomate$/i }))
+    await user.click(screen.getByRole('button', { name: /Gajo/i }))
+    await user.type(screen.getByLabelText(/Nombre de variedad o cultivar/i), 'Cherry')
+
+    const countInput2 = screen.getByLabelText(/Cantidad a ingresar/i)
+    await user.clear(countInput2)
+    await user.type(countInput2, '2')
+
+    // Selecciona modo manual_tray
+    const manualRadio = screen.getByLabelText(/Dejar en la Bandeja Inferior para ubicar manualmente/i)
+    await user.click(manualRadio)
+
+    await user.click(screen.getByRole('button', { name: /Dejar 2 Gajos en Bandeja/i }))
+
+    const cherryInds = useIndividualStore.getState().individuals.filter(i => {
+      const acc = useAccessionStore.getState().getById(i.accessionId)
+      return acc?.cultivarName === 'Cherry'
+    })
+    expect(cherryInds).toHaveLength(2)
+    expect(cherryInds[0].position).toBe('Sin ubicar')
+    expect(cherryInds[1].position).toBe('Sin ubicar')
+  }, 15000)
+
+  it('Clonación vegetativa en ambos sentidos (Planta Madre → Esqueje y botón inverso "Sacar Esqueje / Gajo" desde el Inspector)', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Invernadero Clones',
+      type: 'greenhouse',
+      capacity: 12,
+    })
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-001',
+      taxonId: 'tax-tom',
+      cultivarName: 'Platense Madre',
+      acquisitionSource: 'research',
+    })
+    const mother = useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'TOM-2026-001 #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 35,
+      status: 'active',
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a la sala isométrica
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Clones/i }))
+
+    // Selecciona la planta madre en A-01 para abrir la SlotActionBar
+    await user.click(screen.getByRole('button', { name: /Celda A-01 ocupada por TOM-2026-001 #01/i }))
+    expect(screen.getByText(/Slot Ocupado · A-01/i)).toBeInTheDocument()
+
+    // Clic en "Ver detalles" para abrir el Inspector in-situ
+    await user.click(screen.getByRole('button', { name: /Ver detalles de planta del slot/i }))
+
+    // Verifica que el Inspector in-situ está abierto con la planta madre
+    expect(screen.getByText(/Inspector In-Situ · Posición A-01/i)).toBeInTheDocument()
+
+    // Camino inverso: Clic en "Sacar Esqueje / Gajo" desde el Inspector
+    const cloneBtn = screen.getByRole('button', { name: /Sacar Esqueje \/ Gajo/i })
+    expect(cloneBtn).toBeInTheDocument()
+    await user.click(cloneBtn)
+
+    // Configura cantidad 2
+    const qtyInput = screen.getByLabelText(/Cantidad de clones/i)
+    await user.clear(qtyInput)
+    await user.type(qtyInput, '2')
+
+    // Confirma esquejes
+    await user.click(screen.getByRole('button', { name: /Confirmar Esquejes/i }))
+
+    // Verifica que se crearon 2 nuevos individuos clones con maternalParentId apuntando a la madre, currentBBCH: 10 y tag 'clon'
+    const allInds = useIndividualStore.getState().individuals
+    const clonesFromInspector = allInds.filter(i => i.maternalParentId === mother.id)
+    expect(clonesFromInspector).toHaveLength(2)
+    clonesFromInspector.forEach(clone => {
+      expect(clone.currentBBCH).toBe(10)
+      expect(clone.tags).toContain('clon')
+      expect(clone.tags).toContain('esqueje')
+      expect(clone.accessionId).toBe(mother.accessionId)
+    })
+
+    // Camino directo: Abrir "+ Nuevo Cultivo / Material", seleccionar Madre y verificar herencia
+    const closeBtn = screen.getByRole('button', { name: /Cerrar ×/i })
+    await user.click(closeBtn)
+
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+    await user.click(screen.getByRole('button', { name: /^Tomate$/i }))
+    await user.click(screen.getByRole('button', { name: /Gajo/i }))
+
+    // Selecciona la planta madre en el dropdown
+    const motherSelect = screen.getByLabelText(/Planta Madre \(Clon\)/i)
+    await user.selectOptions(motherSelect, mother.id)
+
+    // Confirma el gajo
+    await user.click(screen.getByRole('button', { name: /Plantar/i }))
+
+    const clonesTotal = useIndividualStore.getState().individuals.filter(i => i.maternalParentId === mother.id)
+    expect(clonesTotal).toHaveLength(3)
+  }, 15000)
+
+  it('Secuencia de puntero real (pointerDown + pointerUp + click) no es interceptada por useIsometricCamera y ObjectsLayer no bloquea celdas en Modo Cultivo', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Invernadero Pointer',
+      type: 'greenhouse',
+      capacity: 12,
+    })
+
+    // Coloca un objeto decorativo en el espacio de la sala
+    useRoomLayoutStore.getState().addObject(room.id, {
+      id: 'pot-deco-1',
+      typeId: 'pot_terracotta',
+      x: 0,
+      y: 0,
+      z: 0,
+      rotation: 0,
+    })
+
+    const { container } = render(<LocationsPage />)
+
+    // Entra a la sala isométrica
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Pointer/i }))
+
+    // Verifica que la capa de objetos colocados tiene pointer-events: none en Modo Cultivo
+    const objectsLayer = container.querySelector('[data-layer="placed-objects"]')
+    expect(objectsLayer).toBeInTheDocument()
+    expect(objectsLayer).toHaveStyle({ pointerEvents: 'none' })
+
+    // Busca la celda A-01 y el botón plus
+    const cellA1 = screen.getByRole('button', { name: /Celda vacía A-01/i })
+    expect(cellA1).toHaveAttribute('data-interactive', 'true')
+
+    const plusBtn = container.querySelector('[data-slot-plus="A-01"]')
+    expect(plusBtn).toBeInTheDocument()
+
+    // Secuencia de puntero real sin arrastre: pointerDown -> pointerUp -> click
+    fireEvent.pointerDown(cellA1, { clientX: 150, clientY: 150, pointerId: 1, button: 0 })
+    fireEvent.pointerUp(cellA1, { clientX: 151, clientY: 151, pointerId: 1, button: 0 })
+    fireEvent.click(cellA1)
+
+    // Comprueba que el slot A-01 fue seleccionado y se desplegó la barra contextual
+    const slotBar = screen.getByTestId('slot-action-bar')
+    expect(slotBar).toBeInTheDocument()
+    expect(slotBar).toHaveAttribute('role', 'toolbar')
+    expect(slotBar).toHaveAttribute('aria-label', 'Acciones de slot A-01')
+    expect(screen.getByText(/Slot Vacío · A-01/i)).toBeInTheDocument()
+    expect(slotBar.style.left).toMatch(/%$/)
+    expect(slotBar.style.top).toMatch(/%$/)
+  }, 15000)
+
+  it('SlotActionBar Estado A (Slot Vacío): colocar planta sin ubicar en 1 clic y conmutar pestañas de siembra', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Invernadero Slot A',
+      type: 'greenhouse',
+      capacity: 12,
+    })
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-UNP',
+      taxonId: 'tax-tom',
+      cultivarName: 'Tomate Bandeja',
+      acquisitionSource: 'research',
+    })
+    const unplacedInd = useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'TOM-2026-UNP #01',
+      locationId: room.id,
+      position: 'Sin ubicar',
+      location: 'Sin ubicar',
+      currentBBCH: 10,
+      status: 'active',
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a la sala
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Slot A/i }))
+
+    // Clic en celda vacía A-01
+    await user.click(screen.getByRole('button', { name: /Celda vacía A-01/i }))
+
+    const slotBar = screen.getByTestId('slot-action-bar')
+    expect(slotBar).toBeInTheDocument()
+    expect(screen.getByText(/Slot Vacío · A-01/i)).toBeInTheDocument()
+    expect(slotBar.style.left).toMatch(/%$/)
+    expect(slotBar.style.top).toMatch(/%$/)
+
+    // Botones disponibles en Estado A
+    const placeUnplacedBtn = screen.getByRole('button', { name: /Colocar planta sin ubicar en slot/i })
+    expect(placeUnplacedBtn).toBeInTheDocument()
+    expect(placeUnplacedBtn).toHaveTextContent(/Colocar .* aquí/i)
+
+    const sowInventoryBtn = screen.getByRole('button', { name: /Sembrar de Inventario en slot/i })
+    const newCropBtn = screen.getByRole('button', { name: /Nuevo Cultivo en slot/i })
+    expect(sowInventoryBtn).toBeInTheDocument()
+    expect(newCropBtn).toBeInTheDocument()
+
+    // Conmutar a Nuevo Cultivo mediante la barra
+    await user.click(newCropBtn)
+    expect(screen.getByRole('heading', { name: /Nuevo Cultivo \/ Material/i })).toBeInTheDocument()
+
+    // Conmutar a De mi Inventario mediante la barra
+    await user.click(sowInventoryBtn)
+    expect(screen.getByRole('heading', { name: /Sembrar en Invernadero Slot A/i })).toBeInTheDocument()
+
+    // Clic en Colocar planta sin ubicar en slot
+    await user.click(placeUnplacedBtn)
+
+    // Verifica que la planta se ubicó en A-01
+    const updatedInd = useIndividualStore.getState().getById(unplacedInd.id)
+    expect(updatedInd?.position).toBe('A-01')
+
+    // Ahora la barra de slot refleja Estado B (Slot Ocupado)
+    expect(screen.getByText(/Slot Ocupado · A-01/i)).toBeInTheDocument()
+  }, 15000)
+
+  it('SlotActionBar Estado B (Slot Ocupado): subir BBCH, mover planta de celda, clonación vegetativa y liberar slot', async () => {
+    const user = userEvent.setup()
+
+    const room = useLocationStore.getState().add({
+      name: 'Invernadero Slot B',
+      type: 'greenhouse',
+      capacity: 12,
+    })
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-OCC',
+      taxonId: 'tax-tom',
+      cultivarName: 'Tomate Fructificación',
+      acquisitionSource: 'research',
+    })
+    const ind = useIndividualStore.getState().add({
+      accessionId: acc.id,
+      label: 'TOM-2026-OCC #01',
+      locationId: room.id,
+      position: 'A-01',
+      location: 'A-01',
+      currentBBCH: 10,
+      status: 'active',
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a la sala
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Invernadero Slot B/i }))
+
+    // Clic en la planta en A-01
+    await user.click(screen.getByRole('button', { name: /Celda A-01 ocupada por TOM-2026-OCC #01/i }))
+
+    // 1. Verifica barra en Estado B
+    const slotBar = screen.getByTestId('slot-action-bar')
+    expect(slotBar).toBeInTheDocument()
+    expect(screen.getByText(/Slot Ocupado · A-01/i)).toBeInTheDocument()
+    expect(screen.getByText(/BBCH 10/i)).toBeInTheDocument()
+    expect(slotBar.style.left).toMatch(/%$/)
+    expect(slotBar.style.top).toMatch(/%$/)
+
+    // 2. Acción Subir BBCH (de 10 al próximo hito 14)
+    const bbchBtn = screen.getByRole('button', { name: /Avanzar etapa BBCH del slot/i })
+    await user.click(bbchBtn)
+
+    const indAfterBbch = useIndividualStore.getState().getById(ind.id)
+    expect(indAfterBbch?.currentBBCH).toBe(14)
+    expect(screen.getByText(/BBCH 14/i)).toBeInTheDocument()
+
+    // 3. Acción Clonar Planta (Tomate admite esquejes)
+    const cloneBtn = screen.getByRole('button', { name: /Clonar planta desde slot/i })
+    expect(cloneBtn).toHaveTextContent(/Sacar Esqueje \/ Gajo/i)
+    await user.click(cloneBtn)
+
+    const clones = useIndividualStore.getState().individuals.filter(i => i.maternalParentId === ind.id)
+    expect(clones).toHaveLength(1)
+    expect(clones[0].position).toBe('A-02')
+    expect(clones[0].tags).toContain('esqueje')
+    expect(clones[0].tags).toContain('clon')
+
+    // 4. Acción Mover de Celda (mover A-01 a A-03)
+    // Volvemos a seleccionar A-01
+    await user.click(screen.getByRole('button', { name: /Celda A-01 ocupada por TOM-2026-OCC #01/i }))
+    const moveBtn = screen.getByRole('button', { name: /Mover planta de celda/i })
+    await user.click(moveBtn)
+
+    expect(screen.getByText(/Selecciona una celda vacía.../i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Cancelar movimiento/i })).toBeInTheDocument()
+
+    // Clic en la celda vacía A-03
+    await user.click(screen.getByRole('button', { name: /Celda vacía A-03/i }))
+
+    const indAfterMove = useIndividualStore.getState().getById(ind.id)
+    expect(indAfterMove?.position).toBe('A-03')
+
+    // 5. Acción Liberar Slot
+    // Selecciona la celda ocupada A-03
+    await user.click(screen.getByRole('button', { name: /Celda A-03 ocupada por TOM-2026-OCC #01/i }))
+    const freeSlotBtn = screen.getByRole('button', { name: /Liberar slot ocupado/i })
+    await user.click(freeSlotBtn)
+
+    const indAfterDelete = useIndividualStore.getState().getById(ind.id)
+    expect(indAfterDelete).toBeUndefined()
+  }, 15000)
+
+  it('registra presets botánicos (Naranjo Dulce / Tomate) con foto botánica, traits y datos agronómicos completos', async () => {
+    const user = userEvent.setup()
+
+    useLocationStore.getState().add({
+      name: 'Vivero Cítricos',
+      type: 'greenhouse',
+      capacity: 10,
+    })
+
+    render(<LocationsPage />)
+
+    // Entra a la sala
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Vivero Cítricos/i }))
+
+    // Abre el drawer contextual de siembra / alta unificada
+    await user.click(screen.getByRole('button', { name: /Sembrar en Celda/i }))
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+
+    // Selecciona el preset Naranjo Dulce
+    await user.click(screen.getByRole('button', { name: /Naranjo Dulce/i }))
+
+    // Verifica que Naranjo Dulce se haya registrado en useTaxonStore con foto, traits y datos agronómicos completos
+    const stateTaxons = useTaxonStore.getState().taxons
+    const orangeTaxon = stateTaxons.find(t => t.genus === 'Citrus' && t.species === 'sinensis')
+    expect(orangeTaxon).toBeDefined()
+    expect(orangeTaxon?.cropCode).toBe('CITRUS_ORANGE')
+    expect(orangeTaxon?.imageUrl).toBeTruthy()
+    expect(orangeTaxon?.imageUrl).toMatch(/^https:\/\//)
+    expect(orangeTaxon?.traits).toBeDefined()
+    expect(orangeTaxon!.traits!.length).toBeGreaterThan(0)
+    expect(orangeTaxon?.agronomicData).toBeDefined()
+    expect(orangeTaxon?.agronomicData?.phMinimum).toBe(4)
+    expect(orangeTaxon?.agronomicData?.optPhMin).toBe(5)
+    expect(orangeTaxon?.agronomicData?.rainfallMin).toBe(450)
+    expect(orangeTaxon?.agronomicData?.cycleDaysMin).toBe(180)
+  })
+
+  it('TaxonSearchDropdown preserva foto botánica (imageUrl) y descriptores fenotípicos (traits) al seleccionar resultados de búsqueda', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(taxonomySearchModule, 'useTaxonomySearch').mockImplementation((query: string) => {
+      if (query.trim().toLowerCase().includes('malus')) {
+        return {
+          data: [
+            {
+              id: 'gbif-apple-1',
+              scientificName: 'Malus domestica Borkh.',
+              genus: 'Malus',
+              species: 'domestica',
+              family: 'Rosaceae',
+              commonName: 'Manzano Común',
+              imageUrl: 'https://images.example.com/apple-flower.jpg',
+              source: 'GBIF',
+            },
+          ],
+          isLoading: false,
+        } as any
+      }
+      return { data: [], isLoading: false } as any
+    })
+
+    useLocationStore.getState().add({
+      name: 'Huerto Manzanos',
+      type: 'field',
+      capacity: 10,
+    })
+
+    render(<LocationsPage />)
+
+    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Huerto Manzanos/i }))
+    await user.click(screen.getByRole('button', { name: /Sembrar en Celda/i }))
+    await user.click(screen.getByRole('button', { name: /\+ Nuevo Cultivo \/ Material/i }))
+
+    // Busca Malus en el buscador rápido GBIF
+    const searchInput = screen.getByPlaceholderText(/Buscar otra especie/i)
+    await user.type(searchInput, 'Malus')
+
+    // Espera que aparezca el resultado y haz clic
+    const resultBtn = await screen.findByRole('button', { name: /Manzano Común/i })
+    await user.click(resultBtn)
+
+    // Verifica que el nuevo taxón agregado tenga imageUrl y traits
+    const appleTaxon = useTaxonStore.getState().taxons.find(t => t.genus === 'Malus' && t.species === 'domestica')
+    expect(appleTaxon).toBeDefined()
+    expect(appleTaxon?.cropCode).toBe('APPLE')
+    expect(appleTaxon?.imageUrl).toBe('https://images.example.com/apple-flower.jpg')
+    expect(appleTaxon?.traits).toBeDefined()
+    expect(appleTaxon!.traits!.length).toBeGreaterThan(0)
+  })
+
+  it('auto-repara taxones incompletos existentes en el store al montar LocationsPage', async () => {
+    // tax-tom inicial solo tiene genus/species/family sin imageUrl ni traits ni phMinimum
+    useLocationStore.getState().add({
+      name: 'Invernadero Reparador',
+      type: 'greenhouse',
+      capacity: 5,
+    })
+
+    render(<LocationsPage />)
+
+    await waitFor(() => {
+      const tom = useTaxonStore.getState().getById('tax-tom')
+      expect(tom?.imageUrl).toBeTruthy()
+      expect(tom?.traits).toBeDefined()
+      expect(tom!.traits!.length).toBeGreaterThan(0)
+      expect(tom?.agronomicData?.phMinimum).toBeDefined()
+      expect(typeof tom?.agronomicData?.phMinimum).toBe('number')
+      expect(tom!.agronomicData!.phMinimum!).toBeGreaterThanOrEqual(4.5)
+    }, { timeout: 3000 })
   })
 })

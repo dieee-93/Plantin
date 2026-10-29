@@ -33,6 +33,9 @@ scripts/out/
 # Assets pipeline (raw vendor models & intermediate renders)
 assets-src/vendor/
 assets-src/out/
+assets-src/inbox/
+assets-src/guides/
+*.blend1
 
 # Python cache
 __pycache__/

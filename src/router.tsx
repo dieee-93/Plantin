@@ -24,7 +24,14 @@ export const router = createBrowserRouter([
     path: '/',
     element: <RootLayout />,
     children: [
-      { index: true, element: <DashboardPage /> },
+      {
+        index: true,
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <LocationsPage />
+          </Suspense>
+        ),
+      },
       {
         path: 'locations',
         element: (
@@ -33,6 +40,7 @@ export const router = createBrowserRouter([
           </Suspense>
         ),
       },
+      { path: 'dashboard', element: <DashboardPage /> },
       { path: 'accessions', element: <AccessionsPage /> },
       { path: 'seedlots', element: <SeedLotsPage /> },
       { path: 'taxons', element: <TaxonsPage /> },

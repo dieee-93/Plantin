@@ -1,6 +1,6 @@
 import React from 'react'
 import type { PlantRendererProps } from '../types'
-import { getRasterSprite } from './manifest'
+import { getRasterSprite, getRasterSpriteMeta } from './manifest'
 import { PROCEDURAL_RENDERERS } from '../procedural'
 import { GenericHerbRenderer } from '../procedural/GenericHerbRenderer'
 import { PlantContainer } from '../procedural/containers'
@@ -8,11 +8,13 @@ import { PlantContainer } from '../procedural/containers'
 export interface RasterPlantProps extends PlantRendererProps {
   /** Si es true, dibuja también el contenedor procedural (para uso aislado fuera de IsometricPlantSprite) */
   withContainer?: boolean
+  /** Nivel de sustrato/tierra si la maceta es raster */
+  soilY?: number
 }
 
 /**
  * Renderer híbrido de planta: proyecta un sprite raster de alta calidad en WebP
- * alineado a la base geométrica (0, -7) con fallback transparente al renderer procedural.
+ * alineado a la base geométrica (0, -7 o soilY) con fallback transparente al renderer procedural.
  */
 export const RasterPlant: React.FC<RasterPlantProps> = ({
   spec,
@@ -20,6 +22,7 @@ export const RasterPlant: React.FC<RasterPlantProps> = ({
   generation,
   lensMode,
   withContainer = false,
+  soilY,
 }) => {
   const spriteUrl = getRasterSprite(spec.cropCode, spec.phase, spec.vitality)
 
@@ -36,12 +39,14 @@ export const RasterPlant: React.FC<RasterPlantProps> = ({
     )
   }
 
-  // Dimensiones 1x para asset 2x (160×200 px -> 80×100 px)
-  // Anclado a la base geométrica botánica: x centrado en 0, base inferior en y = -7
-  const width = 80
-  const height = 100
-  const x = -width / 2
-  const y = -7 - height
+  const meta = getRasterSpriteMeta(spec.cropCode, spec.phase, spec.vitality)
+  const width = meta?.width ?? 80
+  const height = meta?.height ?? 100
+  const baseY = soilY !== undefined ? soilY : -7
+  const x = meta?.anchorX ?? -width / 2
+  const y = meta?.anchorY !== undefined && soilY === undefined
+    ? meta.anchorY
+    : baseY - height
 
   // Estilo de vitalidad en caso de no tener asset dedicado de 'dead'/'harvested'
   const filterStyle =
@@ -57,6 +62,7 @@ export const RasterPlant: React.FC<RasterPlantProps> = ({
       data-crop={spec.cropCode}
       data-phase={spec.phase}
       data-vitality={spec.vitality}
+      data-base-y={baseY}
     >
       {withContainer && (
         <PlantContainer locationType={spec.container} isSelected={isSelected} />

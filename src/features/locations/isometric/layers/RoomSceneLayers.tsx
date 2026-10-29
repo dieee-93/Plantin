@@ -52,7 +52,7 @@ export interface RoomSceneLayersProps {
   movingPlantId: string | null
   setDragOverSlot: (slot: string | null) => void
   setMovingPlantId: (plantId: string | null) => void
-  onSelectPlant: (id: string) => void
+  onSelectPlant: (id: string, slot?: string) => void
   onClickEmptySlot: (slot: string) => void
   onMovePlantToSlot: (plantId: string, slot: string) => void
   onDropSeedInSlot: (slot: string, accessionId: string, seedLotId?: string) => void
@@ -118,6 +118,7 @@ export const RoomSceneLayers: React.FC<RoomSceneLayersProps> = React.memo((props
         placedObjects={placedObjects}
         selectedObjectId={selectedObjectId}
         onSelectObject={onSelectObject}
+        isSpaceMode={isSpaceMode}
       />
 
       {/* ── Capa 2.6: Vista previa fantasma de colocación y trazado ── */}

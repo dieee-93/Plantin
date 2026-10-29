@@ -15,7 +15,7 @@ import {
 import { SharedDefs } from './visual/SharedDefs'
 import { RoomGradients } from './visual/RoomGradients'
 import { resolvePlantPalette, type PlantPaletteData } from './visual/paletteKey'
-import { halfW, halfH, roomViewBox } from './geometry/iso'
+import { halfW, halfH, roomViewBox, projectCell } from './geometry/iso'
 import { RoomSceneLayers } from './layers/RoomSceneLayers'
 import { PlanViewLayer } from './editor/layers/PlanViewLayer'
 import { useIsometricCamera } from './hooks/useIsometricCamera'
@@ -28,6 +28,7 @@ import { RoomOverlayControls } from './ui/RoomOverlayControls'
 import { RoomCameraWidget } from './ui/RoomCameraWidget'
 import { RoomCommandDock } from './ui/RoomCommandDock'
 import { RoomBottomDock } from './ui/RoomBottomDock'
+import { SlotActionBar } from './ui/SlotActionBar'
 
 export interface IsometricRoomInteriorProps {
   location: FacilityLocation
@@ -40,15 +41,22 @@ export interface IsometricRoomInteriorProps {
   selectedSlot: string | null
   selectedIndividualId: string | null
   onOpenSowDrawer?: () => void
+  onOpenNewMaterialDrawer?: () => void
   onBackToMap: () => void
   onSwitchRoom: (locationId: string) => void
   onClickEmptySlot: (posLabel: string) => void
-  onSelectPlant: (individualId: string) => void
+  onSelectPlant: (individualId: string, slot?: string) => void
+  onInspectPlant?: (individualId: string, slot?: string) => void
   onDropSeedInSlot: (posLabel: string, accessionId: string, seedLotId?: string) => void
   onMovePlantToSlot: (individualId: string, targetPosLabel: string) => void
   onMovePlantToRoom: (individualId: string, targetLocationId: string) => void
   onUpdateGridDimensions?: (rows: number, cols: number) => void
   onNavigateSeedLot?: (seedLotId: string) => void
+  onAdvancePlantBbch?: (individualId: string, nextBbch: number) => void
+  onQuickClonePlant?: (motherId: string) => void
+  onRemovePlantFromSlot?: (individualId: string) => void
+  onOpenSowDrawerWithSlot?: (slot: string, subTab: 'inventory' | 'new-material') => void
+  onDeselectSlot?: () => void
 }
 
 export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
@@ -62,15 +70,22 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   selectedSlot,
   selectedIndividualId,
   onOpenSowDrawer,
+  onOpenNewMaterialDrawer,
   onBackToMap,
   onSwitchRoom,
   onClickEmptySlot,
   onSelectPlant,
+  onInspectPlant,
   onDropSeedInSlot,
   onMovePlantToSlot,
   onMovePlantToRoom,
   onUpdateGridDimensions,
   onNavigateSeedLot,
+  onAdvancePlantBbch,
+  onQuickClonePlant,
+  onRemovePlantFromSlot,
+  onOpenSowDrawerWithSlot,
+  onDeselectSlot,
 }) => {
   const {
     camera,
@@ -88,9 +103,32 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
   const [showPlantNames, setShowPlantNames] = useState(false)
   const [dragOverSlot, setDragOverSlot] = useState<string | null>(null)
   const [movingPlantId, setMovingPlantId] = useState<string | null>(null)
-  const [showLensBar, setShowLensBar] = useState(true)
-  const [showOtherRooms, setShowOtherRooms] = useState(true)
+  const [showLensBar, setShowLensBar] = useState(false)
+  const [showOtherRooms, setShowOtherRooms] = useState(false)
   const [isBottomDockOpen, setIsBottomDockOpen] = useState(false)
+
+  const handleToggleLensBar = useCallback(() => {
+    setShowLensBar(prev => {
+      const next = !prev
+      if (next) setShowOtherRooms(false)
+      return next
+    })
+  }, [])
+
+  const handleToggleOtherRooms = useCallback(() => {
+    setShowOtherRooms(prev => {
+      const next = !prev
+      if (next) setShowLensBar(false)
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    if (selectedSlot) {
+      setShowLensBar(false)
+      setShowOtherRooms(false)
+    }
+  }, [selectedSlot])
 
   // Estado de luz diurna ambiental persistido en localStorage
   const [ambientLightingEnabled, setAmbientLightingEnabled] = useState(() => {
@@ -230,7 +268,9 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
       const candidate = (ind.position || ind.location || '').trim().toUpperCase()
       if (validLabels.has(candidate) && !map.has(candidate)) {
         map.set(candidate, ind)
-      } else {
+      } else if (candidate === 'SIN UBICAR') {
+        // No auto-asignar a grilla las plantas explícitamente sin ubicar
+      } else if (candidate === '') {
         unassigned.push(ind)
       }
     }
@@ -248,6 +288,13 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
 
     return map
   }, [roomIndividuals, rows, cols])
+
+  const unplacedRoomIndividuals = useMemo(() => {
+    return roomIndividuals.filter(ind => {
+      const pos = (ind.position || ind.location || '').trim().toUpperCase()
+      return pos === 'SIN UBICAR'
+    })
+  }, [roomIndividuals])
 
   const plantCoordinates = useMemo(() => {
     const coords = new Map<string, { posLabel: string; x: number; y: number; ind: Individual }>()
@@ -351,6 +398,39 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
     return Array.from(map.values())
   }, [roomIndividuals, accessions, accessionToTaxon])
 
+  const slotAnchorPercent = useMemo(() => {
+    if (!selectedSlot) return undefined
+    const match = selectedSlot.trim().match(/^([A-Za-z]+)-?(\d+)$/)
+    if (!match) return undefined
+    const letters = match[1].toUpperCase()
+    let r = 0
+    for (let i = 0; i < letters.length; i++) {
+      r = r * 26 + (letters.charCodeAt(i) - 64)
+    }
+    r = r - 1
+    const c = parseInt(match[2], 10) - 1
+    if (isNaN(r) || isNaN(c) || r < 0 || c < 0) return undefined
+
+    const cell = projectCell(r, c)
+    const cellX = cell.x
+    const cellY = cell.y
+
+    const originX = minX + viewBoxWidth / 2
+    const originY = minY + viewBoxHeight / 2
+
+    const camX = originX + (cellX - originX) * camera.zoom + camera.x
+    const camY = originY + (cellY - originY) * camera.zoom + camera.y
+
+    const rawLeftPct = ((camX - minX) / viewBoxWidth) * 100
+    const rawTopPct = ((camY - minY) / viewBoxHeight) * 100
+
+    const leftPct = Math.max(18, Math.min(82, Number(rawLeftPct.toFixed(2))))
+    const topPct = Math.max(18, Math.min(82, Number(rawTopPct.toFixed(2))))
+    const placeBelow = rawTopPct < 26
+
+    return { leftPct, topPct, placeBelow }
+  }, [selectedSlot, minX, minY, viewBoxWidth, viewBoxHeight, camera.zoom, camera.x, camera.y])
+
   return (
     <div
       ref={containerRef}
@@ -395,7 +475,7 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
         ambientLightingEnabled={ambientLightingEnabled}
         onToggleAmbientLighting={handleToggleAmbientLighting}
         showLensBar={showLensBar}
-        onToggleLensBar={() => setShowLensBar(prev => !prev)}
+        onToggleLensBar={handleToggleLensBar}
         lensMode={lensMode}
         setLensMode={setLensMode}
         speciesInRoom={speciesInRoom}
@@ -403,7 +483,7 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
         setSpeciesFilterId={setSpeciesFilterId}
         otherLocations={otherLocations}
         showOtherRooms={showOtherRooms}
-        onToggleOtherRooms={() => setShowOtherRooms(prev => !prev)}
+        onToggleOtherRooms={handleToggleOtherRooms}
         onSwitchRoom={onSwitchRoom}
         onMovePlantToRoom={onMovePlantToRoom}
         setMovingPlantId={setMovingPlantId}
@@ -545,6 +625,28 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
         activeCropCode={speciesInRoom[0]?.taxon.cropCode}
       />
 
+      {/* ── HUD Contextual del Slot Flotante (2-State Slot Action Bar) ── */}
+      {editorState.mode !== 'space' && selectedSlot && (
+        <SlotActionBar
+          selectedSlot={selectedSlot}
+          plant={slotToPlant.get(selectedSlot)}
+          accessions={accessions}
+          accessionToTaxon={accessionToTaxon}
+          unplacedRoomIndividuals={unplacedRoomIndividuals}
+          movingPlantId={movingPlantId}
+          setMovingPlantId={setMovingPlantId}
+          onMovePlantToSlot={onMovePlantToSlot}
+          onSelectPlant={onSelectPlant}
+          onInspectPlant={onInspectPlant ? (id) => onInspectPlant(id, selectedSlot) : undefined}
+          onOpenSowDrawerWithSlot={onOpenSowDrawerWithSlot}
+          onAdvancePlantBbch={onAdvancePlantBbch}
+          onQuickClonePlant={onQuickClonePlant}
+          onRemovePlantFromSlot={onRemovePlantFromSlot}
+          onClose={onDeselectSlot}
+          anchorPercent={slotAnchorPercent}
+        />
+      )}
+
       {/* ── HUD Inferior Integrado: Dock de Semillas y Plantas ── */}
       {editorState.mode !== 'space' && (
         <RoomBottomDock
@@ -554,7 +656,8 @@ export const IsometricRoomInterior: React.FC<IsometricRoomInteriorProps> = ({
           seedLots={seedLots}
           accessionToTaxon={accessionToTaxon}
           selectedIndividualId={selectedIndividualId}
-          onSelectPlant={onSelectPlant}
+          onSelectPlant={onInspectPlant ? (id) => onInspectPlant(id) : onSelectPlant}
+          onOpenNewMaterial={onOpenNewMaterialDrawer || onOpenSowDrawer}
           isOpen={isBottomDockOpen}
           onClose={() => setIsBottomDockOpen(false)}
         />

@@ -39,21 +39,47 @@ def remove_solid_background(
     else:
         bg = np.array(bg_color, dtype=np.float32)
 
-    # 2. Calcular distancia euclídea en espacio RGB hacia el color de fondo
-    dist = np.linalg.norm(arr - bg, axis=2)
+    # 2. Determinar si el fondo corresponde a clave croma (magenta o cian)
+    is_magenta_key = (bg[0] > 150 and bg[2] > 150 and bg[1] < 130)
+    is_cyan_key = (bg[1] > 150 and bg[2] > 150 and bg[0] < 130)
 
-    # 3. Mapear distancia a alfa continuo (0.0 = transparente, 1.0 = opaco)
-    alpha = np.clip((dist - t0) / (t1 - t0), 0.0, 1.0)
-
-    # 4. Un-matting (eliminar sangrado del fondo en los píxeles semitransparentes del borde)
     out_rgb = arr.copy()
-    semi_mask = (alpha > 0.0) & (alpha < 1.0)
-    for c in range(3):
-        out_rgb[:, :, c][semi_mask] = np.clip(
-            (arr[:, :, c][semi_mask] - (1.0 - alpha[semi_mask]) * bg[c]) / alpha[semi_mask],
-            0.0,
-            255.0,
-        )
+
+    if is_magenta_key:
+        # Clave croma Magenta: fondo tiene (R + B)/2 >> G
+        diff = ((arr[:, :, 0] + arr[:, :, 2]) * 0.5) - arr[:, :, 1]
+        t_solid = 20.0
+        t_bg = 55.0
+        alpha = np.clip((t_bg - diff) / (t_bg - t_solid), 0.0, 1.0)
+
+        # Despill (eliminar tinte magenta en bordes y píxeles semitransparentes)
+        edge = (alpha > 0.0) & (alpha < 1.0)
+        excess = np.clip(((out_rgb[:, :, 0] + out_rgb[:, :, 2]) * 0.5 - out_rgb[:, :, 1]), 0.0, 255.0)
+        out_rgb[:, :, 0][edge] = np.clip(out_rgb[:, :, 0][edge] - excess[edge] * 0.7, 0.0, 255.0)
+        out_rgb[:, :, 2][edge] = np.clip(out_rgb[:, :, 2][edge] - excess[edge] * 0.7, 0.0, 255.0)
+    elif is_cyan_key:
+        # Clave croma Cian: fondo tiene (G + B)/2 >> R
+        diff = ((arr[:, :, 1] + arr[:, :, 2]) * 0.5) - arr[:, :, 0]
+        t_solid = 20.0
+        t_bg = 55.0
+        alpha = np.clip((t_bg - diff) / (t_bg - t_solid), 0.0, 1.0)
+
+        # Despill cian
+        edge = (alpha > 0.0) & (alpha < 1.0)
+        excess = np.clip(((out_rgb[:, :, 1] + out_rgb[:, :, 2]) * 0.5 - out_rgb[:, :, 0]), 0.0, 255.0)
+        out_rgb[:, :, 1][edge] = np.clip(out_rgb[:, :, 1][edge] - excess[edge] * 0.7, 0.0, 255.0)
+        out_rgb[:, :, 2][edge] = np.clip(out_rgb[:, :, 2][edge] - excess[edge] * 0.7, 0.0, 255.0)
+    else:
+        # Distancia euclídea estándar para fondos neutros (blanco, negro, gris)
+        dist = np.linalg.norm(arr - bg, axis=2)
+        alpha = np.clip((dist - t0) / (t1 - t0), 0.0, 1.0)
+        semi_mask = (alpha > 0.0) & (alpha < 1.0)
+        for c in range(3):
+            out_rgb[:, :, c][semi_mask] = np.clip(
+                (arr[:, :, c][semi_mask] - (1.0 - alpha[semi_mask]) * bg[c]) / alpha[semi_mask],
+                0.0,
+                255.0,
+            )
 
     # 5. Ensamblar imagen RGBA
     rgba = np.dstack([out_rgb.astype(np.uint8), (alpha * 255.0).astype(np.uint8)])

@@ -33,27 +33,21 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   {
     to: '/',
-    label: 'Inicio y Guía',
-    sub: 'Visión del ciclo',
-    icon: LayoutDashboard,
-    end: true,
-  },
-  {
-    to: '/locations',
     step: '01',
-    label: 'Mis Espacios',
-    sub: 'Ubicaciones y clima',
+    label: 'Mapa Isométrico',
+    sub: 'Mis espacios y cultivo',
     icon: Map,
+    matchPaths: ['/', '/locations'],
   },
   {
     to: '/accessions',
     step: '02',
-    label: 'Banco de Semillas',
-    sub: 'Variedades y lotes',
+    label: 'Inventario y Especies',
+    sub: 'Semillas, variedades y catálogo',
     icon: Sprout,
     matchPaths: ['/accessions', '/seedlots', '/taxons'],
     children: [
-      { to: '/accessions', label: 'Variedades (Accesiones)', icon: Sprout },
+      { to: '/accessions', label: 'Variedades / Material', icon: Sprout },
       { to: '/seedlots',   label: 'Sobres / Lotes',          icon: Package },
       { to: '/taxons',     label: 'Catálogo Botánico',       icon: Leaf },
     ],
@@ -61,8 +55,8 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/individuals',
     step: '03',
-    label: 'Cultivo Activo',
-    sub: 'Plantas y fenotipado',
+    label: 'Plantas y Campo',
+    sub: 'Seguimiento y fenotipado',
     icon: Users,
     matchPaths: ['/individuals', '/phenotyping'],
     children: [
@@ -76,6 +70,12 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Lab. de Cruzas',
     sub: 'Hibridación y pedigrí',
     icon: GitBranch,
+  },
+  {
+    to: '/dashboard',
+    label: 'Resumen y Guía',
+    sub: 'Métricas del ciclo',
+    icon: LayoutDashboard,
   },
 ]
 
@@ -213,10 +213,10 @@ export function RootLayout() {
         >
           {NAV_ITEMS.map(({ to, step, label, sub, icon: Icon, end, matchPaths, children }) => {
             const isGroupActive = matchPaths
-              ? matchPaths.some(p => location.pathname.startsWith(p))
+              ? matchPaths.some(p => (p === '/' ? location.pathname === '/' : location.pathname.startsWith(p)))
               : end
                 ? location.pathname === to
-                : location.pathname.startsWith(to)
+                : (to === '/' ? location.pathname === '/' : location.pathname.startsWith(to))
 
             return (
               <div key={to}>

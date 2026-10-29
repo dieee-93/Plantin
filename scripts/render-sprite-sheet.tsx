@@ -142,7 +142,7 @@ async function generateSpriteSheet() {
 
   const cellWidth = 140
   const cellHeight = 160
-  const headerColWidth = 190
+  const headerColWidth = 200
   const headerRowHeight = 55
 
   const totalWidth = headerColWidth + columns.length * cellWidth
@@ -174,6 +174,10 @@ async function generateSpriteSheet() {
     { id: 'tomato-clone-04', tag: 'Clon #4 (D4)' },
     { id: 'tomato-clone-05', tag: 'Clon #5 (E5)' },
     { id: 'tomato-clone-06', tag: 'Clon #6 (F6)' },
+    { id: 'tomato-clone-07', tag: 'Clon #7 (G7)' },
+    { id: 'tomato-clone-08', tag: 'Clon #8 (H8)' },
+    { id: 'tomato-clone-09', tag: 'Clon #9 (I9)' },
+    { id: 'tomato-clone-10', tag: 'Clon #10 (J10)' },
   ]
   const tomatoTaxon = ALL_ROWS[0].taxon
 

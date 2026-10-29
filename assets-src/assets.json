@@ -1,0 +1,778 @@
+{
+  "plant.SQUASH": {
+    "kind": "plant",
+    "cropCode": "SQUASH",
+    "label": "Zapallo",
+    "archetype": "vine_climber",
+    "targetHeightUnits": 50,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "tallo rastrero corto y robusto, 3–4 hojas lobuladas grandes verde oscuro veteadas, 1 flor amarilla campanulada abierta y 1 zapallo redondo acanalado verde/naranja apoyado en la base",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "generated",
+      "fruiting_v2": "generated",
+      "fruiting_v3": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.TOM": {
+    "kind": "plant",
+    "cropCode": "TOM",
+    "label": "Tomate",
+    "archetype": "solanaceae_tall",
+    "targetHeightUnits": 55,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "planta erecta ramificada con tallos pelúcidos, hojas pinadas verde bosque, pequeño racimo de flores amarillas y racimo pendular con 3 tomates carnosos esféricos rojo brillante",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.HEMP": {
+    "kind": "plant",
+    "cropCode": "HEMP",
+    "label": "Cannabis / Cáñamo",
+    "archetype": "palmate_cane",
+    "targetHeightUnits": 60,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "caña central erecta verde esmeralda con nudos marcados, hojas palmeadas digitadas características de bordes serrados, copa apical y axilas con colas resinosas densas y pistilos dorados",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.MAI": {
+    "kind": "plant",
+    "cropCode": "MAI",
+    "label": "Maíz",
+    "archetype": "cereal_grass",
+    "targetHeightUnits": 65,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "caña alta vigorosa verde claro con raíces fúlcreas básales, hojas arqueadas acintadas de nervadura central blanca, 1 mazorca lateral envuelta en chala con barbas sedosas y panoja apical dorada",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.WHT": {
+    "kind": "plant",
+    "cropCode": "WHT",
+    "label": "Trigo",
+    "archetype": "cereal_grass",
+    "targetHeightUnits": 60,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "manojo compacto de cañas delgadas con hojas acintadas erguidas verde oliva, culminando en espigas doradas compactas con aristas pronunciadas",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.LETTUCE": {
+    "kind": "plant",
+    "cropCode": "LETTUCE",
+    "label": "Lechuga",
+    "archetype": "rosette_leafy",
+    "targetHeightUnits": 24,
+    "displayWidthUnits": 70,
+    "keyColor": "#FF00FF",
+    "structure": "roseta basal densa y compacta de hojas anchas abanicadas verde tierno vibrante con bordes arrepollados ondulados",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.CARROT": {
+    "kind": "plant",
+    "cropCode": "CARROT",
+    "label": "Zanahoria",
+    "archetype": "root_tuber",
+    "targetHeightUnits": 30,
+    "displayWidthUnits": 70,
+    "keyColor": "#FF00FF",
+    "structure": "cuello superior cónico de zanahoria naranja asomando del punto base, coronado por un penacho denso de hojas finamente divididas y plumosas verde fresco",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.BEETROOT": {
+    "kind": "plant",
+    "cropCode": "BEETROOT",
+    "label": "Remolacha",
+    "archetype": "root_tuber",
+    "targetHeightUnits": 28,
+    "displayWidthUnits": 70,
+    "keyColor": "#00FFFF",
+    "structure": "hombro globular de raíz color borravino púrpura en la base, pecíolos rojizos erguidos y hojas ovadas verde oscuro con marcadas nervaduras fucsia",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.STRAWBERRY": {
+    "kind": "plant",
+    "cropCode": "STRAWBERRY",
+    "label": "Frutilla",
+    "archetype": "rosette_leafy",
+    "targetHeightUnits": 22,
+    "displayWidthUnits": 70,
+    "keyColor": "#FF00FF",
+    "structure": "mata baja rastrera de hojas trifoliadas verde intenso con bordes aserrados, pequeñas flores blancas de centro amarillo y 2 frutillas cónicas rojo escarlata colgando",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.SUN_OIL": {
+    "kind": "plant",
+    "cropCode": "SUN_OIL",
+    "label": "Girasol",
+    "archetype": "heliotropo_tall",
+    "targetHeightUnits": 68,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "tallo grueso erecto con grandes hojas acorazonadas y una inflorescencia en capítulo radiante de corona amarilla brillante y disco central marrón oscuro",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.CITRUS_ORANGE": {
+    "kind": "plant",
+    "cropCode": "CITRUS_ORANGE",
+    "label": "Naranjo",
+    "archetype": "woody_perennial",
+    "targetHeightUnits": 60,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "arbolito frutal leñoso con tronco leñoso corto marrón, copa globular tupida de hojas verde oscuro lustroso y 3–4 naranjas esféricas brillantes",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.PEPPER_SWEET": {
+    "kind": "plant",
+    "cropCode": "PEPPER_SWEET",
+    "label": "Pimiento",
+    "archetype": "solanaceae_tall",
+    "targetHeightUnits": 50,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "planta erecta de pimiento de porte medio con tallos verdes angulosos bifurcados en 'Y', hojas lanceoladas verde oscuro lustroso con punta afinada y nervadura central, pequeñas flores blancas solitarias en las axilas y 2 pimientos morrones colgantes carnosos de 3-4 lóbulos rojo bermellón brillante con acabado satinado natural y cáliz estrellado carnoso verde",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "generated",
+      "structure": "generated",
+      "leaf": "generated",
+      "germination": "pending",
+      "structure_v1": "generated"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.EGGPLANT": {
+    "kind": "plant",
+    "cropCode": "EGGPLANT",
+    "label": "Berenjena",
+    "archetype": "solanaceae_tall",
+    "targetHeightUnits": 52,
+    "displayWidthUnits": 80,
+    "keyColor": "#00FFFF",
+    "structure": "mata vigorosa de hojas grandes lobuladas verde aterciopelado, flor estrella violeta con centro amarillo y 1 fruto ovoide péndulo morado oscuro brillante",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.ONION": {
+    "kind": "plant",
+    "cropCode": "ONION",
+    "label": "Cebolla",
+    "archetype": "root_tuber",
+    "targetHeightUnits": 26,
+    "displayWidthUnits": 70,
+    "keyColor": "#FF00FF",
+    "structure": "bulbo basal redondeado cobrizo apoyado en el suelo, del cual emergen hojas tubulares erguidas fistulosas verde azulado glauco",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "generated",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.BEA_DRY": {
+    "kind": "plant",
+    "cropCode": "BEA_DRY",
+    "label": "Poroto",
+    "archetype": "vine_climber",
+    "targetHeightUnits": 50,
+    "displayWidthUnits": 80,
+    "keyColor": "#FF00FF",
+    "structure": "guía trepadora ligera con hojas trifoliadas redondeadas verde esmeralda, zarcillos curvos y vainas alargadas péndulas verde claro",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.GRAPE": {
+    "kind": "plant",
+    "cropCode": "GRAPE",
+    "label": "Vid",
+    "archetype": "vine_climber",
+    "targetHeightUnits": 55,
+    "displayWidthUnits": 80,
+    "keyColor": "#00FFFF",
+    "structure": "sarmiento leñoso retorcido con hojas palmatilobadas verde bosque, zarcillos espiralados y un racimo cónico apretado de uvas azul morado con pruina",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "plant.GEN": {
+    "kind": "plant",
+    "cropCode": "GEN",
+    "label": "Herbácea / Arabidopsis",
+    "archetype": "generic_herb",
+    "targetHeightUnits": 30,
+    "displayWidthUnits": 70,
+    "keyColor": "#FF00FF",
+    "structure": "pequeña planta herbácea con roseta basal de hojas redondeadas verde tierno, tallo floral delgado con diminutas flores blancas y silicuas delgadas",
+    "phases": [
+      "fruiting",
+      "flowering",
+      "structure",
+      "leaf",
+      "germination"
+    ],
+    "status": {
+      "fruiting": "pending",
+      "flowering": "pending",
+      "structure": "pending",
+      "leaf": "pending",
+      "germination": "pending"
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.pot_20l": {
+    "kind": "object",
+    "typeId": "pot_20l",
+    "label": "Maceta 20 L",
+    "category": "container",
+    "footprint": {
+      "w": 35,
+      "d": 35,
+      "h": 30
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "maceta troncocónica grande de plástico inyectado color terracota mate, borde circular grueso y rígido, interior relleno de sustrato fértil marrón oscuro nivelado",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.pot_5l": {
+    "kind": "object",
+    "typeId": "pot_5l",
+    "label": "Maceta 5 L",
+    "category": "container",
+    "footprint": {
+      "w": 25,
+      "d": 25,
+      "h": 22
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "maceta troncocónica de plástico terracota satinado, reborde superior reforzado, boca circular con sustrato orgánico oscuro nivelado 1 cm bajo el borde",
+    "status": "generated",
+    "anchor": {
+      "x": -26,
+      "y": -26,
+      "width": 52,
+      "height": 52,
+      "soilY": -9
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.pot_1l": {
+    "kind": "object",
+    "typeId": "pot_1l",
+    "label": "Maceta 1 L",
+    "category": "container",
+    "footprint": {
+      "w": 15,
+      "d": 15,
+      "h": 14
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "pequeña maceta troncocónica plástica de termoformado color terracota o negro mate para trasplante, con tierra oscura adentro",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.tray_72": {
+    "kind": "object",
+    "typeId": "tray_72",
+    "label": "Bandeja 72 alvéolos",
+    "category": "container",
+    "footprint": {
+      "w": 54,
+      "d": 28,
+      "h": 5
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "bandeja semillera rectangular de germinación en plástico negro mate con cuadrícula visible de alvéolos cónicos rellenos de turba/sustrato oscuro",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.shelf_3": {
+    "kind": "object",
+    "typeId": "shelf_3",
+    "label": "Estantería 3 niveles",
+    "category": "furniture",
+    "footprint": {
+      "w": 100,
+      "d": 40,
+      "h": 180
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "estantería modular metálica de cultivo con 4 perfiles angulares grises de acero ranurado y 3 estantes lisos reforzados abiertos por todos sus lados",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.water_tank": {
+    "kind": "object",
+    "typeId": "water_tank",
+    "label": "Tanque de riego",
+    "category": "equipment",
+    "footprint": {
+      "w": 80,
+      "d": 80,
+      "h": 160
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "tanque cilíndrico vertical de almacenamiento de agua en polietileno azul industrial, con tapa roscada superior y acople inferior de válvula de salida",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.led_panel": {
+    "kind": "object",
+    "typeId": "led_panel",
+    "label": "Panel LED",
+    "category": "equipment",
+    "footprint": {
+      "w": 100,
+      "d": 30,
+      "h": 10
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "luminaria colgante rectangular para cultivo indoor con disipador de aluminio plateado/blanco en la parte superior y cara inferior con difusor LED blanco cálido",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.door": {
+    "kind": "object",
+    "typeId": "door",
+    "label": "Puerta técnica",
+    "category": "structure",
+    "footprint": {
+      "w": 90,
+      "d": 10,
+      "h": 210
+    },
+    "mirrorForViewB": false,
+    "keyColor": "#FF00FF",
+    "structure": "puerta técnica hermética para invernadero o cámara, marco perimetral blanco con burlete negro, manija de palanca y ventana ocular rectangular de vidrio en el tercio superior",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.window": {
+    "kind": "object",
+    "typeId": "window",
+    "label": "Ventana de ventilación",
+    "category": "structure",
+    "footprint": {
+      "w": 120,
+      "d": 10,
+      "h": 100
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "ventana basculante para ventilación de invernadero con marco de aluminio blanco y panel traslúcido de policarbonato alveolar",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.env_sensor_station": {
+    "kind": "object",
+    "typeId": "env_sensor_station",
+    "label": "Estación IoT Agroclimática",
+    "category": "equipment",
+    "footprint": {
+      "w": 25,
+      "d": 25,
+      "h": 140
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "estación agrometeorológica compacta sobre mástil vertical gris claro, caja estanca superior con antena corta y sensor abombado de radiación/temperatura",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.irrigation_controller": {
+    "kind": "object",
+    "typeId": "irrigation_controller",
+    "label": "Programador de Riego",
+    "category": "equipment",
+    "footprint": {
+      "w": 50,
+      "d": 20,
+      "h": 70
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "gabinete estanco mural gris con bisagra lateral, pequeño visor digital frontal apagado y conectores inferiores para válvulas solenoides",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  },
+  "object.sign_post": {
+    "kind": "object",
+    "typeId": "sign_post",
+    "label": "Cartel de Parcela / Lote",
+    "category": "decor",
+    "footprint": {
+      "w": 45,
+      "d": 15,
+      "h": 85
+    },
+    "mirrorForViewB": true,
+    "keyColor": "#FF00FF",
+    "structure": "estaca de madera clara cepillada clavada en el suelo sosteniendo un cartel de madera horizontal plano, completamente limpio y sin ningún texto escrito",
+    "status": "pending",
+    "anchor": {
+      "soilY": null
+    },
+    "source": {
+      "tool": "Gemini (Nano Banana)",
+      "license": "Generado por el dueño; uso no comercial",
+      "date": "2026-10-27"
+    }
+  }
+}

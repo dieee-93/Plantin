@@ -1,3 +1,4 @@
+import React from 'react'
 import type { ObjectType } from './types'
 import {
   PotRenderer,
@@ -17,6 +18,19 @@ import {
   PathwayRenderer,
   TrellisRenderer,
 } from './renderers'
+import { RASTER_OBJECTS } from './raster/manifest.generated'
+import { ImageObjectRenderer } from './raster/ImageObjectRenderer'
+
+function withRasterFallback(typeId: string, ProceduralRenderer: React.FC<any>): React.FC<any> {
+  const DynamicRenderer: React.FC<any> = (props) => {
+    if (RASTER_OBJECTS[typeId]) {
+      return React.createElement(ImageObjectRenderer, props)
+    }
+    return React.createElement(ProceduralRenderer, props)
+  }
+  DynamicRenderer.displayName = `RendererWithFallback(${typeId})`
+  return DynamicRenderer
+}
 
 export const OBJECT_CATALOG: Record<string, ObjectType> = {
   pot_20l: {
@@ -26,7 +40,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 35, d: 35, h: 30 },
     mount: 'floor',
     allowedIn: ['greenhouse', 'room', 'bench', 'lab'],
-    Renderer: PotRenderer,
+    Renderer: withRasterFallback('pot_20l', PotRenderer),
     slots: (obj) => [
       {
         x: obj.x + 17.5,
@@ -43,7 +57,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 25, d: 25, h: 22 },
     mount: 'floor',
     allowedIn: ['greenhouse', 'room', 'bench', 'growth_chamber', 'lab'],
-    Renderer: PotRenderer,
+    Renderer: withRasterFallback('pot_5l', PotRenderer),
     slots: (obj) => [
       {
         x: obj.x + 12.5,
@@ -60,7 +74,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 15, d: 15, h: 14 },
     mount: 'floor',
     allowedIn: ['greenhouse', 'room', 'bench', 'growth_chamber', 'lab'],
-    Renderer: PotRenderer,
+    Renderer: withRasterFallback('pot_1l', PotRenderer),
     slots: (obj) => [
       {
         x: obj.x + 7.5,
@@ -77,7 +91,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 54, d: 28, h: 5 },
     mount: 'floor',
     allowedIn: ['greenhouse', 'growth_chamber', 'lab', 'bench'],
-    Renderer: TrayRenderer,
+    Renderer: withRasterFallback('tray_72', TrayRenderer),
     slots: (obj) => {
       const cols = 12
       const rows = 6
@@ -192,7 +206,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     mount: 'floor',
     allowedIn: ['growth_chamber', 'room', 'lab'],
     stackableSurfaceZ: [0, 60, 120],
-    Renderer: ShelfRenderer,
+    Renderer: withRasterFallback('shelf_3', ShelfRenderer),
     slots: (obj) => {
       const levels = [0, 60, 120]
       const isRotated = obj.rotation === 90 || obj.rotation === 270
@@ -220,7 +234,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 80, d: 80, h: 160 },
     mount: 'floor',
     allowedIn: ['greenhouse', 'room', 'field'],
-    Renderer: WaterTankRenderer,
+    Renderer: withRasterFallback('water_tank', WaterTankRenderer),
   },
   led_panel: {
     id: 'led_panel',
@@ -229,7 +243,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 100, d: 30, h: 10 },
     mount: 'surface',
     allowedIn: ['growth_chamber', 'lab', 'greenhouse'],
-    Renderer: LedPanelRenderer,
+    Renderer: withRasterFallback('led_panel', LedPanelRenderer),
   },
   door: {
     id: 'door',
@@ -238,7 +252,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 90, d: 10, h: 210 },
     mount: 'wall',
     allowedIn: ['greenhouse', 'growth_chamber', 'lab', 'room'],
-    Renderer: DoorRenderer,
+    Renderer: withRasterFallback('door', DoorRenderer),
   },
   window: {
     id: 'window',
@@ -247,7 +261,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 120, d: 10, h: 100 },
     mount: 'wall',
     allowedIn: ['greenhouse', 'room', 'lab'],
-    Renderer: WindowRenderer,
+    Renderer: withRasterFallback('window', WindowRenderer),
   },
   env_sensor_station: {
     id: 'env_sensor_station',
@@ -256,7 +270,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 25, d: 25, h: 140 },
     mount: 'floor',
     allowedIn: ['greenhouse', 'growth_chamber', 'field', 'room'],
-    Renderer: SensorStationRenderer,
+    Renderer: withRasterFallback('env_sensor_station', SensorStationRenderer),
   },
   irrigation_controller: {
     id: 'irrigation_controller',
@@ -265,7 +279,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 50, d: 20, h: 70 },
     mount: 'wall',
     allowedIn: ['greenhouse', 'room', 'growth_chamber', 'field'],
-    Renderer: IrrigationControllerRenderer,
+    Renderer: withRasterFallback('irrigation_controller', IrrigationControllerRenderer),
   },
   drip_irrigation_line: {
     id: 'drip_irrigation_line',
@@ -287,7 +301,7 @@ export const OBJECT_CATALOG: Record<string, ObjectType> = {
     footprint: { w: 45, d: 15, h: 85 },
     mount: 'floor',
     allowedIn: ['field', 'greenhouse', 'room'],
-    Renderer: SignPostRenderer,
+    Renderer: withRasterFallback('sign_post', SignPostRenderer),
   },
   pathway: {
     id: 'pathway',

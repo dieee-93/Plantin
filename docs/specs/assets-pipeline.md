@@ -93,7 +93,7 @@ Es la fuente única de estilo. Cualquier agente (Gemini, Claude) o persona que g
 
 ### 4.2 Perspectiva (lo que hace que encaje en el motor)
 - **Vista 3/4 desde arriba, elevación ~30°**, la misma de la proyección dimétrica 2:1 del motor. Las caras superiores de los objetos se ven como rombos de proporción 2:1.
-- **Plantas**: crecen hacia arriba desde **un único punto de base**; el follaje puede abrirse hacia los lados, pero la base es un punto. Sin maceta: la maceta la dibuja el motor.
+- **Plantas**: crecen hacia arriba desde **un único punto de base (cuello de raíz / corona radicular viva)**; el tallo debe converger verticalmente hacia abajo con terminación orgánica intacta (NUNCA cortada transversalmente al bies como pepino/tubo ni flotando). Sin maceta: la maceta la dibuja el motor.
 - **Objetos**: orientados como el motor dibuja la vista `a` (frente hacia abajo-izquierda). La vista `b` se obtiene espejando en horizontal (§7.2); por eso los objetos deben ser **simétricos o funcionar espejados**.
 - Siempre se adjunta la **guía de perspectiva** del asset (§6.1) como imagen de referencia en el prompt.
 

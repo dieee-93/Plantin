@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LocationSetupModal } from '../LocationSetupModal'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
+import { useTaxonStore } from '@/store/taxonStore'
 import * as geoService from '@/services/climate/geolocation'
 import * as openMeteo from '@/services/climate/openMeteoClient'
 import * as geocoding from '@/services/climate/geocodingClient'
@@ -15,6 +16,9 @@ describe('LocationSetupModal', () => {
       currentClimate: undefined,
       isLoadingClimate: false,
       climateError: undefined,
+    })
+    useTaxonStore.setState({
+      taxons: [],
     })
     vi.restoreAllMocks()
     vi.spyOn(openMeteo, 'fetchClimateProfile').mockResolvedValue(BUENOS_AIRES)
@@ -93,6 +97,55 @@ describe('LocationSetupModal', () => {
       latitude: -38.71,
       longitude: -62.26,
       elevation: undefined,
+    })
+  })
+
+  it('permite el flujo completo de 2 pasos: configurar ubicación y seleccionar especies iniciales', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(geoService, 'getBrowserPosition').mockResolvedValue({
+      latitude: -34.6,
+      longitude: -58.4,
+      elevation: 25,
+    })
+
+    render(<LocationSetupModal />)
+
+    // Paso 1: Configurar ubicación
+    expect(screen.getByText(/Configura la ubicación de tu cultivo/i)).toBeInTheDocument()
+    const gpsBtn = screen.getByRole('button', { name: /Detectar mi ubicación actual/i })
+    await user.click(gpsBtn)
+
+    // Al guardar ubicación pasa automáticamente al Paso 2
+    await waitFor(() => {
+      expect(useAgroClimateStore.getState().farmCoordinates).toMatchObject({
+        latitude: -34.6,
+        longitude: -58.4,
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/Selecciona las especies con las que vas a trabajar/i)).toBeInTheDocument()
+    })
+
+    // Paso 2: Selección de especies rápidas (Tomate y Naranjo Dulce)
+    const tomateChip = screen.getByRole('button', { name: /Tomate/i })
+    await user.click(tomateChip)
+
+    const naranjoChip = screen.getByRole('button', { name: /Naranjo Dulce/i })
+    await user.click(naranjoChip)
+
+    // Verificar en el store de taxones
+    const stateTaxons = useTaxonStore.getState().taxons
+    expect(stateTaxons.some((t) => t.genus === 'Solanum' && t.species === 'lycopersicum')).toBe(true)
+    expect(stateTaxons.some((t) => t.genus === 'Citrus' && t.species === 'sinensis')).toBe(true)
+
+    // Finalizar en el botón primario
+    const finishBtn = screen.getByRole('button', { name: /Comenzar en el Mapa Isométrico/i })
+    await user.click(finishBtn)
+
+    // El wizard debe cerrarse
+    await waitFor(() => {
+      expect(screen.queryByText(/Selecciona las especies con las que vas a trabajar/i)).not.toBeInTheDocument()
     })
   })
 })

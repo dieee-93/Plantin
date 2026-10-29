@@ -1,6 +1,14 @@
 // Archivo generado por scripts/assets/build-manifest.ts — no editar a mano
 import type { BbchPhase } from '../../visual/plantSpec'
 
+export interface RasterSpriteMeta {
+  href: string
+  width: number
+  height: number
+  anchorX: number
+  anchorY: number
+}
+
 export const RASTER_SPRITES: Partial<
   Record<string /* cropCode */, Partial<Record<BbchPhase | 'dead' | 'harvested', string>>>
 > = {
@@ -82,5 +90,58 @@ export const RASTER_SPRITES: Partial<
     structure: new URL('./assets/sun_oil-structure.webp', import.meta.url).href,
     flowering: new URL('./assets/sun_oil-flowering.webp', import.meta.url).href,
     fruiting: new URL('./assets/sun_oil-fruiting.webp', import.meta.url).href,
+  },
+  PEPPER_SWEET: {
+    fruiting: new URL('./assets/pepper_sweet-fruiting.webp', import.meta.url).href,
+    flowering: new URL('./assets/pepper_sweet-flowering.webp', import.meta.url).href,
+    structure: new URL('./assets/pepper_sweet-structure.webp', import.meta.url).href,
+    leaf: new URL('./assets/pepper_sweet-leaf.webp', import.meta.url).href,
+  },
+  ONION: {
+    fruiting: new URL('./assets/onion-fruiting.webp', import.meta.url).href,
+  },
+}
+
+export const RASTER_SPRITES_META: Partial<
+  Record<string, Partial<Record<BbchPhase | 'dead' | 'harvested', RasterSpriteMeta>>>
+> = {
+  PEPPER_SWEET: {
+    fruiting: {
+      href: new URL('./assets/pepper_sweet-fruiting.webp', import.meta.url).href,
+      width: 80,
+      height: 50,
+      anchorX: -40,
+      anchorY: -57,
+    },
+    flowering: {
+      href: new URL('./assets/pepper_sweet-flowering.webp', import.meta.url).href,
+      width: 80,
+      height: 50,
+      anchorX: -40,
+      anchorY: -57,
+    },
+    structure: {
+      href: new URL('./assets/pepper_sweet-structure.webp', import.meta.url).href,
+      width: 80,
+      height: 50,
+      anchorX: -40,
+      anchorY: -57,
+    },
+    leaf: {
+      href: new URL('./assets/pepper_sweet-leaf.webp', import.meta.url).href,
+      width: 80,
+      height: 50,
+      anchorX: -40,
+      anchorY: -57,
+    },
+  },
+  ONION: {
+    fruiting: {
+      href: new URL('./assets/onion-fruiting.webp', import.meta.url).href,
+      width: 70,
+      height: 26,
+      anchorX: -35,
+      anchorY: -33,
+    },
   },
 }

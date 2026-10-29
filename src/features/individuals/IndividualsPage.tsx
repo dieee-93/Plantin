@@ -11,6 +11,9 @@ import { getTraitsForCrop, getEffectiveCropCode } from '@/domain/ontology/index'
 import type { TraitDefinition } from '@/domain/ontology/types'
 import { getIndividualDisplayName } from '@/domain/individual'
 import type { Individual, IndividualStatus, CrossType } from '@/domain/individual'
+import { getVegetativeCloneCapability } from '@/domain/propagationForm'
+import { getAllGridPositions, getLocationGridDimensions } from '@/domain/location'
+import { useRoomLayoutStore } from '@/store/roomLayoutStore'
 import { ActiveCropTabs } from '@/components/ActiveCropTabs'
 import {
   Sprout, Plus, Search, Trash2, Info, MapPin, GitBranch,
@@ -287,14 +290,21 @@ function InlineTraitInput({
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
-const QUICK_BBCH_MILESTONES = [
-  { stage: 0,  label: '0 · Germinación' },
-  { stage: 14, label: '14 · Hoja' },
-  { stage: 30, label: '30 · Elongación' },
-  { stage: 55, label: '55 · Inflorescencia' },
-  { stage: 65, label: '65 · Floración' },
-  { stage: 75, label: '75 · Fruto' },
-  { stage: 89, label: '89 · Maduración' },
+const STAGE_MILESTONES = [
+  { stage: 0,  icon: '🌰', shortLabel: 'Germinación', ariaLabel: '0 · Germinación' },
+  { stage: 14, icon: '🌱', shortLabel: 'Plántula', ariaLabel: '14 · Hoja' },
+  { stage: 30, icon: '🌿', shortLabel: 'Vegetativo', ariaLabel: '30 · Elongación' },
+  { stage: 55, icon: '🌼', shortLabel: 'Botón floral', ariaLabel: '55 · Inflorescencia' },
+  { stage: 65, icon: '🌸', shortLabel: 'Floración', ariaLabel: '65 · Floración' },
+  { stage: 75, icon: '🍅', shortLabel: 'Fruto', ariaLabel: '75 · Fruto' },
+  { stage: 89, icon: '🌾', shortLabel: 'Maduración', ariaLabel: '89 · Maduración' },
+] as const
+
+const VITAL_STATUS_OPTIONS: { value: IndividualStatus; label: string; icon: string; shortLabel: string }[] = [
+  { value: 'active',    label: '🟢 En cultivo (Activo)', icon: '🟢', shortLabel: 'En cultivo' },
+  { value: 'harvested', label: '🌾 Cosechado',           icon: '🌾', shortLabel: 'Cosechado' },
+  { value: 'dead',      label: '🥀 Muerto / Baja',       icon: '🥀', shortLabel: 'Muerto / Baja' },
+  { value: 'discarded', label: '🗑️ Descartado',          icon: '🗑️', shortLabel: 'Descartado' },
 ]
 
 export function IndividualDetail({
@@ -310,7 +320,7 @@ export function IndividualDetail({
   const { accessions } = useAccessionStore()
   const { locations } = useLocationStore()
   const { taxons } = useTaxonStore()
-  const { individuals, update: updateIndividual } = useIndividualStore()
+  const { individuals, update: updateIndividual, add: addIndividual } = useIndividualStore()
   const { seedLots, add: addSeedLot } = useSeedLotStore()
   const { observations, add: addObservation } = useObservationStore()
 
@@ -326,7 +336,10 @@ export function IndividualDetail({
   const traits = effectiveCropCode ? getTraitsForCrop(effectiveCropCode) : (taxon?.traits || [])
   const plantObservations = observations.filter(o => o.individualId === individual.id)
 
+  const cloneCap = getVegetativeCloneCapability(taxon)
+
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showFineBbch, setShowFineBbch] = useState(false)
   const [bbchDraft, setBbchDraft] = useState<string>(
     individual.currentBBCH !== undefined ? String(individual.currentBBCH) : ''
   )
@@ -337,18 +350,92 @@ export function IndividualDetail({
   const [harvestGermRate, setHarvestGermRate] = useState('')
   const [harvestSuccessMsg, setHarvestSuccessMsg] = useState<string | null>(null)
 
+  const [showClonePanel, setShowClonePanel] = useState(false)
+  const [cloneCount, setCloneCount] = useState('1')
+  const [clonePlacementMode, setClonePlacementMode] = useState<'auto_cells' | 'manual_tray'>(
+    individual.locationId ? 'auto_cells' : 'manual_tray'
+  )
+  const [cloneSuccessMsg, setCloneSuccessMsg] = useState<string | null>(null)
+
   // Inline phenotyping state
   const [traitForm, setTraitForm] = useState<Record<string, any>>({})
   const [phenoSuccessMsg, setPhenoSuccessMsg] = useState<string | null>(null)
 
   useEffect(() => {
     setBbchDraft(individual.currentBBCH !== undefined ? String(individual.currentBBCH) : '')
+    setShowFineBbch(false)
     setConfirmDelete(false)
     setShowHarvestPanel(false)
+    setShowClonePanel(false)
     setHarvestSuccessMsg(null)
+    setCloneSuccessMsg(null)
+    setCloneCount('1')
+    setClonePlacementMode(individual.locationId ? 'auto_cells' : 'manual_tray')
     setTraitForm({})
     setPhenoSuccessMsg(null)
-  }, [individual.id, individual.currentBBCH])
+  }, [individual.id, individual.currentBBCH, individual.locationId])
+
+  const handleOpenClonePanel = () => {
+    setCloneCount('1')
+    setClonePlacementMode(individual.locationId ? 'auto_cells' : 'manual_tray')
+    setShowClonePanel(prev => !prev)
+    setShowHarvestPanel(false)
+  }
+
+  const handleCloneSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const parsedCount = Math.max(1, Math.min(50, parseInt(cloneCount, 10) || 1))
+    const existingForAcc = individuals.filter(ind => ind.accessionId === individual.accessionId).length
+
+    let targetSlots: string[] = []
+    let roomSlots: Array<{ id: string; label: string }> = []
+
+    if (individual.locationId && clonePlacementMode === 'auto_cells') {
+      const room = locations.find(l => l.id === individual.locationId)
+      if (room) {
+        const roomPlants = individuals.filter(i => i.locationId === room.id)
+        const { rows, cols } = getLocationGridDimensions(room, roomPlants.length + parsedCount + 10)
+        const allSlots = getAllGridPositions(rows, cols)
+        const occupied = new Set(roomPlants.map(p => (p.position || p.location || '').trim().toUpperCase()))
+        targetSlots = allSlots.filter(s => !occupied.has(s))
+        roomSlots = useRoomLayoutStore.getState().getSlots(room.id)
+      }
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+    for (let i = 0; i < parsedCount; i++) {
+      const seqNum = String(existingForAcc + i + 1).padStart(2, '0')
+      const autoLabel = `${accession?.accessionNumber ?? 'PLT'} #${seqNum}`
+
+      let pos = 'Sin ubicar'
+      let slotId: string | undefined = undefined
+
+      if (individual.locationId && clonePlacementMode === 'auto_cells') {
+        const assignedSlot = targetSlots[i] ?? `CLON-${i + 1}`
+        pos = assignedSlot
+        slotId = roomSlots.find(s => s.label === assignedSlot)?.id
+      }
+
+      addIndividual({
+        accessionId: individual.accessionId,
+        maternalParentId: individual.id,
+        locationId: individual.locationId,
+        position: pos,
+        location: pos,
+        slotId,
+        label: autoLabel,
+        plantingDate: todayStr,
+        currentBBCH: cloneCap.defaultBBCH,
+        status: 'active',
+        tags: [cloneCap.defaultTag, 'clon'],
+      })
+    }
+
+    setShowClonePanel(false)
+    setCloneSuccessMsg(
+      `${parsedCount} ${cloneCap.shortNoun}${parsedCount > 1 ? 's' : ''} creado${parsedCount > 1 ? 's' : ''} exitosamente desde ${displayName}.`
+    )
+  }
 
   const handleOpenHarvestPanel = () => {
     const existingCount = seedLots.filter(l => l.accessionId === individual.accessionId).length + 1
@@ -456,24 +543,6 @@ export function IndividualDetail({
                 ({accession?.accessionNumber ?? 'Sin accesion'})
               </span>
               <StatusBadge status={individual.status} />
-              <select
-                aria-label="Cambiar estado"
-                value={individual.status}
-                onChange={e => updateIndividual(individual.id, { status: e.target.value as IndividualStatus })}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-elevated)',
-                  fontSize: 11.5,
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                }}
-              >
-                {(Object.entries(STATUS_CONFIG) as [IndividualStatus, typeof STATUS_CONFIG[IndividualStatus]][]).map(([key, cfg]) => (
-                  <option key={key} value={key}>{cfg.label}</option>
-                ))}
-              </select>
               {individual.generation && (
                 <span
                   style={{
@@ -506,6 +575,29 @@ export function IndividualDetail({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+            {cloneCap.canClone && (
+              <button
+                type="button"
+                onClick={handleOpenClonePanel}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '7px 13px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid #86efac',
+                  background: '#dcfce7',
+                  color: '#166534',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                className="btn-press"
+              >
+                ✂️ {cloneCap.actionLabel}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleOpenHarvestPanel}
@@ -616,6 +708,132 @@ export function IndividualDetail({
           </div>
         )}
       </header>
+
+      {/* Clone success feedback */}
+      {cloneSuccessMsg && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-md)',
+            background: '#d8f3dc',
+            border: '1px solid #b7e4c7',
+            color: '#1b4332',
+            fontSize: 13,
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <CheckCircle2 size={15} color="#2d6a4f" />
+          <span>{cloneSuccessMsg}</span>
+        </div>
+      )}
+
+      {/* Vegetative Clone Panel */}
+      {showClonePanel && (
+        <Card style={{ marginBottom: 16, background: '#f0fdf4', borderColor: '#86efac' }}>
+          <CardHeader icon={Sprout} label={`Multiplicación Vegetativa · ${cloneCap.actionLabel} de ${displayName}`} />
+          <form onSubmit={handleCloneSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label htmlFor="clone-count" style={LABEL_STYLE}>
+                Cantidad de {cloneCap.shortNoun}s
+              </label>
+              <input
+                id="clone-count"
+                aria-label="Cantidad de clones"
+                type="number"
+                min={1}
+                max={50}
+                style={INPUT_STYLE}
+                value={cloneCount}
+                onChange={e => setCloneCount(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Destino de los clones:
+              </span>
+              {individual.locationId ? (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="clone-placement-mode"
+                      aria-label="Destino de los clones"
+                      value="auto_cells"
+                      checked={clonePlacementMode === 'auto_cells'}
+                      onChange={() => setClonePlacementMode('auto_cells')}
+                    />
+                    <span>Plantar automáticamente en celdas libres de esta sala</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="clone-placement-mode"
+                      value="manual_tray"
+                      checked={clonePlacementMode === 'manual_tray'}
+                      onChange={() => setClonePlacementMode('manual_tray')}
+                    />
+                    <span>Dejar en Bandeja (Sin ubicar) para ubicar manualmente</span>
+                  </label>
+                </>
+              ) : (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="clone-placement-mode"
+                    aria-label="Destino de los clones"
+                    value="manual_tray"
+                    checked
+                    readOnly
+                  />
+                  <span>Dejar en Bandeja (Sin ubicar) para ubicar manualmente</span>
+                </label>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowClonePanel(false)}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)',
+                  background: 'white',
+                  color: 'var(--text-secondary)',
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '7px 16px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: '#16a34a',
+                  color: 'white',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Confirmar {cloneCap.shortNoun}s
+              </button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {/* Harvest success feedback */}
       {harvestSuccessMsg && (
@@ -736,74 +954,215 @@ export function IndividualDetail({
         </Card>
       )}
 
-      {/* BBCH Interactive Card */}
+      {/* ── Unified Ciclo de Vida y Desarrollo Card ── */}
       <Card style={{ marginBottom: 16 }}>
-        <CardHeader icon={Activity} label="Estadio fenologico BBCH" />
-        <BBCHBar stage={individual.currentBBCH} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            <Activity size={13} strokeWidth={2} color="var(--text-tertiary)" />
+            Ciclo de Vida y Desarrollo
+          </div>
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 99,
+              background: 'var(--accent-light)',
+              color: 'var(--accent)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            BBCH {individual.currentBBCH ?? 0}
+          </span>
+        </div>
 
-        <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {QUICK_BBCH_MILESTONES.map(m => {
+        {/* Integrated Vital Status Row (Estado del individuo) */}
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '10px 12px',
+            background: 'var(--surface-base)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--text-tertiary)',
+                  textTransform: 'uppercase',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                Estado:
+              </span>
+              {VITAL_STATUS_OPTIONS.map(opt => {
+                const isSelected = individual.status === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateIndividual(individual.id, { status: opt.value })}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '4px 9px',
+                      borderRadius: 99,
+                      fontSize: 11.5,
+                      fontWeight: isSelected ? 700 : 500,
+                      border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                      background: isSelected ? 'var(--accent-light)' : 'var(--surface-elevated)',
+                      color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <select
+              aria-label="Cambiar estado"
+              className="sr-only"
+              value={individual.status}
+              onChange={e => updateIndividual(individual.id, { status: e.target.value as IndividualStatus })}
+            >
+              {VITAL_STATUS_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Visual Growth Stepper (BBCH) */}
+        <div style={{ marginTop: 8 }}>
+          <div style={{ marginBottom: 10 }}>
+            <BBCHBar stage={individual.currentBBCH} />
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+              alignItems: 'center',
+              marginTop: 12,
+            }}
+          >
+            {STAGE_MILESTONES.map(m => {
               const isCurrent = individual.currentBBCH === m.stage
               return (
                 <button
                   key={m.stage}
                   type="button"
+                  aria-label={m.ariaLabel}
                   onClick={() => handleSaveBBCH(m.stage)}
                   style={{
-                    padding: '3px 8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '5px 10px',
                     borderRadius: 99,
-                    fontSize: 11,
-                    fontFamily: 'var(--font-mono)',
-                    border: isCurrent ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    fontSize: 11.5,
+                    fontFamily: 'var(--font-sans)',
+                    border: isCurrent ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                     background: isCurrent ? 'var(--accent-light)' : 'var(--surface-elevated)',
-                    color: isCurrent ? 'var(--accent)' : 'var(--text-secondary)',
-                    fontWeight: isCurrent ? 600 : 400,
+                    color: isCurrent ? 'var(--accent)' : 'var(--text-primary)',
+                    fontWeight: isCurrent ? 700 : 500,
                     cursor: 'pointer',
+                    boxShadow: isCurrent ? 'var(--shadow-sm)' : 'none',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                  {m.label}
+                  <span>{m.icon}</span>
+                  <span>{m.shortLabel}</span>
                 </button>
               )
             })}
           </div>
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              aria-label="Actualizar BBCH"
-              type="number"
-              min={0}
-              max={99}
-              placeholder="0-99"
-              value={bbchDraft}
-              onChange={e => setBbchDraft(e.target.value)}
-              style={{
-                ...INPUT_STYLE,
-                width: 68,
-                padding: '4px 8px',
-                fontSize: 12,
-                fontFamily: 'var(--font-mono)',
-              }}
-            />
+        {/* Collapsible Expert BBCH Fine-Tuning */}
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <button
               type="button"
-              onClick={() => {
-                if (bbchDraft.trim() !== '') handleSaveBBCH(Number(bbchDraft))
-              }}
+              onClick={() => setShowFineBbch(prev => !prev)}
               style={{
-                padding: '5px 10px',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--accent)',
-                color: 'white',
+                background: 'transparent',
                 border: 'none',
+                color: 'var(--text-secondary)',
                 fontSize: 11.5,
                 fontWeight: 600,
                 cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '3px 0',
               }}
             >
-              Guardar BBCH
+              <span>⚙️ Ajuste fino BBCH ({individual.currentBBCH ?? 0}/99)</span>
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{showFineBbch ? '▲ Ocultar' : '▼ Calibrar'}</span>
             </button>
           </div>
+
+          {showFineBbch && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+              <input
+                aria-label="Actualizar BBCH"
+                type="number"
+                min={0}
+                max={99}
+                placeholder="0-99"
+                value={bbchDraft}
+                onChange={e => setBbchDraft(e.target.value)}
+                style={{
+                  ...INPUT_STYLE,
+                  width: 76,
+                  padding: '4px 8px',
+                  fontSize: 12,
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (bbchDraft.trim() !== '') handleSaveBBCH(Number(bbchDraft))
+                }}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--accent)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Guardar BBCH
+              </button>
+            </div>
+          )}
         </div>
       </Card>
 

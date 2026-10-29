@@ -6,7 +6,7 @@ import type { Accession } from '@/domain/accession'
 import type { SeedLot } from '@/domain/seedLot'
 import type { Taxon } from '@/domain/taxon'
 import { resolveBotanicalArchetype } from '../botanicalArchetypes'
-import { Sprout, X, GripHorizontal } from 'lucide-react'
+import { Sprout, X, GripHorizontal, Plus } from 'lucide-react'
 
 export interface RoomBottomDockProps {
   locationType?: LocationType
@@ -16,6 +16,7 @@ export interface RoomBottomDockProps {
   accessionToTaxon: Map<string, Taxon>
   selectedIndividualId: string | null
   onSelectPlant: (individualId: string) => void
+  onOpenNewMaterial?: () => void
   isOpen?: boolean
   onClose?: () => void
 }
@@ -28,6 +29,7 @@ export const RoomBottomDock: React.FC<RoomBottomDockProps> = React.memo(({
   accessionToTaxon,
   selectedIndividualId,
   onSelectPlant,
+  onOpenNewMaterial,
   isOpen: controlledIsOpen,
   onClose: controlledOnClose,
 }) => {
@@ -147,35 +149,62 @@ export const RoomBottomDock: React.FC<RoomBottomDockProps> = React.memo(({
           </button>
         </div>
 
-        {/* Botón Cerrar Minimizar */}
-        <button
-          type="button"
-          onClick={handleClose}
-          aria-label="Cerrar bandeja"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 26,
-            height: 26,
-            borderRadius: '50%',
-            border: 'none',
-            background: 'var(--surface-subtle)',
-            color: 'var(--text-tertiary)',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'var(--surface-elevated)'
-            e.currentTarget.style.color = 'var(--text-primary)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'var(--surface-subtle)'
-            e.currentTarget.style.color = 'var(--text-tertiary)'
-          }}
-        >
-          <X size={14} />
-        </button>
+        {/* Acciones y Botón Cerrar Minimizar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {onOpenNewMaterial && (
+            <button
+              type="button"
+              aria-label="Nuevo Cultivo o Material"
+              onClick={onOpenNewMaterial}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 10px',
+                borderRadius: 99,
+                border: '1px solid var(--accent)',
+                background: 'var(--accent-light)',
+                color: 'var(--accent)',
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Plus size={12} strokeWidth={2.5} />
+              <span>+ Nuevo Cultivo / Material</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Cerrar bandeja"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              border: 'none',
+              background: 'var(--surface-subtle)',
+              color: 'var(--text-tertiary)',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'var(--surface-elevated)'
+              e.currentTarget.style.color = 'var(--text-primary)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'var(--surface-subtle)'
+              e.currentTarget.style.color = 'var(--text-tertiary)'
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Subtítulo Instructivo no invasivo */}
@@ -192,9 +221,34 @@ export const RoomBottomDock: React.FC<RoomBottomDockProps> = React.memo(({
       {activeTab === 'seeds' && (
         <div>
           {accessions.length === 0 ? (
-            <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', fontStyle: 'italic', margin: '4px 0' }}>
-              No hay accesiones registradas en el catálogo. Registra una variedad para sembrar.
-            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, margin: '4px 0' }}>
+              <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
+                No hay accesiones registradas en el catálogo. Registra una variedad para sembrar.
+              </p>
+              {onOpenNewMaterial && (
+                <button
+                  type="button"
+                  aria-label="+ Registrar primer Cultivo / Semilla"
+                  onClick={onOpenNewMaterial}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px dashed var(--accent)',
+                    background: 'var(--surface-elevated)',
+                    color: 'var(--accent)',
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={12} strokeWidth={2.5} />
+                  <span>+ Registrar primer Cultivo / Semilla</span>
+                </button>
+              )}
+            </div>
           ) : (
             <div
               style={{

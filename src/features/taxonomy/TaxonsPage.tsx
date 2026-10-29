@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useTaxonomySearch } from '@/hooks/useTaxonomySearch'
@@ -10,6 +10,7 @@ import type { ResolvedCrop } from '@/domain/ontology/cropResolver'
 import type { TraitDefinition } from '@/domain/ontology/types'
 import { mergeAgronomicData } from '@/domain/taxon'
 import type { AgronomicData, AgronomicField, AgronomicSource } from '@/domain/taxon'
+import { hydrateTaxonWithApis } from '@/services/taxonomy/taxonEnrichment'
 import {
   Search, Plus, LeafyGreen, Info, Database, Trash2,
   Sparkles, CheckCircle2, Thermometer, Droplets, Sun, Layers, Loader2,
@@ -103,6 +104,19 @@ export function TaxonsPage() {
   const { taxons, add, remove } = useTaxonStore()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Auto-reparación de taxones incompletos
+  const hydratedTaxonIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    for (const t of taxons) {
+      if (!t.imageUrl || !t.traits || t.traits.length === 0 || !t.agronomicData?.phMinimum) {
+        if (!hydratedTaxonIdsRef.current.has(t.id)) {
+          hydratedTaxonIdsRef.current.add(t.id)
+          void hydrateTaxonWithApis(t.id)
+        }
+      }
+    }
+  }, [taxons])
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')

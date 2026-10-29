@@ -38,6 +38,7 @@ export function useIsometricCamera(options: UseIsometricCameraOptions = {}) {
   const cameraRef = useRef(camera)
   cameraRef.current = camera
 
+  const pointerDownRef = useRef<{ x: number; y: number; pointerId: number } | null>(null)
   const isPanningRef = useRef(false)
   const lastPointerPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const springRafRef = useRef<number | null>(null)
@@ -117,14 +118,24 @@ export function useIsometricCamera(options: UseIsometricCameraOptions = {}) {
     if (target.closest('button') || target.closest('[data-interactive="true"]')) return
 
     stopSpringAnimation()
-    isPanningRef.current = true
-    lastPointerPosRef.current = { x: e.clientX, y: e.clientY }
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    } catch {}
+    pointerDownRef.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId }
   }, [stopSpringAnimation])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (pointerDownRef.current && !isPanningRef.current) {
+      const dist = Math.hypot(
+        e.clientX - pointerDownRef.current.x,
+        e.clientY - pointerDownRef.current.y
+      )
+      if (dist > 4) {
+        isPanningRef.current = true
+        lastPointerPosRef.current = { x: e.clientX, y: e.clientY }
+        try {
+          e.currentTarget.setPointerCapture(pointerDownRef.current.pointerId)
+        } catch {}
+      }
+    }
+
     if (!isPanningRef.current) return
     const dx = e.clientX - lastPointerPosRef.current.x
     const dy = e.clientY - lastPointerPosRef.current.y
@@ -150,6 +161,7 @@ export function useIsometricCamera(options: UseIsometricCameraOptions = {}) {
   }, [restingLimitX, restingLimitY, hardLimitX, hardLimitY])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    pointerDownRef.current = null
     if (isPanningRef.current) {
       isPanningRef.current = false
       try {

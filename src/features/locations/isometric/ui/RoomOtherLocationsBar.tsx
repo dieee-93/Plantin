@@ -37,31 +37,35 @@ export const RoomOtherLocationsBar: React.FC<RoomOtherLocationsBarProps> = React
   return (
     <div
       style={{
-        background: 'rgba(255, 255, 255, 0.90)',
-        backdropFilter: 'blur(16px)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md)',
-        padding: '7px 14px',
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        border: '1px solid rgba(226, 232, 240, 0.95)',
+        borderRadius: 14,
+        padding: '8px 10px',
+        maxWidth: 280,
+        width: '100%',
         display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        overflowX: 'auto',
-        boxShadow: '0 4px 16px rgba(15, 23, 42, 0.06)',
+        flexWrap: 'wrap',
+        gap: 6,
+        boxShadow: '0 8px 24px -4px rgba(15, 23, 42, 0.12)',
         pointerEvents: 'auto',
       }}
     >
-      <span
-        style={{
-          fontSize: 10.5,
-          fontFamily: 'var(--font-mono)',
-          fontWeight: 700,
-          color: 'var(--text-tertiary)',
-          textTransform: 'uppercase',
-          flexShrink: 0,
-        }}
-      >
-        Otras Salas:
-      </span>
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+        <span
+          style={{
+            fontSize: 10,
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 700,
+            color: 'var(--text-tertiary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          Otras Salas (Navegar / Soltar):
+        </span>
+      </div>
       {otherLocations.map(otherLoc => {
         const isDropTarget = dragOverRoomId === otherLoc.id
         return (
@@ -79,13 +83,13 @@ export const RoomOtherLocationsBar: React.FC<RoomOtherLocationsBarProps> = React
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
-              borderRadius: 'var(--radius-sm)',
+              gap: 5,
+              padding: '4px 8px',
+              borderRadius: 8,
               border: isDropTarget ? '1.5px solid var(--accent)' : '1px solid var(--border)',
               background: isDropTarget ? 'var(--accent-light)' : 'var(--surface-subtle)',
               color: isDropTarget ? 'var(--accent)' : 'var(--text-secondary)',
-              fontSize: 11.5,
+              fontSize: 11,
               fontWeight: 600,
               cursor: 'pointer',
               flexShrink: 0,
@@ -95,9 +99,9 @@ export const RoomOtherLocationsBar: React.FC<RoomOtherLocationsBarProps> = React
             <span>{otherLoc.name}</span>
             <span
               style={{
-                fontSize: 9.5,
+                fontSize: 9,
                 fontFamily: 'var(--font-mono)',
-                padding: '1px 5px',
+                padding: '1px 4px',
                 borderRadius: 4,
                 background: 'var(--surface-muted)',
                 color: 'var(--text-tertiary)',
@@ -111,4 +115,5 @@ export const RoomOtherLocationsBar: React.FC<RoomOtherLocationsBarProps> = React
     </div>
   )
 })
+
 RoomOtherLocationsBar.displayName = 'RoomOtherLocationsBar'

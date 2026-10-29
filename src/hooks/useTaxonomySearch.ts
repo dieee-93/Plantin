@@ -4,7 +4,7 @@ import { searchTrefle } from '@/services/taxonomy/trefleApi'
 import type { TaxonomySearchResult } from '@/services/taxonomy/types'
 
 // We create a unified search function
-async function searchUnifiedTaxonomy(query: string): Promise<TaxonomySearchResult[]> {
+export async function searchUnifiedTaxonomy(query: string): Promise<TaxonomySearchResult[]> {
   if (!query) return []
   
   // We execute both searches in parallel

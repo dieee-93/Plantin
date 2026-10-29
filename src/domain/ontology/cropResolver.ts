@@ -145,7 +145,7 @@ const CANONICAL_SPECIES_MAP: Record<string, { cropCode: string; cropName: string
   'olea_europaea':          { cropCode: 'OLIVE', cropName: 'Olivo' },
 
   // Cítricos
-  'citrus_sinensis':        { cropCode: 'CITRUS_ORANGE', cropName: 'Naranjo dulce' },
+  'citrus_sinensis':        { cropCode: 'CITRUS_ORANGE', cropName: 'Naranjo Dulce' },
   'citrus_limon':           { cropCode: 'LEMON', cropName: 'Limonero' },
   'citrus_reticulata':      { cropCode: 'MANDARIN', cropName: 'Mandarino' },
   'citrus_paradisi':        { cropCode: 'GRAPEFRUIT', cropName: 'Pomelo' },

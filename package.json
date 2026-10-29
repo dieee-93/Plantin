@@ -12,9 +12,12 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "sprites:sheet": "tsx --tsconfig tsconfig.app.json scripts/render-sprite-sheet.tsx",
-    "assets:render": "tsx scripts/assets/render-all.ts",
-    "assets:build": "tsx scripts/assets/build-sprites.ts && tsx scripts/assets/build-manifest.ts",
-    "assets": "npm run assets:render && npm run assets:build"
+    "assets:guides": "tsx scripts/assets/make-guides.ts",
+    "assets:prompts": "tsx scripts/assets/make-prompts.ts",
+    "assets:process": "tsx scripts/assets/process.ts",
+    "assets:manifest": "tsx scripts/assets/build-manifest.ts",
+    "assets": "npm run assets:process && npm run assets:manifest",
+    "assets:render": "tsx scripts/assets/render-all.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

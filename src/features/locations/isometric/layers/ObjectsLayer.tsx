@@ -10,6 +10,7 @@ export interface ObjectsLayerProps {
   placedObjects: PlacedObject[]
   selectedObjectId?: string | null
   onSelectObject?: (objectId: string) => void
+  isSpaceMode?: boolean
 }
 
 interface PlacedObjectWithFootprint {
@@ -21,6 +22,7 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(({
   placedObjects,
   selectedObjectId,
   onSelectObject,
+  isSpaceMode = false,
 }) => {
   const sortedObjects = useMemo(() => {
     const withFp: PlacedObjectWithFootprint[] = placedObjects.map(obj => {
@@ -46,7 +48,7 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(({
   }
 
   return (
-    <g data-layer="placed-objects">
+    <g data-layer="placed-objects" style={{ pointerEvents: isSpaceMode ? 'auto' : 'none' }}>
       {sortedObjects.map(({ obj }) => {
         const def = OBJECT_CATALOG[obj.typeId]
         if (!def || !def.Renderer) return null
@@ -65,9 +67,10 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(({
             data-object-id={obj.id}
             aria-label={`Objeto colocado ${def.label || obj.typeId}`}
             role="button"
-            style={{ cursor: 'pointer' }}
+            style={{ cursor: isSpaceMode ? 'pointer' : 'default' }}
             transform={`translate(${pos.x}, ${pos.y}) ${isFlipped ? 'scale(-1, 1)' : ''}`}
             onClick={(e) => {
+              if (!isSpaceMode) return
               e.stopPropagation()
               onSelectObject?.(obj.id)
             }}

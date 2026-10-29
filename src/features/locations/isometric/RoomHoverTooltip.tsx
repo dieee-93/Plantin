@@ -39,15 +39,15 @@ export const RoomHoverTooltip: React.FC<RoomHoverTooltipProps> = React.memo(({
     <div
       style={{
         position: 'absolute',
-        top: 14,
-        right: 14,
+        bottom: 62,
+        right: 18,
         zIndex: 10,
         background: 'rgba(255, 255, 255, 0.96)',
         border: `1.5px solid ${profile.badgeColor}`,
         borderRadius: 'var(--radius-md)',
-        padding: '10px 14px',
+        padding: '8px 12px',
         boxShadow: 'var(--shadow-md)',
-        maxWidth: 270,
+        maxWidth: 230,
         pointerEvents: 'none',
       }}
     >
@@ -81,16 +81,16 @@ export const RoomHoverTooltip: React.FC<RoomHoverTooltipProps> = React.memo(({
           </span>
         )}
       </div>
-      <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'var(--font-mono)' }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: 'var(--font-mono)' }}>
         {displayName}
       </p>
       {taxon && (
-        <p style={{ fontSize: 11.5, color: '#334155', fontStyle: 'italic' }}>
+        <p style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
           {taxon.genus} {taxon.species}
           {taxon.commonName ? ` (${taxon.commonName})` : ''}
         </p>
       )}
-      <p style={{ fontSize: 10.5, color: '#64748b', marginTop: 2 }}>
+      <p style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
         {profile.archetypeLabel}
       </p>
       <div
@@ -100,7 +100,7 @@ export const RoomHoverTooltip: React.FC<RoomHoverTooltipProps> = React.memo(({
           borderTop: '1px dashed #cbd5e1',
           display: 'flex',
           justifyContent: 'space-between',
-          fontSize: 11,
+          fontSize: 10.5,
           fontFamily: 'var(--font-mono)',
           color: '#1e293b',
         }}

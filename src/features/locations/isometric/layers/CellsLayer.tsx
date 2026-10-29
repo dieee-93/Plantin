@@ -26,7 +26,7 @@ export interface CellsLayerProps {
   movingPlantId: string | null
   setDragOverSlot: (slot: string | null) => void
   setMovingPlantId: (id: string | null) => void
-  onSelectPlant: (individualId: string) => void
+  onSelectPlant: (individualId: string, slot?: string) => void
   onClickEmptySlot: (posLabel: string) => void
   onMovePlantToSlot: (individualId: string, posLabel: string) => void
   onDropSeedInSlot: (posLabel: string, accessionId: string, seedLotId?: string) => void
@@ -141,6 +141,7 @@ export const CellsLayer: React.FC<CellsLayerProps> = React.memo(({
         <g
           key={posLabel}
           className="iso-cell"
+          data-interactive="true"
           transform={`translate(${center.x}, ${center.y})`}
           role="button"
           tabIndex={0}
@@ -168,7 +169,7 @@ export const CellsLayer: React.FC<CellsLayerProps> = React.memo(({
               return
             }
             if (plant) {
-              onSelectPlant(plant.id)
+              onSelectPlant(plant.id, posLabel)
             } else {
               onClickEmptySlot(posLabel)
             }
@@ -177,7 +178,7 @@ export const CellsLayer: React.FC<CellsLayerProps> = React.memo(({
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
               if (plant) {
-                onSelectPlant(plant.id)
+                onSelectPlant(plant.id, posLabel)
               } else {
                 onClickEmptySlot(posLabel)
               }
@@ -265,6 +266,7 @@ export const CellsLayer: React.FC<CellsLayerProps> = React.memo(({
               {/* Botón '+' de siembra: visible solo en hover, foco o celda activa (V3) */}
               <g
                 className={`iso-empty-plus${activeHighlight ? ' iso-active' : ''}`}
+                data-slot-plus={posLabel}
                 transform="translate(0, -15)"
                 style={{
                   opacity: activeHighlight ? 1 : undefined,
