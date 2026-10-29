@@ -30,14 +30,7 @@ recover.json
 # Generated sprite sheets
 scripts/out/
 
-# Assets pipeline (raw vendor models & intermediate renders)
-assets-src/vendor/
+# Assets pipeline (intermediate renders, inbox & guides)
 assets-src/out/
 assets-src/inbox/
 assets-src/guides/
-*.blend1
-
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class

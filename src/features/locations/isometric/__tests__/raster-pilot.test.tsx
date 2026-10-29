@@ -117,10 +117,10 @@ describe('Fase 6 — Piloto de Sprite Raster (Tomate)', () => {
     expect(image).toBeTruthy()
     expect(image?.getAttribute('preserveAspectRatio')).toBe('xMidYMax meet')
     expect(Number(image?.getAttribute('width'))).toBe(80)
-    expect(Number(image?.getAttribute('height'))).toBe(100)
-    // Alineado a la base: x = -40, y = -107 (bottom = -7)
+    expect(Number(image?.getAttribute('height'))).toBe(55)
+    // Alineado a la base: x = -40, y = -62 (bottom = -7, height = 55)
     expect(Number(image?.getAttribute('x'))).toBe(-40)
-    expect(Number(image?.getAttribute('y'))).toBe(-107)
+    expect(Number(image?.getAttribute('y'))).toBe(-62)
   })
 
   it('IsometricPlantSprite integra el sprite raster dentro del ciclo completo de animaciones y contenedor', () => {

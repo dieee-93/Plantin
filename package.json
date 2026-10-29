@@ -16,8 +16,7 @@
     "assets:prompts": "tsx scripts/assets/make-prompts.ts",
     "assets:process": "tsx scripts/assets/process.ts",
     "assets:manifest": "tsx scripts/assets/build-manifest.ts",
-    "assets": "npm run assets:process && npm run assets:manifest",
-    "assets:render": "tsx scripts/assets/render-all.ts"
+    "assets": "npm run assets:process && npm run assets:manifest"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

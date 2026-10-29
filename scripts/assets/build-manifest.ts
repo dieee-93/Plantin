@@ -27,7 +27,6 @@ type Catalog = Record<string, PlantAsset | ObjectAsset>
 export async function buildManifest() {
   const rootDir = process.cwd()
   const catalogPath = path.resolve(rootDir, 'assets-src', 'assets.json')
-  const cropsJsonPath = path.resolve(rootDir, 'assets-src', 'crops.json')
 
   const plantRasterDir = path.resolve(
     rootDir,
@@ -71,25 +70,10 @@ export async function buildManifest() {
     fs.existsSync(plantAssetsDir) ? fs.readdirSync(plantAssetsDir).filter(f => f.endsWith('.webp')) : []
   )
 
-  const legacyCrops: Record<string, any> = fs.existsSync(cropsJsonPath)
-    ? JSON.parse(fs.readFileSync(cropsJsonPath, 'utf-8'))
-    : {}
-
   const plantEntries: Record<string, Record<string, string>> = {}
   const plantMetaEntries: Record<string, Record<string, any>> = {}
 
-  // Cargar cultivos de crops.json existentes (compatibilidad histórica Blender)
-  for (const [cropCode, cfg] of Object.entries(legacyCrops)) {
-    for (const phase of Object.keys(cfg.stages)) {
-      const fileName = `${cropCode.toLowerCase()}-${phase}.webp`
-      if (plantFiles.has(fileName)) {
-        if (!plantEntries[cropCode]) plantEntries[cropCode] = {}
-        plantEntries[cropCode][phase] = fileName
-      }
-    }
-  }
-
-  // Cargar/actualizar con assets.json aprobados o disponibles con metadatos
+  // Cargar con assets.json aprobados o generados con metadatos
   for (const [_key, asset] of Object.entries(catalog)) {
     if (asset.kind !== 'plant') continue
     const plant = asset as PlantAsset
@@ -97,22 +81,20 @@ export async function buildManifest() {
 
     for (const phase of plant.phases) {
       const fileName = `${cropCode.toLowerCase()}-${phase}.webp`
-      const isApproved = plant.status?.[phase] === 'approved'
+      const phaseStatus = plant.status?.[phase]
+      const isAvailable = phaseStatus === 'approved' || phaseStatus === 'generated'
 
-      // Solo entran al manifest oficial los aprobados o si existen como fallback histórico
-      if (plantFiles.has(fileName)) {
-        if (isApproved || !plantEntries[cropCode]?.[phase]) {
-          if (!plantEntries[cropCode]) plantEntries[cropCode] = {}
-          plantEntries[cropCode][phase] = fileName
+      if (plantFiles.has(fileName) && isAvailable) {
+        if (!plantEntries[cropCode]) plantEntries[cropCode] = {}
+        plantEntries[cropCode][phase] = fileName
 
-          if (!plantMetaEntries[cropCode]) plantMetaEntries[cropCode] = {}
-          plantMetaEntries[cropCode][phase] = {
-            fileName,
-            width: plant.displayWidthUnits,
-            height: plant.targetHeightUnits,
-            anchorX: -plant.displayWidthUnits / 2,
-            anchorY: -7 - plant.targetHeightUnits,
-          }
+        if (!plantMetaEntries[cropCode]) plantMetaEntries[cropCode] = {}
+        plantMetaEntries[cropCode][phase] = {
+          fileName,
+          width: plant.displayWidthUnits,
+          height: plant.targetHeightUnits,
+          anchorX: -plant.displayWidthUnits / 2,
+          anchorY: -7 - plant.targetHeightUnits,
         }
       }
     }
@@ -245,9 +227,9 @@ export async function buildManifest() {
 
   for (const [code, _pMap] of Object.entries(plantEntries)) {
     const cat = catalog[`plant.${code}`] as PlantAsset | undefined
-    const tool = cat?.source?.tool || 'Quaternius LowPoly / Blender'
-    const lic = cat?.source?.license || 'CC0-1.0'
-    const st = cat?.status ? Object.entries(cat.status).map(([k, v]) => `${k}:${v}`).join(', ') : 'legacy'
+    const tool = cat?.source?.tool || 'Gemini (Nano Banana)'
+    const lic = cat?.source?.license || 'Generado por el dueño; uso no comercial'
+    const st = cat?.status ? Object.entries(cat.status).map(([k, v]) => `${k}:${v}`).join(', ') : 'pending'
     attrLines.push(`| ${cat?.label || code} | \`${code}\` | ${tool} | ${lic} | ${st} |`)
   }
 
@@ -255,7 +237,7 @@ export async function buildManifest() {
   for (const [typeId, _meta] of Object.entries(objectEntries)) {
     const cat = catalog[`object.${typeId}`] as ObjectAsset | undefined
     const tool = cat?.source?.tool || 'Gemini (Nano Banana)'
-    const lic = cat?.source?.license || 'Uso no comercial'
+    const lic = cat?.source?.license || 'Generado por el dueño; uso no comercial'
     attrLines.push(`| \`${typeId}\` | ${cat?.label || typeId} | ${tool} | ${lic} | ${cat?.status || 'pending'} |`)
   }
 
