@@ -19,35 +19,40 @@ const PageFallback = () => (
   </div>
 )
 
-export const router = createBrowserRouter([
+export const router = createBrowserRouter(
+  [
+    {
+      path: '/',
+      element: <RootLayout />,
+      children: [
+        {
+          index: true,
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <LocationsPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: 'locations',
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <LocationsPage />
+            </Suspense>
+          ),
+        },
+        { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'accessions', element: <AccessionsPage /> },
+        { path: 'seedlots', element: <SeedLotsPage /> },
+        { path: 'taxons', element: <TaxonsPage /> },
+        { path: 'individuals', element: <IndividualsPage /> },
+        { path: 'phenotyping', element: <PhenotypingPage /> },
+        { path: 'breeding', element: <BreedingPage /> },
+      ],
+    },
+  ],
   {
-    path: '/',
-    element: <RootLayout />,
-    children: [
-      {
-        index: true,
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <LocationsPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: 'locations',
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <LocationsPage />
-          </Suspense>
-        ),
-      },
-      { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'accessions', element: <AccessionsPage /> },
-      { path: 'seedlots', element: <SeedLotsPage /> },
-      { path: 'taxons', element: <TaxonsPage /> },
-      { path: 'individuals', element: <IndividualsPage /> },
-      { path: 'phenotyping', element: <PhenotypingPage /> },
-      { path: 'breeding', element: <BreedingPage /> },
-    ],
-  },
-])
+    basename: import.meta.env.BASE_URL,
+  }
+)
 

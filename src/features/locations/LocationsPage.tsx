@@ -265,7 +265,7 @@ export function LocationsPage() {
   const { individuals, add: addIndividual, update: updateIndividual, remove: removeIndividual } = useIndividualStore()
   const { accessions, add: addAccession } = useAccessionStore()
   const { seedLots, consumeSeeds, add: addSeedLot } = useSeedLotStore()
-  const { taxons, add: addTaxon } = useTaxonStore()
+  const { taxons } = useTaxonStore()
   const { farmCoordinates, currentWeather, currentClimate } = useAgroClimateStore()
 
   // ── Auto-reparación de taxones incompletos (agrega fotos, descriptores fenotípicos y datos FAO EcoCrop) ──
