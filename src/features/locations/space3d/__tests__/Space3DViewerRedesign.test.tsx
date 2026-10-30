@@ -329,4 +329,45 @@ describe('Space3DViewerRedesign - Full-Screen Canvas & Floating Glassmorphism HU
 
     vi.useRealTimers();
   });
+
+  it('reconciles dangling selection cleanly without crash when selected plant is undone via Ctrl+Z', () => {
+    render(
+      <Space3DViewer
+        locationId="loc-redesign-dangling"
+        locationName="Patio Dangling Test"
+        locationType="outdoor"
+      />,
+    );
+
+    // Initial plants in patio_croquis is 3
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-dangling').placedPlants,
+    ).toHaveLength(3);
+
+    // Switch to Plantar Individual tool in Design mode and add a plant
+    fireEvent.click(screen.getByRole('button', { name: /Plantar Individual/i }));
+    const plane = screen.getByTestId('interactive-plane-1to1');
+    fireEvent.click(plane, { clientX: 300, clientY: 200 });
+
+    const plantsAfter = useSpaceLayoutStore
+      .getState()
+      .getOrCreateSpaceLayout('loc-redesign-dangling').placedPlants;
+    expect(plantsAfter).toHaveLength(4);
+    const addedPlant = plantsAfter[plantsAfter.length - 1];
+
+    // Select the newly added plant
+    fireEvent.click(screen.getByTestId(`plane-plant-${addedPlant.id}`));
+    expect(screen.getByTestId('selected-plant-inspector')).toBeInTheDocument();
+
+    // Trigger undo via Ctrl+Z (the plant is removed from placedPlants)
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+
+    // Plant count goes back to 3
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-dangling').placedPlants,
+    ).toHaveLength(3);
+
+    // Inspector unmounts cleanly without throwing TypeError or leaving dangling ID
+    expect(screen.queryByTestId('selected-plant-inspector')).not.toBeInTheDocument();
+  });
 });

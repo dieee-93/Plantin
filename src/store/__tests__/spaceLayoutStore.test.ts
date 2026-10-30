@@ -416,5 +416,30 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
         expect(parsed.state.layouts).toBeDefined();
       }
     });
+
+    it('guarantees deep immutability so in-place edits to vertices do not corrupt past snapshots', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-deep-copy', 'outdoor', 'empty_lot_1to1');
+
+      // Base polygon has { x: 800, y: 0 } at index 1
+      const initial = store.getOrCreateSpaceLayout('loc-deep-copy');
+      expect(initial.baseBoundary[1].x).toBe(800);
+
+      // Move vertex to 950
+      store.moveBoundaryVertex('loc-deep-copy', 1, { x: 950, y: 0 });
+      expect(store.getOrCreateSpaceLayout('loc-deep-copy').baseBoundary[1].x).toBe(950);
+
+      // Verify that past snapshot has x=800 in independent memory
+      const past = useSpaceLayoutStore.getState().history['loc-deep-copy'].past;
+      expect(past[past.length - 1].baseBoundary[1].x).toBe(800);
+
+      // Mutate current boundary directly to test deep isolation
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-deep-copy').baseBoundary[1].x = 1200;
+      expect(useSpaceLayoutStore.getState().history['loc-deep-copy'].past[past.length - 1].baseBoundary[1].x).toBe(800);
+
+      // Undo restores original 800
+      store.undo('loc-deep-copy');
+      expect(store.getOrCreateSpaceLayout('loc-deep-copy').baseBoundary[1].x).toBe(800);
+    });
   });
 });
