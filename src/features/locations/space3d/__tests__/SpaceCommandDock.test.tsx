@@ -104,4 +104,97 @@ describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tool
     fireEvent.click(screen.getByRole('button', { name: '100 cm' }));
     expect(onChangePathWidth).toHaveBeenCalledWith(100);
   });
+
+  it('renders Deshacer (Undo) and Rehacer (Redo) buttons in design mode with enabled/disabled states', () => {
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+
+    const { rerender } = render(
+      <SpaceCommandDock
+        mode="design"
+        onChangeMode={vi.fn()}
+        onOpenSowModalOrDrawer={vi.fn()}
+        isTrayOpen={false}
+        onToggleTray={vi.fn()}
+        activeTool="inspect"
+        onChangeTool={vi.fn()}
+        pathWidthCm={80}
+        onChangePathWidth={vi.fn()}
+        pathMaterial="concrete"
+        onChangePathMaterial={vi.fn()}
+        paths={[]}
+        onRemovePath={vi.fn()}
+        plantCropCode="tomato"
+        onChangePlantCropCode={vi.fn()}
+        plantSpacingCm={30}
+        onChangePlantSpacing={vi.fn()}
+        cultivableSectorCount={2}
+        onFillSector={vi.fn()}
+        customWidthM="10"
+        setCustomWidthM={vi.fn()}
+        customDepthM="6"
+        setCustomDepthM={vi.fn()}
+        onApplyDimensions={vi.fn()}
+        onInsertVertex={vi.fn()}
+        vertexCount={4}
+        canUndo={false}
+        canRedo={false}
+        onUndo={onUndo}
+        onRedo={onRedo}
+      />,
+    );
+
+    const undoBtn = screen.getByRole('button', { name: /deshacer|undo/i });
+    const redoBtn = screen.getByRole('button', { name: /rehacer|redo/i });
+
+    expect(undoBtn).toBeInTheDocument();
+    expect(redoBtn).toBeInTheDocument();
+    expect(undoBtn).toBeDisabled();
+    expect(redoBtn).toBeDisabled();
+
+    // Rerender with canUndo and canRedo true
+    rerender(
+      <SpaceCommandDock
+        mode="design"
+        onChangeMode={vi.fn()}
+        onOpenSowModalOrDrawer={vi.fn()}
+        isTrayOpen={false}
+        onToggleTray={vi.fn()}
+        activeTool="inspect"
+        onChangeTool={vi.fn()}
+        pathWidthCm={80}
+        onChangePathWidth={vi.fn()}
+        pathMaterial="concrete"
+        onChangePathMaterial={vi.fn()}
+        paths={[]}
+        onRemovePath={vi.fn()}
+        plantCropCode="tomato"
+        onChangePlantCropCode={vi.fn()}
+        plantSpacingCm={30}
+        onChangePlantSpacing={vi.fn()}
+        cultivableSectorCount={2}
+        onFillSector={vi.fn()}
+        customWidthM="10"
+        setCustomWidthM={vi.fn()}
+        customDepthM="6"
+        setCustomDepthM={vi.fn()}
+        onApplyDimensions={vi.fn()}
+        onInsertVertex={vi.fn()}
+        vertexCount={4}
+        canUndo={true}
+        canRedo={true}
+        onUndo={onUndo}
+        onRedo={onRedo}
+      />,
+    );
+
+    expect(undoBtn).not.toBeDisabled();
+    expect(redoBtn).not.toBeDisabled();
+
+    fireEvent.click(undoBtn);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(redoBtn);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
 });

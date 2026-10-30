@@ -172,4 +172,249 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
     plants = useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-patio-2').placedPlants;
     expect(plants).toHaveLength(addedFromLine + addedFromFill);
   });
+
+  describe('spaceLayoutStore - Undo / Redo & Temporal History', () => {
+    it('initializes with canUndo and canRedo false', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-undo-1', 'outdoor', 'patio_croquis');
+
+      expect(store.canUndo('loc-undo-1')).toBe(false);
+      expect(store.canRedo('loc-undo-1')).toBe(false);
+    });
+
+    it('records addPathStroke and allows undo and redo', () => {
+      const store = useSpaceLayoutStore.getState();
+      const initial = store.getOrCreateSpaceLayout('loc-undo-2', 'outdoor', 'patio_croquis');
+      const initialPathCount = initial.paths.length;
+
+      store.addPathStroke('loc-undo-2', {
+        id: 'new-path-1',
+        material: 'concrete',
+        points: [
+          { x: 100, y: 100 },
+          { x: 200, y: 200 },
+        ],
+        widthCm: 80,
+      });
+
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-2')).toBe(true);
+      expect(useSpaceLayoutStore.getState().canRedo('loc-undo-2')).toBe(false);
+      expect(useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-2').paths).toHaveLength(
+        initialPathCount + 1,
+      );
+
+      // Undo
+      useSpaceLayoutStore.getState().undo('loc-undo-2');
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-2')).toBe(false);
+      expect(useSpaceLayoutStore.getState().canRedo('loc-undo-2')).toBe(true);
+      expect(useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-2').paths).toHaveLength(
+        initialPathCount,
+      );
+
+      // Redo
+      useSpaceLayoutStore.getState().redo('loc-undo-2');
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-2')).toBe(true);
+      expect(useSpaceLayoutStore.getState().canRedo('loc-undo-2')).toBe(false);
+      expect(useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-2').paths).toHaveLength(
+        initialPathCount + 1,
+      );
+    });
+
+    it('records multiple actions and undoes them step-by-step in reverse order', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-undo-3', 'outdoor', 'patio_croquis');
+
+      // 1. Add plant
+      const plantId = store.placePlant('loc-undo-3', {
+        label: 'Menta',
+        cropCode: 'mint',
+        xCm: 300,
+        yCm: 300,
+        canopyRadiusCm: 15,
+      });
+
+      // 2. Remove plant
+      store.removePlant('loc-undo-3', plantId);
+
+      // 3. Remove a path
+      const currentPaths = useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-3').paths;
+      const pathToRemove = currentPaths[0].id;
+      store.removePathStroke('loc-undo-3', pathToRemove);
+
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-3')).toBe(true);
+
+      // Undo 3: path should be restored
+      useSpaceLayoutStore.getState().undo('loc-undo-3');
+      expect(
+        useSpaceLayoutStore
+          .getState()
+          .getOrCreateSpaceLayout('loc-undo-3')
+          .paths.some((p) => p.id === pathToRemove),
+      ).toBe(true);
+
+      // Undo 2: removed plant should be restored
+      useSpaceLayoutStore.getState().undo('loc-undo-3');
+      expect(
+        useSpaceLayoutStore
+          .getState()
+          .getOrCreateSpaceLayout('loc-undo-3')
+          .placedPlants.some((p) => p.id === plantId),
+      ).toBe(true);
+
+      // Undo 1: newly added plant should be gone
+      useSpaceLayoutStore.getState().undo('loc-undo-3');
+      expect(
+        useSpaceLayoutStore
+          .getState()
+          .getOrCreateSpaceLayout('loc-undo-3')
+          .placedPlants.some((p) => p.id === plantId),
+      ).toBe(false);
+
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-3')).toBe(false);
+    });
+
+    it('discards redo future when a new mutation is made after undo', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-undo-4', 'outdoor', 'patio_croquis');
+
+      store.addPathStroke('loc-undo-4', {
+        id: 'branch-a',
+        material: 'concrete',
+        points: [{ x: 10, y: 10 }, { x: 50, y: 50 }],
+        widthCm: 80,
+      });
+
+      // Undo branch-a
+      useSpaceLayoutStore.getState().undo('loc-undo-4');
+      expect(useSpaceLayoutStore.getState().canRedo('loc-undo-4')).toBe(true);
+
+      // Branch B: new mutation
+      useSpaceLayoutStore.getState().addPathStroke('loc-undo-4', {
+        id: 'branch-b',
+        material: 'gravel',
+        points: [{ x: 20, y: 20 }, { x: 80, y: 80 }],
+        widthCm: 60,
+      });
+
+      // Future is cleared: cannot redo branch-a
+      expect(useSpaceLayoutStore.getState().canRedo('loc-undo-4')).toBe(false);
+      const paths = useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-4').paths;
+      expect(paths.some((p) => p.id === 'branch-b')).toBe(true);
+      expect(paths.some((p) => p.id === 'branch-a')).toBe(false);
+    });
+
+    it('records applyPreset, setBaseBoundary, insertBoundaryVertex, placePlantLine, and fillCultivableSector', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-undo-5', 'outdoor', 'patio_croquis');
+
+      // 1. applyPreset
+      store.applyPreset('loc-undo-5', 'greenhouse_1to1');
+      expect(useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').presetId).toBe(
+        'greenhouse_1to1',
+      );
+
+      // 2. setBaseBoundary
+      const newBoundary = [
+        { x: 0, y: 0 },
+        { x: 500, y: 0 },
+        { x: 500, y: 500 },
+        { x: 0, y: 500 },
+      ];
+      store.setBaseBoundary('loc-undo-5', newBoundary);
+      expect(
+        useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').baseBoundary,
+      ).toHaveLength(4);
+
+      // 3. insertBoundaryVertex
+      store.insertBoundaryVertex('loc-undo-5', 0, { x: 250, y: 0 });
+      expect(
+        useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').baseBoundary,
+      ).toHaveLength(5);
+
+      // Undo vertex insertion
+      useSpaceLayoutStore.getState().undo('loc-undo-5');
+      expect(
+        useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').baseBoundary,
+      ).toHaveLength(4);
+
+      // Undo setBaseBoundary -> returns to greenhouse boundary (600 x 1200)
+      useSpaceLayoutStore.getState().undo('loc-undo-5');
+      expect(
+        useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').baseBoundary[2],
+      ).toEqual({ x: 600, y: 1200 });
+
+      // Undo applyPreset -> returns to patio_croquis (1000 x 600)
+      useSpaceLayoutStore.getState().undo('loc-undo-5');
+      expect(useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').presetId).toBe(
+        'patio_croquis',
+      );
+      expect(
+        useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-5').baseBoundary[2],
+      ).toEqual({ x: 1000, y: 600 });
+    });
+
+    it('caps history stack at 50 snapshots', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-undo-cap', 'outdoor', 'empty_lot_1to1');
+
+      // Perform 55 mutations
+      for (let i = 0; i < 55; i++) {
+        store.placePlant('loc-undo-cap', {
+          label: `Plant-${i}`,
+          xCm: 100 + i * 2,
+          yCm: 100,
+          canopyRadiusCm: 10,
+        });
+      }
+
+      // Check undo works up to 50 times
+      let undoCount = 0;
+      while (useSpaceLayoutStore.getState().canUndo('loc-undo-cap')) {
+        useSpaceLayoutStore.getState().undo('loc-undo-cap');
+        undoCount++;
+      }
+
+      expect(undoCount).toBe(50);
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-cap')).toBe(false);
+    });
+
+    it('clears history on clearHistory without changing current layout', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-undo-clear', 'outdoor', 'empty_lot_1to1');
+      store.placePlant('loc-undo-clear', {
+        label: 'Acelga',
+        xCm: 200,
+        yCm: 200,
+        canopyRadiusCm: 15,
+      });
+
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-clear')).toBe(true);
+      store.clearHistory('loc-undo-clear');
+      expect(useSpaceLayoutStore.getState().canUndo('loc-undo-clear')).toBe(false);
+      expect(useSpaceLayoutStore.getState().canRedo('loc-undo-clear')).toBe(false);
+
+      // Current layout still has the plant
+      expect(
+        useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-undo-clear').placedPlants,
+      ).toHaveLength(1);
+    });
+
+    it('excludes history from serialized localStorage to prevent quota exceeded errors', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-storage-test', 'outdoor', 'empty_lot_1to1');
+      store.placePlant('loc-storage-test', {
+        label: 'Menta',
+        xCm: 50,
+        yCm: 50,
+        canopyRadiusCm: 15,
+      });
+
+      const rawStorage = localStorage.getItem('plantin-space-layout-v1');
+      if (rawStorage) {
+        const parsed = JSON.parse(rawStorage);
+        expect(parsed.state.history).toBeUndefined();
+        expect(parsed.state.layouts).toBeDefined();
+      }
+    });
+  });
 });

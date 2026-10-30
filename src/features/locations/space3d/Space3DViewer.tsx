@@ -1,4 +1,4 @@
-import React, { useMemo, useReducer, useState } from 'react';
+import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera } from '@react-three/drei';
 import {
@@ -7,7 +7,8 @@ import {
   type Point2DCm,
   type Polygon2DCm,
 } from '@/domain/spaceGeometry';
-import { measurePlantNeighbors } from '@/domain/solarAndPlantSpatial';
+import { measurePlantNeighbors, type PlacedPlantSpatialCm } from '@/domain/solarAndPlantSpatial';
+import type { Individual } from '@/domain/individual';
 import { useSpaceLayoutStore } from '@/store/spaceLayoutStore';
 import { useIndividualStore } from '@/store/individualStore';
 import { useSeedLotStore } from '@/store/seedLotStore';
@@ -32,6 +33,7 @@ export interface Space3DViewerProps {
   locationName?: string;
   locationType?: string;
   capacity?: number;
+  initialMode?: 'crop' | 'design';
   onBackToCampus?: () => void;
   onOpenSowModal?: () => void;
   onInspectPlantDetails?: (individualId: string) => void;
@@ -97,6 +99,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   locationName,
   locationType,
   capacity,
+  initialMode,
   onBackToCampus,
   onOpenSowModal,
   onInspectPlantDetails,
@@ -121,6 +124,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const fillCultivableSector = useSpaceLayoutStore(
     (state) => state.fillCultivableSector,
   );
+  const undo = useSpaceLayoutStore((state) => state.undo);
+  const redo = useSpaceLayoutStore((state) => state.redo);
+  const canUndo = useSpaceLayoutStore((state) => state.canUndo(locationId));
+  const canRedo = useSpaceLayoutStore((state) => state.canRedo(locationId));
 
   // Store connections for full integration
   const individuals = useIndividualStore((state) => state.individuals);
@@ -135,8 +142,54 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const [showLabels, setShowLabels] = useState<boolean>(true);
   const [activeLens, setActiveLens] = useState<AnalyticalLensType | null>(null);
   const [speciesFilter, setSpeciesFilter] = useState<string | null>(null);
-  const [dockMode, setDockMode] = useState<'crop' | 'design'>('design');
+  const [dockMode, setDockMode] = useState<'crop' | 'design'>(initialMode ?? 'design');
   const [isTrayOpen, setIsTrayOpen] = useState<boolean>(false);
+
+  // Undo Toast state for Cultivo mode
+  interface PlantUndoToastState {
+    plant: PlacedPlantSpatialCm;
+    individual?: Individual | null;
+  }
+  const [undoToast, setUndoToast] = useState<PlantUndoToastState | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Global keyboard shortcuts (Ctrl+Z / Cmd+Z, Ctrl+Y / Cmd+Y, Ctrl+Shift+Z / Cmd+Shift+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isInput) return;
+
+      if (dockMode !== 'design') return;
+
+      const isMod = e.ctrlKey || e.metaKey;
+      if (isMod && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo(locationId);
+      } else if (
+        (isMod && !e.shiftKey && e.key.toLowerCase() === 'y') ||
+        (isMod && e.shiftKey && e.key.toLowerCase() === 'z')
+      ) {
+        e.preventDefault();
+        redo(locationId);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dockMode, locationId, undo, redo]);
 
   const [builderState, dispatch] = useReducer(
     spaceBuilderReducer,
@@ -183,6 +236,12 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       null,
     [layout.placedPlants, builderState.selectedPlantId],
   );
+
+  useEffect(() => {
+    if (builderState.selectedPlantId && !selectedPlant) {
+      dispatch({ type: 'SELECT_PLANT', plantId: null });
+    }
+  }, [builderState.selectedPlantId, selectedPlant]);
 
   const matchingIndividual = useMemo(() => {
     if (!selectedPlant) return null;
@@ -365,12 +424,37 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
   const handleRemoveSelectedPlant = () => {
     if (!selectedPlant) return;
+    const removedPlant = { ...selectedPlant };
+    const removedIndividual = matchingIndividual ? { ...matchingIndividual } : null;
+
     removePlant(locationId, selectedPlant.id);
     if (matchingIndividual) {
       removeIndividual(matchingIndividual.id);
     }
     onRemovePlantIndividual?.(selectedPlant.id);
     dispatch({ type: 'SELECT_PLANT', plantId: null });
+
+    if (dockMode === 'crop') {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      setUndoToast({ plant: removedPlant, individual: removedIndividual });
+      toastTimerRef.current = setTimeout(() => {
+        setUndoToast(null);
+      }, 6000);
+    }
+  };
+
+  const handleUndoToastAction = () => {
+    if (!undoToast) return;
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    placePlant(locationId, undoToast.plant);
+    if (undoToast.individual) {
+      useIndividualStore.getState().add(undoToast.individual);
+    }
+    setUndoToast(null);
   };
 
   const handleFillSector = (sectorIndex: number) => {
@@ -716,6 +800,40 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         </div>
       )}
 
+      {/* ── 4.5. Floating Glassmorphism Undo Toast for Cultivo Mode ── */}
+      {undoToast && (
+        <div className="absolute bottom-20 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
+          <div
+            data-testid="undo-delete-plant-toast"
+            role="status"
+            aria-live="polite"
+            className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200/90 bg-white/95 px-4 py-2.5 text-xs text-slate-800 shadow-2xl backdrop-blur-md"
+          >
+            <span className="font-medium text-slate-700">
+              Planta <strong className="font-semibold text-slate-900">{undoToast.plant.label}</strong> eliminada
+            </span>
+            <button
+              type="button"
+              onClick={handleUndoToastAction}
+              className="cursor-pointer rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-bold text-emerald-800 transition hover:bg-emerald-100 hover:text-emerald-900"
+            >
+              Deshacer
+            </button>
+            <button
+              type="button"
+              aria-label="Cerrar notificación"
+              onClick={() => {
+                if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+                setUndoToast(null);
+              }}
+              className="ml-1 cursor-pointer text-slate-400 hover:text-slate-600"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── 5. Bottom HUD Dock & Camera Widget ── */}
       <div className="pointer-events-none absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-3">
         {/* Invisible spacer to center the command dock */}
@@ -766,6 +884,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           onApplyDimensions={handleApplyDimensions}
           onInsertVertex={handleInsertVertex}
           vertexCount={layout.baseBoundary.length}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={() => undo(locationId)}
+          onRedo={() => redo(locationId)}
         />
 
         {/* Bottom-Right Camera Widget */}

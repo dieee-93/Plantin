@@ -231,8 +231,35 @@ export interface PlantTemplateInput {
   canopyRadiusCm: number;
 }
 
+export interface SpaceLayoutHistory {
+  past: SpaceLayout1to1[];
+  future: SpaceLayout1to1[];
+}
+
+const MAX_HISTORY_STEPS = 50;
+
+function pushHistorySnapshot(
+  locationId: string,
+  currentLayout: SpaceLayout1to1,
+  historyMap: Record<string, SpaceLayoutHistory> | undefined,
+): Record<string, SpaceLayoutHistory> {
+  const currentHistory = (historyMap ?? {})[locationId] ?? { past: [], future: [] };
+  const newPast = [...currentHistory.past, structuredClone(currentLayout)];
+  if (newPast.length > MAX_HISTORY_STEPS) {
+    newPast.shift();
+  }
+  return {
+    ...(historyMap ?? {}),
+    [locationId]: {
+      past: newPast,
+      future: [],
+    },
+  };
+}
+
 export interface SpaceLayoutStoreState {
   layouts: Record<string, SpaceLayout1to1>;
+  history: Record<string, SpaceLayoutHistory>;
   getOrCreateSpaceLayout: (
     locationId: string,
     locationType?: string,
@@ -277,6 +304,11 @@ export interface SpaceLayoutStoreState {
     options: PolygonFillOptions,
     plantTemplate: PlantTemplateInput,
   ) => number;
+  undo: (locationId: string) => void;
+  redo: (locationId: string) => void;
+  canUndo: (locationId: string) => boolean;
+  canRedo: (locationId: string) => boolean;
+  clearHistory: (locationId: string) => void;
   resetAll: () => void;
 }
 
@@ -284,6 +316,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
   persist(
     (set, get) => ({
       layouts: {},
+      history: {},
 
       getOrCreateSpaceLayout: (locationId, locationType, presetId) => {
         const existing = get().layouts[locationId];
@@ -305,8 +338,10 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       applyPreset: (locationId, presetId) => {
         const preset = SPACE_PRESETS[presetId];
         if (!preset) return;
+        const current = get().getOrCreateSpaceLayout(locationId);
         const nextLayout = preset.createLayout(locationId);
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: nextLayout,
@@ -319,6 +354,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -341,6 +377,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -358,6 +395,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -376,6 +414,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id: path.id ?? `path-${uuidv7()}`,
         };
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -389,6 +428,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removePathStroke: (locationId, pathId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -406,6 +446,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id: zone.id ?? `zone-${uuidv7()}`,
         };
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -419,6 +460,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removeHardscapeZone: (locationId, zoneId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -453,6 +495,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id,
         };
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -467,6 +510,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       movePlant: (locationId, plantId, xCm, yCm) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -482,6 +526,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removePlant: (locationId, plantId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -512,6 +557,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         }));
 
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -547,6 +593,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         }));
 
         set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -559,13 +606,84 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         return addedPlants.length;
       },
 
+      canUndo: (locationId) => {
+        const locHist = (get().history ?? {})[locationId];
+        return Boolean(locHist && locHist.past.length > 0);
+      },
+
+      canRedo: (locationId) => {
+        const locHist = (get().history ?? {})[locationId];
+        return Boolean(locHist && locHist.future.length > 0);
+      },
+
+      undo: (locationId) => {
+        const historyMap = get().history ?? {};
+        const locHist = historyMap[locationId];
+        if (!locHist || locHist.past.length === 0) return;
+        const current = get().layouts[locationId] ?? get().getOrCreateSpaceLayout(locationId);
+
+        const previous = locHist.past[locHist.past.length - 1];
+        const newPast = locHist.past.slice(0, -1);
+        const newFuture = [structuredClone(current), ...locHist.future];
+
+        set((state) => ({
+          history: {
+            ...(state.history ?? {}),
+            [locationId]: {
+              past: newPast,
+              future: newFuture,
+            },
+          },
+          layouts: {
+            ...state.layouts,
+            [locationId]: structuredClone(previous),
+          },
+        }));
+      },
+
+      redo: (locationId) => {
+        const historyMap = get().history ?? {};
+        const locHist = historyMap[locationId];
+        if (!locHist || locHist.future.length === 0) return;
+        const current = get().layouts[locationId] ?? get().getOrCreateSpaceLayout(locationId);
+
+        const next = locHist.future[0];
+        const newFuture = locHist.future.slice(1);
+        const newPast = [...locHist.past, structuredClone(current)];
+
+        set((state) => ({
+          history: {
+            ...(state.history ?? {}),
+            [locationId]: {
+              past: newPast,
+              future: newFuture,
+            },
+          },
+          layouts: {
+            ...state.layouts,
+            [locationId]: structuredClone(next),
+          },
+        }));
+      },
+
+      clearHistory: (locationId) => {
+        set((state) => {
+          const nextHistory = { ...(state.history ?? {}) };
+          delete nextHistory[locationId];
+          return { history: nextHistory };
+        });
+      },
+
       resetAll: () => {
-        set({ layouts: {} });
+        set({ layouts: {}, history: {} });
       },
     }),
     {
       name: 'plantin-space-layout-v1',
       version: 1,
+      partialize: (state) => ({
+        layouts: state.layouts,
+      }),
     },
   ),
 );

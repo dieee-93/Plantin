@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronUp, Plus, Sprout, Wrench } from 'lucide-react';
+import { ChevronUp, Plus, Redo2, Sprout, Undo2, Wrench } from 'lucide-react';
 import type { FloorMaterialType } from '@/domain/spaceGeometry';
 import {
   PLANT_BUILDER_PRESETS,
@@ -33,6 +33,10 @@ export interface SpaceCommandDockProps {
   onApplyDimensions: () => void;
   onInsertVertex: () => void;
   vertexCount: number;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 const TOOL_BUTTONS: Array<{ tool: SpaceBuilderTool; label: string }> = [
@@ -80,31 +84,70 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   onApplyDimensions,
   onInsertVertex,
   vertexCount,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }) => {
   return (
     <div className="pointer-events-auto flex flex-col items-center gap-2">
       {/* Sub-bar for Design Mode */}
       {mode === 'design' && (
         <div className="flex flex-col gap-2 rounded-2xl border border-slate-200/90 bg-white/95 p-2 shadow-xl backdrop-blur-md text-xs">
-          {/* Tool selector pills */}
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="mr-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
-              Herramientas 1:1
-            </span>
-            {TOOL_BUTTONS.map(({ tool, label }) => (
+          {/* Tool selector pills and Undo/Redo */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+                Herramientas 1:1
+              </span>
+              {TOOL_BUTTONS.map(({ tool, label }) => (
+                <button
+                  key={tool}
+                  type="button"
+                  onClick={() => onChangeTool(tool)}
+                  className={`rounded-full px-3 py-1 font-semibold transition ${
+                    activeTool === tool
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1 pl-2 border-l border-slate-200">
               <button
-                key={tool}
                 type="button"
-                onClick={() => onChangeTool(tool)}
-                className={`rounded-full px-3 py-1 font-semibold transition ${
-                  activeTool === tool
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                aria-label="Deshacer (Undo)"
+                disabled={!canUndo}
+                onClick={onUndo}
+                title="Deshacer (Ctrl+Z)"
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold transition ${
+                  canUndo
+                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
+                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
                 }`}
               >
-                {label}
+                <Undo2 size={13} />
+                <span>Deshacer</span>
               </button>
-            ))}
+              <button
+                type="button"
+                aria-label="Rehacer (Redo)"
+                disabled={!canRedo}
+                onClick={onRedo}
+                title="Rehacer (Ctrl+Y / Ctrl+Shift+Z)"
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold transition ${
+                  canRedo
+                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
+                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                }`}
+              >
+                <Redo2 size={13} />
+                <span>Rehacer</span>
+              </button>
+            </div>
           </div>
 
           {/* Contextual Options for Path Tool */}

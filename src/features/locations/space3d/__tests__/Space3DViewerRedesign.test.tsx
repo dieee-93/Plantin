@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useSpaceLayoutStore } from '@/store/spaceLayoutStore';
 import { useIndividualStore } from '@/store/individualStore';
 import { useSeedLotStore } from '@/store/seedLotStore';
@@ -134,5 +134,199 @@ describe('Space3DViewerRedesign - Full-Screen Canvas & Floating Glassmorphism HU
     fireEvent.click(screen.getByRole('button', { name: /Eliminar/i }));
     expect(onRemove).toHaveBeenCalledWith('plant-tomatera-1');
     expect(useIndividualStore.getState().individuals).toHaveLength(0);
+  });
+
+  it('supports undo and redo via CommandDock buttons and keyboard shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)', () => {
+    render(
+      <Space3DViewer
+        locationId="loc-redesign-undo-1"
+        locationName="Patio Undo"
+        locationType="outdoor"
+      />,
+    );
+
+    // Initial paths in patio_croquis is 2
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(2);
+
+    const undoBtn = screen.getByRole('button', { name: /deshacer|undo/i });
+    const redoBtn = screen.getByRole('button', { name: /rehacer|redo/i });
+    expect(undoBtn).toBeDisabled();
+    expect(redoBtn).toBeDisabled();
+
+    // Switch to Trazar Camino and add a path
+    fireEvent.click(screen.getByRole('button', { name: /Trazar Camino/i }));
+    const plane = screen.getByTestId('interactive-plane-1to1');
+    fireEvent.click(plane, { clientX: 100, clientY: 500 });
+    fireEvent.click(plane, { clientX: 400, clientY: 500 });
+
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(3);
+    expect(undoBtn).not.toBeDisabled();
+    expect(redoBtn).toBeDisabled();
+
+    // Click Undo button in CommandDock
+    fireEvent.click(undoBtn);
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(2);
+    expect(undoBtn).toBeDisabled();
+    expect(redoBtn).not.toBeDisabled();
+
+    // Click Redo button in CommandDock
+    fireEvent.click(redoBtn);
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(3);
+    expect(undoBtn).not.toBeDisabled();
+    expect(redoBtn).toBeDisabled();
+
+    // Test Ctrl+Z keyboard shortcut
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(2);
+
+    // Test Ctrl+Y keyboard shortcut
+    fireEvent.keyDown(window, { key: 'y', ctrlKey: true });
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(3);
+
+    // Test Ctrl+Z again
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(2);
+
+    // Test Ctrl+Shift+Z keyboard shortcut (redo)
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(3);
+
+    // Test that typing in input prevents Ctrl+Z from triggering layout undo
+    fireEvent.click(screen.getByRole('button', { name: /Editar Contorno/i }));
+    const widthInput = screen.getByLabelText(/Ancho Terreno/i);
+    fireEvent.keyDown(widthInput, { key: 'z', ctrlKey: true });
+    // Still 3 paths because the event was ignored on input
+    expect(
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-redesign-undo-1').paths,
+    ).toHaveLength(3);
+  });
+
+  it('shows undo toast when deleting plant in Cultivo mode and restores plant and individual on click', () => {
+    useIndividualStore.setState({
+      individuals: [
+        {
+          id: 'plant-tomatera-1',
+          accessionId: 'acc-tom-1',
+          label: 'Tomatera Criolla',
+          locationId: 'loc-redesign-toast-1',
+          plantingDate: '2026-02-01',
+          currentBBCH: 25,
+          status: 'active',
+        },
+      ],
+    });
+
+    render(
+      <Space3DViewer
+        locationId="loc-redesign-toast-1"
+        locationName="Huerto Cultivo"
+        locationType="outdoor"
+      />,
+    );
+
+    // Switch to Cultivo mode
+    fireEvent.click(screen.getByRole('button', { name: /Cultivo/i }));
+
+    // Select plant-tomatera-1
+    fireEvent.click(screen.getByTestId('plane-plant-plant-tomatera-1'));
+
+    // Remove plant
+    fireEvent.click(screen.getByRole('button', { name: /Eliminar/i }));
+
+    // Plant is removed
+    expect(
+      useSpaceLayoutStore
+        .getState()
+        .getOrCreateSpaceLayout('loc-redesign-toast-1')
+        .placedPlants.some((p) => p.id === 'plant-tomatera-1'),
+    ).toBe(false);
+    expect(useIndividualStore.getState().individuals).toHaveLength(0);
+
+    // Floating toast appears with glassmorphism style
+    const toast = screen.getByTestId('undo-delete-plant-toast');
+    expect(toast).toBeInTheDocument();
+    expect(toast).toHaveTextContent(/Planta Tomatera eliminada/i);
+
+    // Click Deshacer button in Toast
+    const toastUndoBtn = screen.getByRole('button', { name: /deshacer/i });
+    fireEvent.click(toastUndoBtn);
+
+    // Plant is restored in spaceLayoutStore
+    expect(
+      useSpaceLayoutStore
+        .getState()
+        .getOrCreateSpaceLayout('loc-redesign-toast-1')
+        .placedPlants.some((p) => p.id === 'plant-tomatera-1'),
+    ).toBe(true);
+
+    // Individual is restored in individualStore with same attributes
+    const restoredInd = useIndividualStore.getState().individuals.find((i) => i.id === 'plant-tomatera-1');
+    expect(restoredInd).toBeDefined();
+    expect(restoredInd?.currentBBCH).toBe(25);
+    expect(restoredInd?.label).toBe('Tomatera Criolla');
+
+    // Toast is dismissed
+    expect(screen.queryByTestId('undo-delete-plant-toast')).not.toBeInTheDocument();
+  });
+
+  it('auto-dismisses the undo toast after 6 seconds in Cultivo mode', () => {
+    vi.useFakeTimers();
+
+    useIndividualStore.setState({
+      individuals: [
+        {
+          id: 'plant-tomatera-1',
+          accessionId: 'acc-tom-1',
+          label: 'Tomatera',
+          locationId: 'loc-redesign-toast-2',
+          status: 'active',
+        },
+      ],
+    });
+
+    render(
+      <Space3DViewer
+        locationId="loc-redesign-toast-2"
+        locationName="Huerto Cultivo 2"
+        locationType="outdoor"
+      />,
+    );
+
+    // Switch to Cultivo mode
+    fireEvent.click(screen.getByRole('button', { name: /Cultivo/i }));
+    fireEvent.click(screen.getByTestId('plane-plant-plant-tomatera-1'));
+    fireEvent.click(screen.getByRole('button', { name: /Eliminar/i }));
+
+    expect(screen.getByTestId('undo-delete-plant-toast')).toBeInTheDocument();
+
+    // Advance 5.9 seconds -> still visible
+    act(() => {
+      vi.advanceTimersByTime(5900);
+    });
+    expect(screen.getByTestId('undo-delete-plant-toast')).toBeInTheDocument();
+
+    // Advance remaining 200 ms -> toast dismissed
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByTestId('undo-delete-plant-toast')).not.toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });
