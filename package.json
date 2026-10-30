@@ -19,18 +19,23 @@
     "assets": "npm run assets:process && npm run assets:manifest"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.104.1",
+    "clipper2-ts": "^2.0.1-18",
     "lucide-react": "^1.53.0",
     "motion": "^14.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
     "tailwindcss": "^4.3.3",
+    "three": "^0.186.1",
     "uuidv7": "^1.2.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@react-three/test-renderer": "^9.1.1",
     "@resvg/resvg-js": "^2.6.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -38,6 +43,7 @@
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^5.0.3",
     "jsdom": "^29.1.1",

@@ -7,11 +7,8 @@ import { useAccessionStore } from '@/store/accessionStore'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
-import { useRoomLayoutStore } from '@/store/roomLayoutStore'
-import {
-  getTemplatesForLocationType,
-  getTemplateById,
-} from './isometric/templates'
+import { useSpaceLayoutStore, SPACE_PRESETS } from '@/store/spaceLayoutStore'
+import { createRectPolygon } from '@/domain/spaceGeometry'
 import {
   getAllGridPositions,
   getLocationGridDimensions,
@@ -19,8 +16,8 @@ import {
 import type { LocationType } from '@/domain/location'
 import { LocationClimateCard } from '@/components/LocationClimateCard'
 import { IndividualDetail } from '@/features/individuals/IndividualsPage'
-import { IsometricCampusMap } from './isometric/IsometricCampusMap'
-import { IsometricRoomInterior } from './isometric/IsometricRoomInterior'
+import { SpacesCampusMap } from './SpacesCampusMap'
+import { Space3DViewer } from './space3d/Space3DViewer'
 import {
   Plus, Building2, Sprout, Layers, Sparkles, X
 } from 'lucide-react'
@@ -28,7 +25,6 @@ import {
   type PropagationFormId,
   getPropagationFormSpec,
   getCompatiblePropagationForms,
-  getVegetativeCloneCapability,
   MATURE_PLANT_STAGES,
   STARTER_SPECIES_PRESETS,
   type StarterSpeciesPreset,
@@ -261,12 +257,12 @@ function getFormPluralNoun(formId: PropagationFormId): string {
 
 export function LocationsPage() {
   const navigate = useNavigate()
-  const { locations, add: addLocation, update: updateLocation, remove: removeLocation } = useLocationStore()
-  const { individuals, add: addIndividual, update: updateIndividual, remove: removeIndividual } = useIndividualStore()
+  const { locations, add: addLocation, remove: removeLocation } = useLocationStore()
+  const { individuals, add: addIndividual, remove: removeIndividual } = useIndividualStore()
   const { accessions, add: addAccession } = useAccessionStore()
   const { seedLots, consumeSeeds, add: addSeedLot } = useSeedLotStore()
   const { taxons } = useTaxonStore()
-  const { farmCoordinates, currentWeather, currentClimate } = useAgroClimateStore()
+  const { farmCoordinates } = useAgroClimateStore()
 
   // ── Auto-reparación de taxones incompletos (agrega fotos, descriptores fenotípicos y datos FAO EcoCrop) ──
   const hydratedTaxonIdsRef = useRef<Set<string>>(new Set())
@@ -281,34 +277,19 @@ export function LocationsPage() {
     }
   }, [taxons])
 
-  // Temperatura ambiente actual de referencia para el Lente de Confort Agroclimático
-  const ambientTempC = useMemo(() => {
-    if (currentWeather?.temperature !== undefined) return currentWeather.temperature
-    const monthIdx = new Date().getMonth()
-    const monthlyMean = currentClimate?.monthly?.[monthIdx]?.tempMean
-    return monthlyMean ?? 20
-  }, [currentWeather, currentClimate])
-
-  // Estado de navegación gráfica (Nivel 1: Mapa de Salas | Nivel 2: Interior Isométrico de Sala)
+  // Estado de navegación espacial 1:1
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
   const [drawerMode, setDrawerMode] = useState<DrawerMode>(null)
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [selectedIndividualId, setSelectedIndividualId] = useState<string | null>(null)
 
-  // Estado del formulario de Nueva Ubicación
+  // Estado del formulario de Nueva Ubicación 1:1
+  const [space3dPresetId, setSpace3dPresetId] = useState<string>('patio_croquis')
+  const [customWidthM, setCustomWidthM] = useState<string>('10.0')
+  const [customDepthM, setCustomDepthM] = useState<string>('6.0')
   const [name, setName] = useState('')
   const [type, setType] = useState<LocationType>('greenhouse')
   const [capacity, setCapacity] = useState('')
-  const [rowsInput, setRowsInput] = useState('')
-  const [colsInput, setColsInput] = useState('')
   const [description, setDescription] = useState('')
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-
-  const availableTemplates = useMemo(() => getTemplatesForLocationType(type), [type])
-  const selectedTemplate = useMemo(
-    () => (selectedTemplateId ? getTemplateById(selectedTemplateId) : null),
-    [selectedTemplateId]
-  )
 
   // Sub-pestaña del Drawer de Siembra / Alta unificada: 'inventory' | 'new-material'
   const [sowSubTab, setSowSubTab] = useState<'inventory' | 'new-material'>('inventory')
@@ -433,153 +414,34 @@ export function LocationsPage() {
     e.preventDefault()
     if (!name.trim()) return
 
-    const parsedRows = rowsInput ? Math.max(1, Math.min(16, Number(rowsInput))) : undefined
-    const parsedCols = colsInput ? Math.max(1, Math.min(16, Number(colsInput))) : undefined
-
     const newLoc = addLocation({
       name: name.trim(),
       type,
       description: description.trim() || undefined,
-      capacity: capacity ? Number(capacity) : parsedRows && parsedCols ? parsedRows * parsedCols : undefined,
-      rows: parsedRows,
-      cols: parsedCols,
+      capacity: capacity ? Number(capacity) : undefined,
       coordinates: farmCoordinates,
     })
 
-    if (selectedTemplateId) {
-      useRoomLayoutStore.getState().createFromTemplate(newLoc.id, selectedTemplateId)
+    if (space3dPresetId && space3dPresetId !== 'custom') {
+      useSpaceLayoutStore.getState().applyPreset(newLoc.id, space3dPresetId)
     } else {
-      useRoomLayoutStore.getState().getOrCreateLayout(newLoc.id, newLoc.type, newLoc.rows, newLoc.cols)
+      const wCm = Math.max(100, Math.round((Number(customWidthM) || 10) * 100))
+      const dCm = Math.max(100, Math.round((Number(customDepthM) || 6) * 100))
+      useSpaceLayoutStore.getState().setBaseBoundary(newLoc.id, createRectPolygon(wCm, dCm))
     }
 
     setName('')
     setCapacity('')
-    setRowsInput('')
-    setColsInput('')
     setDescription('')
-    setSelectedTemplateId('')
     setDrawerMode(null)
   }
 
-  // ── Handlers de Navegación e Interacciones Gráficas ──
+  // ── Handlers de Navegación ──
   const handleEnterRoom = (locationId: string) => {
     setSelectedRoomId(locationId)
-    setSelectedSlot(null)
     setSowPosition('')
     setSelectedIndividualId(null)
     setDrawerMode(null)
-  }
-
-  const handleClickEmptySlot = (posLabel: string) => {
-    setSelectedSlot(posLabel)
-    setSowPosition(posLabel)
-    setSelectedIndividualId(null)
-    setDrawerMode(prev => (prev === 'inspect' ? null : prev))
-    setSowSubTab(accessions.length === 0 ? 'new-material' : 'inventory')
-  }
-
-  const handleSelectPlant = (individualId: string, posLabel?: string) => {
-    setSelectedIndividualId(individualId)
-    const ind = individuals.find(i => i.id === individualId)
-    const resolvedPos = posLabel || ind?.position || ind?.location
-    if (resolvedPos && resolvedPos.toUpperCase() !== 'SIN UBICAR') {
-      setSelectedSlot(resolvedPos)
-    }
-  }
-
-  const handleInspectPlant = (individualId: string, posLabel?: string) => {
-    setSelectedIndividualId(individualId)
-    const ind = individuals.find(i => i.id === individualId)
-    const resolvedPos = posLabel || ind?.position || ind?.location
-    if (resolvedPos && resolvedPos.toUpperCase() !== 'SIN UBICAR') {
-      setSelectedSlot(resolvedPos)
-    }
-    setDrawerMode('inspect')
-  }
-
-  const handleAdvancePlantBbch = (individualId: string, nextBbch: number) => {
-    updateIndividual(individualId, {
-      currentBBCH: nextBbch,
-    })
-  }
-
-  const handleQuickClonePlant = (motherId: string) => {
-    if (!selectedRoom) return
-    const mother = individuals.find(i => i.id === motherId)
-    if (!mother) return
-    const acc = accessions.find(a => a.id === mother.accessionId)
-    const taxon = acc ? taxons.find(t => t.id === acc.taxonId) : undefined
-    const cloneCap = getVegetativeCloneCapability(taxon)
-
-    const freeSlots = getFreeSlotsForRoom(selectedRoom.id)
-    const nextSlot = freeSlots[0] ?? 'A-01'
-    const roomSlots = useRoomLayoutStore.getState().getSlots(selectedRoom.id)
-    const matchingSlot = roomSlots.find(s => s.label === nextSlot)
-
-    const existingClones = individuals.filter(i => i.maternalParentId === motherId).length
-    const cloneLabel = `${mother.label || acc?.accessionNumber || 'Planta'} (Clon #${existingClones + 1})`
-    const primaryTag = cloneCap.formId === 'offset_division' ? 'hijuelo' : 'esqueje'
-
-    const newInd = addIndividual({
-      accessionId: mother.accessionId,
-      locationId: selectedRoom.id,
-      position: nextSlot,
-      location: nextSlot,
-      slotId: matchingSlot?.id,
-      maternalParentId: mother.id,
-      label: cloneLabel,
-      plantingDate: new Date().toISOString().slice(0, 10),
-      currentBBCH: 10,
-      status: 'active',
-      tags: [primaryTag, 'clon'],
-    })
-
-    setSelectedSlot(nextSlot)
-    setSelectedIndividualId(newInd.id)
-  }
-
-  const handleRemovePlantFromSlot = (individualId: string) => {
-    removeIndividual(individualId)
-    setSelectedIndividualId(null)
-  }
-
-  // Interacción 3: Drop de Semilla/Variedad sobre una celda vacía
-  const handleDropSeedInSlot = (posLabel: string, accessionId: string, seedLotId?: string) => {
-    setSelectedSlot(posLabel)
-    setSowPosition(posLabel)
-    setSowAccessionId(accessionId)
-    setSowSeedLotId(seedLotId ?? '')
-    setSelectedIndividualId(null)
-    setDrawerMode('sow')
-    setSowSubTab('inventory')
-  }
-
-  // Interacción 4a: Mover planta a otra celda de la misma sala
-  const handleMovePlantToSlot = (individualId: string, targetPosLabel: string) => {
-    const slots = selectedRoomId ? useRoomLayoutStore.getState().getSlots(selectedRoomId) : []
-    const matchingSlot = slots.find(s => s.label === targetPosLabel)
-    updateIndividual(individualId, {
-      position: targetPosLabel,
-      location: targetPosLabel,
-      slotId: matchingSlot?.id,
-    })
-    setSelectedSlot(targetPosLabel)
-    setSelectedIndividualId(individualId)
-    setDrawerMode('inspect')
-  }
-
-  // Interacción 4b: Trasplantar planta a otra sala
-  const handleMovePlantToRoom = (individualId: string, targetLocationId: string) => {
-    const freeSlots = getFreeSlotsForRoom(targetLocationId)
-    const nextSlot = freeSlots[0] ?? 'A-01'
-    const targetRoomSlots = useRoomLayoutStore.getState().getSlots(targetLocationId)
-    const matchingSlot = targetRoomSlots.find(s => s.label === nextSlot)
-    updateIndividual(individualId, {
-      locationId: targetLocationId,
-      position: nextSlot,
-      location: nextSlot,
-      slotId: matchingSlot?.id,
-    })
   }
 
   // ── Selección rápida de Preset Botánico con auto-registro en TaxonStore ──
@@ -597,14 +459,12 @@ export function LocationsPage() {
     const existingForAcc = individuals.filter(ind => ind.accessionId === sowAccessionId).length
     const countToSow = Math.max(1, Math.min(100, parseInt(sowCount, 10) || 1))
     const targetSlots = getFreeSlotsForRoom(selectedRoom.id, sowPosition.trim().toUpperCase())
-    const roomSlots = useRoomLayoutStore.getState().getSlots(selectedRoom.id)
 
     let firstCreatedId: string | null = null
     for (let i = 0; i < countToSow; i++) {
       const seqNum = String(existingForAcc + i + 1).padStart(2, '0')
       const autoLabel = `${acc?.accessionNumber ?? 'PLT'} #${seqNum}`
       const assignedSlot = targetSlots[i] ?? `${sowPosition}-${i + 1}`
-      const matchingSlot = roomSlots.find(s => s.label === assignedSlot)
 
       const created = addIndividual({
         accessionId: sowAccessionId,
@@ -613,7 +473,6 @@ export function LocationsPage() {
         locationId: selectedRoom.id,
         location: assignedSlot,
         position: assignedSlot,
-        slotId: matchingSlot?.id,
         plantingDate: new Date().toISOString().slice(0, 10),
         currentBBCH: sowBbch !== '' ? Number(sowBbch) : 0,
         status: 'active',
@@ -633,7 +492,6 @@ export function LocationsPage() {
     }
 
     const nextFree = getFreeSlotsForRoom(selectedRoom.id)[0] ?? 'A-01'
-    setSelectedSlot(nextFree)
     setSowPosition(nextFree)
     setSowCount('1')
     setSowNotes('')
@@ -688,8 +546,6 @@ export function LocationsPage() {
         if (newMaterialSeedAction === 'plant_and_save') {
           consumeSeeds(lot.id, 1)
           const targetPos = (sowPosition || 'A-01').trim().toUpperCase()
-          const roomSlots = useRoomLayoutStore.getState().getSlots(selectedRoom.id)
-          const matchingSlot = roomSlots.find(s => s.label === targetPos)
 
           const ind = addIndividual({
             accessionId: targetAccId,
@@ -698,7 +554,6 @@ export function LocationsPage() {
             locationId: selectedRoom.id,
             location: targetPos,
             position: targetPos,
-            slotId: matchingSlot?.id,
             plantingDate: new Date().toISOString().slice(0, 10),
             currentBBCH: 0,
             status: 'active',
@@ -713,7 +568,6 @@ export function LocationsPage() {
         // seedling, cutting, bulb_tuber, offset_division, mature_grafted
         const existingForAcc = individuals.filter(ind => ind.accessionId === targetAccId).length
         const targetSlots = getFreeSlotsForRoom(selectedRoom.id, (sowPosition || 'A-01').trim().toUpperCase())
-        const roomSlots = useRoomLayoutStore.getState().getSlots(selectedRoom.id)
 
         let firstCreatedId: string | null = null
 
@@ -722,11 +576,9 @@ export function LocationsPage() {
           const autoLabel = `${targetAccNumber} #${seqNum}`
 
           let assignedSlot = 'Sin ubicar'
-          let matchingSlotId: string | undefined = undefined
 
           if (newMaterialPlacementMode === 'auto_cells') {
             assignedSlot = targetSlots[i] ?? `${sowPosition || 'A-01'}-${i + 1}`
-            matchingSlotId = roomSlots.find(s => s.label === assignedSlot)?.id
           }
 
           const ind = addIndividual({
@@ -736,7 +588,6 @@ export function LocationsPage() {
             locationId: selectedRoom.id,
             location: assignedSlot,
             position: assignedSlot,
-            slotId: matchingSlotId,
             plantingDate: new Date().toISOString().slice(0, 10),
             currentBBCH: initialBBCH,
             status: 'active',
@@ -976,59 +827,63 @@ export function LocationsPage() {
                 </div>
               </div>
 
+              {/* Configuración Espacial 1:1 */}
               <div>
-                <label htmlFor="location-template-select" style={LABEL_STYLE}>Plantilla de Espacio (Opcional)</label>
+                <label htmlFor="space3d-preset-select" style={LABEL_STYLE}>Plantilla Espacial 1:1</label>
                 <select
-                  id="location-template-select"
-                  aria-label="Plantilla de Espacio"
+                  id="space3d-preset-select"
                   style={INPUT_STYLE}
-                  value={selectedTemplateId}
-                  onChange={e => setSelectedTemplateId(e.target.value)}
+                  value={space3dPresetId}
+                  onChange={e => setSpace3dPresetId(e.target.value)}
                 >
-                  <option value="">Grilla estándar / Personalizada</option>
-                  {availableTemplates.map(tmpl => (
-                    <option key={tmpl.id} value={tmpl.id}>
-                      {tmpl.label} ({tmpl.widthCm / 100}×{tmpl.depthCm / 100} m)
-                    </option>
-                  ))}
+                  <option value="patio_croquis">Patio / Huerta con Caminos (Croquis 1:1) — 10×6 m, playón en L y caminos en Y</option>
+                  <option value="greenhouse_1to1">Invernadero 1:1 — 6×12 m con pasillo central y muros de policarbonato</option>
+                  <option value="indoor_room_1to1">Sala Indoor 1:1 — 4×4 m con muros perimetrales</option>
+                  <option value="empty_lot_1to1">Terreno Vacío — 8×6 m de tierra fértil</option>
+                  <option value="custom">📐 Medidas Personalizadas en Metros...</option>
                 </select>
-                {selectedTemplate && (
+                {SPACE_PRESETS[space3dPresetId] && (
                   <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.4 }}>
-                    {selectedTemplate.description}
+                    {SPACE_PRESETS[space3dPresetId].description}
                   </p>
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label htmlFor="location-rows-input" style={LABEL_STYLE}>Filas Grilla (A-Z)</label>
-                  <input
-                    id="location-rows-input"
-                    aria-label="Filas iniciales"
-                    type="number"
-                    min="1"
-                    max="16"
-                    style={INPUT_STYLE}
-                    placeholder="Auto (ej. 4)"
-                    value={rowsInput}
-                    onChange={e => setRowsInput(e.target.value)}
-                  />
+              {space3dPresetId === 'custom' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '10px 12px', background: 'var(--surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                  <div>
+                    <label htmlFor="custom-width-m" style={LABEL_STYLE}>Ancho del Terreno (m)</label>
+                    <input
+                      id="custom-width-m"
+                      aria-label="Ancho del Terreno (m)"
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="100"
+                      style={INPUT_STYLE}
+                      value={customWidthM}
+                      onChange={e => setCustomWidthM(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="custom-depth-m" style={LABEL_STYLE}>Largo / Profundidad (m)</label>
+                    <input
+                      id="custom-depth-m"
+                      aria-label="Largo / Profundidad (m)"
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="100"
+                      style={INPUT_STYLE}
+                      value={customDepthM}
+                      onChange={e => setCustomDepthM(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ gridColumn: 'span 2', fontSize: 11, fontWeight: 600, color: '#059669' }}>
+                    Superficie base: {((Number(customWidthM) || 0) * (Number(customDepthM) || 0)).toFixed(1)} m²
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="location-cols-input" style={LABEL_STYLE}>Columnas Grilla (01-16)</label>
-                  <input
-                    id="location-cols-input"
-                    aria-label="Columnas iniciales"
-                    type="number"
-                    min="1"
-                    max="16"
-                    style={INPUT_STYLE}
-                    placeholder="Auto (ej. 5)"
-                    value={colsInput}
-                    onChange={e => setColsInput(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
 
               <div>
                 <label htmlFor="location-desc-input" style={LABEL_STYLE}>Descripción / Notas</label>
@@ -1106,7 +961,7 @@ export function LocationsPage() {
               <div>
                 <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
                   {sowSubTab === 'new-material' || !selectedRoom
-                    ? 'Nuevo Cultivo / Material'
+                    ? 'Alta Unificada · Nuevo Cultivo / Material'
                     : `Sembrar en ${selectedRoom.name}`}
                 </h2>
                 {selectedRoom ? (
@@ -1250,7 +1105,6 @@ export function LocationsPage() {
                       value={sowPosition}
                       onChange={e => {
                         setSowPosition(e.target.value)
-                        setSelectedSlot(e.target.value.toUpperCase())
                       }}
                     />
                   </div>
@@ -1330,7 +1184,7 @@ export function LocationsPage() {
                 {/* 1° Especie Botánica */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label style={LABEL_STYLE}>1° Especie Botánica *</label>
+                    <label htmlFor="species-search-input" style={LABEL_STYLE}>1° Especie Botánica *</label>
                     <span style={{ fontSize: 10.5, color: 'var(--accent)', fontWeight: 600 }}>
                       {selectedNewTaxon?.commonName || selectedNewTaxon?.genus || 'Elige especie'}
                     </span>
@@ -1409,9 +1263,10 @@ export function LocationsPage() {
                   {/* Buscador Rápido GBIF / Catálogo */}
                   <div style={{ position: 'relative' }}>
                     <input
+                      id="species-search-input"
                       type="text"
                       placeholder="🔍 Buscar otra especie (GBIF / catálogo)..."
-                      aria-label="Buscar en GBIF / Catálogo"
+                      aria-label="Especie Botánica"
                       value={speciesSearchQuery}
                       onChange={e => setSpeciesSearchQuery(e.target.value)}
                       style={{ ...INPUT_STYLE, fontSize: 11.5 }}
@@ -1618,7 +1473,6 @@ export function LocationsPage() {
                           value={sowPosition || 'A-01'}
                           onChange={e => {
                             setSowPosition(e.target.value)
-                            setSelectedSlot(e.target.value.toUpperCase())
                           }}
                         />
                       </div>
@@ -1933,57 +1787,41 @@ export function LocationsPage() {
           </header>
         )}
 
-        {/* Renderizado de Nivel 1 (Mapa de Salas) vs Nivel 2 (Interior Isométrico de Sala) */}
+        {/* Renderizado de Nivel 1 (Mapa de Espacios) vs Nivel 2 (Visor y Constructor 1:1 Full-Screen) */}
         {selectedRoom ? (
-          <IsometricRoomInterior
-            location={selectedRoom}
-            allLocations={locations}
-            individuals={individuals}
-            accessions={accessions}
-            seedLots={seedLots}
-            taxons={taxons}
-            ambientTempC={ambientTempC}
-            selectedSlot={selectedSlot}
-            selectedIndividualId={selectedIndividualId}
-            onOpenSowDrawer={() => {
-              setDrawerMode('sow')
-              setSowSubTab(accessions.length === 0 ? 'new-material' : 'inventory')
-              if (!sowPosition) setSowPosition('A-01')
-            }}
-            onOpenNewMaterialDrawer={() => {
-              setDrawerMode('sow')
-              setSowSubTab('new-material')
-              if (!sowPosition) setSowPosition('A-01')
-            }}
-            onBackToMap={() => {
-              setSelectedRoomId(null)
-              setSelectedIndividualId(null)
-              setDrawerMode(null)
-            }}
-            onSwitchRoom={roomId => handleEnterRoom(roomId)}
-            onClickEmptySlot={handleClickEmptySlot}
-            onSelectPlant={handleSelectPlant}
-            onInspectPlant={handleInspectPlant}
-            onDropSeedInSlot={handleDropSeedInSlot}
-            onMovePlantToSlot={handleMovePlantToSlot}
-            onMovePlantToRoom={handleMovePlantToRoom}
-            onUpdateGridDimensions={(r, c) =>
-              updateLocation(selectedRoom.id, { rows: r, cols: c })
-            }
-            onNavigateSeedLot={lotId => navigate(`/seedlots?selectedId=${lotId}`)}
-            onAdvancePlantBbch={handleAdvancePlantBbch}
-            onQuickClonePlant={handleQuickClonePlant}
-            onRemovePlantFromSlot={handleRemovePlantFromSlot}
-            onOpenSowDrawerWithSlot={(slot, subTab) => {
-              setSelectedSlot(slot)
-              setSowPosition(slot)
-              setDrawerMode('sow')
-              setSowSubTab(subTab)
-            }}
-            onDeselectSlot={() => setSelectedSlot(null)}
-          />
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', width: '100%', height: '100%', overflow: 'hidden' }}>
+            <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+              <Space3DViewer
+                locationId={selectedRoom.id}
+                locationName={`Espacio 1:1 · ${selectedRoom.name}`}
+                capacity={selectedRoom.capacity}
+                locationType={
+                  selectedRoom.type === 'greenhouse'
+                    ? 'greenhouse'
+                    : selectedRoom.type === 'field'
+                      ? 'outdoor'
+                      : 'indoor'
+                }
+                onBackToCampus={() => {
+                  setSelectedRoomId(null)
+                  setSelectedIndividualId(null)
+                  setDrawerMode(null)
+                }}
+                onOpenSowModal={() => {
+                  setDrawerMode('sow')
+                }}
+                onInspectPlantDetails={(indId) => {
+                  setSelectedIndividualId(indId)
+                  setDrawerMode('inspect')
+                }}
+                onRemovePlantIndividual={(indId) => {
+                  removeIndividual(indId)
+                }}
+              />
+            </div>
+          </div>
         ) : (
-          <IsometricCampusMap
+          <SpacesCampusMap
             locations={locations}
             individuals={individuals}
             seedLots={seedLots}
@@ -1991,14 +1829,14 @@ export function LocationsPage() {
             taxons={taxons}
             onSelectRoom={handleEnterRoom}
             onSowInRoom={handleEnterRoom}
-            onDeleteRoom={locId => removeLocation(locId)}
+            onDeleteRoom={(locId: string) => removeLocation(locId)}
             onOpenNewRoomDrawer={() => setDrawerMode('new-location')}
-            onSelectIndividual={(locId, indId) => {
+            onSelectIndividual={(locId: string, indId: string) => {
               setSelectedRoomId(locId)
               setSelectedIndividualId(indId)
               setDrawerMode('inspect')
             }}
-            onNavigateSeedLot={lotId => navigate(`/seedlots?selectedId=${lotId}`)}
+            onNavigateSeedLot={(lotId: string) => navigate(`/seedlots?selectedId=${lotId}`)}
           />
         )}
       </main>

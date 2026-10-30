@@ -13,7 +13,6 @@ import { getIndividualDisplayName } from '@/domain/individual'
 import type { Individual, IndividualStatus, CrossType } from '@/domain/individual'
 import { getVegetativeCloneCapability } from '@/domain/propagationForm'
 import { getAllGridPositions, getLocationGridDimensions } from '@/domain/location'
-import { useRoomLayoutStore } from '@/store/roomLayoutStore'
 import { ActiveCropTabs } from '@/components/ActiveCropTabs'
 import {
   Sprout, Plus, Search, Trash2, Info, MapPin, GitBranch,
@@ -398,7 +397,7 @@ export function IndividualDetail({
         const allSlots = getAllGridPositions(rows, cols)
         const occupied = new Set(roomPlants.map(p => (p.position || p.location || '').trim().toUpperCase()))
         targetSlots = allSlots.filter(s => !occupied.has(s))
-        roomSlots = useRoomLayoutStore.getState().getSlots(room.id)
+        roomSlots = []
       }
     }
 

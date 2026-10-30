@@ -118,10 +118,11 @@ export async function hydrateTaxonWithApis(taxonId: string): Promise<void> {
     commonName: taxon.commonName,
     family: taxon.family,
   })
-  const effectiveCropCode = resolution?.cropCode || taxon.cropCode || generateFallbackCropCode(taxon.genus, taxon.species)
+  const effectiveCropCode = taxon.cropCode || resolution?.cropCode || generateFallbackCropCode(taxon.genus, taxon.species)
+  const rawTraits = getTraitsForCrop(effectiveCropCode)
   const traits = (taxon.traits && taxon.traits.length > 0)
     ? taxon.traits
-    : getTraitsForCrop(effectiveCropCode)
+    : (rawTraits.length > 0 ? rawTraits : (resolution?.cropCode ? getTraitsForCrop(resolution.cropCode) : []))
 
   const presetMatch = STARTER_SPECIES_PRESETS.find(
     p => p.genus.toLowerCase() === taxon.genus.toLowerCase() && p.species.toLowerCase() === taxon.species.toLowerCase()

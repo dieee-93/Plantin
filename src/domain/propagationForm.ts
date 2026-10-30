@@ -1,5 +1,5 @@
 import type { Taxon, AgronomicData } from '@/domain/taxon'
-import { resolveBotanicalArchetype } from '@/features/locations/isometric/botanicalArchetypes'
+import { resolveBotanicalArchetype } from '@/domain/botanicalArchetypes'
 import { getEffectiveCropCode } from '@/domain/ontology/cropResolver'
 
 export type PropagationFormId =
