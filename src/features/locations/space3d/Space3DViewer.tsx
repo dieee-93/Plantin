@@ -31,6 +31,7 @@ import { SpacePlantActionBar } from './SpacePlantActionBar';
 import { SpaceWallActionBar } from './SpaceWallActionBar';
 import { SpaceWallBuilderShelf } from './SpaceWallBuilderShelf';
 import { SpaceRoofActionBar } from './SpaceRoofActionBar';
+import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import {
   computeCursorPlantPreview,
@@ -1444,6 +1445,33 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             onUpdateRoofHeight={(heightCm) => updateRoofConfig(locationId, { heightCm })}
             onUpdateRoofMaterial={(material) => updateRoofConfig(locationId, { material })}
             onToggleGrowLights={(hasGrowLights) => updateRoofConfig(locationId, { hasGrowLights })}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+        </div>
+      )}
+
+      {/* ── 3.7. Contextual Builder Shelf for Terrain & Boundaries ── */}
+      {builderState.activeTool === 'edit_boundary' && (
+        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
+          <SpaceTerrainBuilderShelf
+            currentMaterial={layout.baseMaterial ?? 'soil'}
+            onChangeMaterial={(mat) => setBaseMaterial(locationId, mat)}
+            customWidthM={customWidthM}
+            setCustomWidthM={setCustomWidthM}
+            customDepthM={customDepthM}
+            setCustomDepthM={setCustomDepthM}
+            onApplyDimensions={handleApplyDimensions}
+            onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
+            vertexCount={layout.baseBoundary.length}
+            selectedVertexIndex={builderState.selectedVertexIndex}
+            onInsertVertex={handleInsertVertex}
+            onRemoveSelectedVertex={() => {
+              if (builderState.selectedVertexIndex !== null) {
+                removeBoundaryVertex(locationId, builderState.selectedVertexIndex);
+                dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+              }
+            }}
+            onSanitizeBoundary={() => sanitizeBoundary(locationId)}
             onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
         </div>
