@@ -13,6 +13,7 @@ import {
   isRectangularPolygon,
   type Point2DCm,
   type Polygon2DCm,
+  type WallMaterialType,
 } from '@/domain/spaceGeometry';
 import { measurePlantNeighbors, type PlacedPlantSpatialCm } from '@/domain/solarAndPlantSpatial';
 import type { Individual } from '@/domain/individual';
@@ -21,12 +22,14 @@ import { useIndividualStore } from '@/store/individualStore';
 import { useSeedLotStore } from '@/store/seedLotStore';
 import { useTaxonStore } from '@/store/taxonStore';
 import { SpaceSceneGraph, type SpaceViewMode } from './SpaceSceneGraph';
+import { ShaderWarmer } from './ShaderWarmer';
 import { SpaceHeaderNav } from './SpaceHeaderNav';
 import { SpaceLensBar, type AnalyticalLensType } from './SpaceLensBar';
 import { SpaceCommandDock } from './SpaceCommandDock';
 import { SpaceCameraWidget } from './SpaceCameraWidget';
 import { SpacePlantActionBar } from './SpacePlantActionBar';
 import { SpaceWallActionBar } from './SpaceWallActionBar';
+import { SpaceWallBuilderShelf } from './SpaceWallBuilderShelf';
 import { SpaceRoofActionBar } from './SpaceRoofActionBar';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import {
@@ -150,6 +153,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const updateWall = useSpaceLayoutStore((state) => state.updateWall);
   const addWallOpening = useSpaceLayoutStore((state) => state.addWallOpening);
   const removeWallOpening = useSpaceLayoutStore((state) => state.removeWallOpening);
+  const updateWallOpening = useSpaceLayoutStore((state) => state.updateWallOpening);
   const setAllWallsHeight = useSpaceLayoutStore(
     (state) => state.setAllWallsHeight,
   );
@@ -180,7 +184,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const [viewMode, setViewMode] = useState<SpaceViewMode>('3d');
   const [cameraAzimuthDeg, setCameraAzimuthDeg] = useState<number>(0);
   const cameraAzimuthDegRef = useRef(cameraAzimuthDeg);
-  cameraAzimuthDegRef.current = cameraAzimuthDeg;
+  useEffect(() => {
+    cameraAzimuthDegRef.current = cameraAzimuthDeg;
+  }, [cameraAzimuthDeg]);
   const orbitControlsRef = useRef<any>(null);
   const [zoomPercent, setZoomPercent] = useState<number>(75);
   const [showLabels, setShowLabels] = useState<boolean>(true);
@@ -399,17 +405,18 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     [locationId, insertBoundaryVertex],
   );
 
-  // Stable workspace coordinates with 1.2m margin around the terrain
+  const stableBoundaryForViewBox = draggingVertexIndex === null ? layout.baseBoundary : null;
   const canvasViewBox = useMemo(() => {
     let minX = 0;
     let maxX = 1000;
     let minY = 0;
     let maxY = 600;
-    if (layout.baseBoundary.length > 0) {
-      minX = Math.min(0, ...layout.baseBoundary.map((p) => p.x));
-      maxX = Math.max(1000, ...layout.baseBoundary.map((p) => p.x));
-      minY = Math.min(0, ...layout.baseBoundary.map((p) => p.y));
-      maxY = Math.max(600, ...layout.baseBoundary.map((p) => p.y));
+    const boundary = stableBoundaryForViewBox ?? layout.baseBoundary;
+    if (boundary.length > 0) {
+      minX = Math.min(0, ...boundary.map((p) => p.x));
+      maxX = Math.max(1000, ...boundary.map((p) => p.x));
+      minY = Math.min(0, ...boundary.map((p) => p.y));
+      maxY = Math.max(600, ...boundary.map((p) => p.y));
     }
     const pad = 120;
     return {
@@ -418,10 +425,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       width: Math.round(maxX - minX + pad * 2),
       height: Math.round(maxY - minY + pad * 2),
     };
-  }, [
-    // Freeze viewBox while dragging so origin/scale does not jitter under the mouse
-    draggingVertexIndex === null ? layout.baseBoundary : null,
-  ]);
+  }, [stableBoundaryForViewBox, layout.baseBoundary]);
 
   const edgeInsertionPreview = useMemo(() => {
     if (builderState.activeTool !== 'edit_boundary' || !builderState.cursorCm || draggingVertexIndex !== null) {
@@ -505,7 +509,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       orbitControlsRef.current.setAzimuthalAngle((cameraAzimuthDeg * Math.PI) / 180);
       orbitControlsRef.current.update();
     }
-  }, [viewMode]);
+  }, [viewMode, cameraAzimuthDeg]);
 
   const webglSupported = useMemo(() => canUseWebGL(), []);
 
@@ -547,6 +551,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   }, [seedLots, taxons]);
 
   const availablePlantsForTray = useMemo(() => {
+    if (!isTrayOpen) return [];
+    const placedSet = new Set(layout.placedPlants.map((p) => p.id));
     return individuals
       .filter((ind) => ind.status === 'active')
       .map((ind) => ({
@@ -554,9 +560,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         label: ind.label || 'Planta',
         cropName: ind.location || 'Planta',
         bbchStage: ind.currentBBCH,
-        isPlaced: layout.placedPlants.some((p) => p.id === ind.id),
+        isPlaced: placedSet.has(ind.id),
       }));
-  }, [individuals, layout.placedPlants]);
+  }, [individuals, layout.placedPlants, isTrayOpen]);
 
   const handlePlanePointClick = useCallback(
     (pointCm: Point2DCm) => {
@@ -913,6 +919,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 onInsertVertexAtEdge={handleInsertVertexAtEdge}
                 onGroundPointClickCm={handlePlanePointClick}
               />
+              <ShaderWarmer />
               {/* Active 3D ground drag capture plane (captures smooth drag across entire ground) */}
               {draggingVertexIndex !== null ? (
                 <mesh
@@ -1404,6 +1411,24 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             onRemoveOpening={(openingId) => {
               removeWallOpening(locationId, selectedWall.id, openingId);
             }}
+            onUpdateOpening={(openingId, partial) => {
+              updateWallOpening(locationId, selectedWall.id, openingId, partial);
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── 3.5b. Contextual Builder Shelf for Perimeter Enclosures ── */}
+      {builderState.activeTool === 'walls' && !selectedWall && (
+        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
+          <SpaceWallBuilderShelf
+            currentHeightCm={layout.walls[0]?.heightCm ?? 200}
+            currentMaterial={layout.walls[0]?.material ?? 'brick'}
+            onApplyPerimeter={(heightCm: number, material: WallMaterialType) => {
+              setAllWallsHeight(locationId, heightCm);
+              setAllWallsMaterial(locationId, material);
+            }}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
         </div>
       )}

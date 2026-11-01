@@ -9,7 +9,7 @@ import type { Taxon } from '@/domain/taxon'
 import { getIndividualDisplayName } from '@/domain/individual'
 import { resolveBotanicalArchetype, type BotanicalVisualProfile } from '@/domain/botanicalArchetypes'
 import {
-  Plus, Trash2, Sprout, Package, Users, Eye
+  Plus, Trash2, Sprout, Package, Users, Eye, Loader2
 } from 'lucide-react'
 
 export interface IsometricCampusMapProps {
@@ -18,6 +18,7 @@ export interface IsometricCampusMapProps {
   seedLots: SeedLot[]
   accessions: Accession[]
   taxons?: Taxon[]
+  enteringRoomId?: string | null
   onSelectRoom: (locationId: string) => void
   onSowInRoom: (locationId: string) => void
   onDeleteRoom: (locationId: string) => void
@@ -437,6 +438,7 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
   seedLots,
   accessions,
   taxons = [],
+  enteringRoomId,
   onSelectRoom,
   onSowInRoom,
   onDeleteRoom,
@@ -454,6 +456,47 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
     }
     return map
   }, [accessions, taxons])
+
+  // Caching botanical profiles per taxon avoids recalculating for 5,000 individual plants
+  const taxonToProfile = useMemo(() => {
+    const map = new Map<string, BotanicalVisualProfile>()
+    for (const t of taxons) {
+      map.set(t.id, resolveBotanicalArchetype(t))
+    }
+    return map
+  }, [taxons])
+
+  // Single-pass indexing of individuals by locationId
+  const individualsByLocation = useMemo(() => {
+    const map = new Map<string, Individual[]>()
+    for (let i = 0; i < individuals.length; i++) {
+      const ind = individuals[i]
+      if (!ind.locationId) continue
+      let list = map.get(ind.locationId)
+      if (!list) {
+        list = []
+        map.set(ind.locationId, list)
+      }
+      list.push(ind)
+    }
+    return map
+  }, [individuals])
+
+  // Single-pass indexing of active seedLots by locationId
+  const seedLotsByLocation = useMemo(() => {
+    const map = new Map<string, SeedLot[]>()
+    for (let i = 0; i < seedLots.length; i++) {
+      const lot = seedLots[i]
+      if (!lot.locationId || lot.status !== 'active') continue
+      let list = map.get(lot.locationId)
+      if (!list) {
+        list = []
+        map.set(lot.locationId, list)
+      }
+      list.push(lot)
+    }
+    return map
+  }, [seedLots])
 
   if (locations.length === 0) {
     return (
@@ -508,26 +551,28 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
       }}
     >
       {locations.map((loc, i) => {
-        const locIndividuals = individuals.filter(ind => ind.locationId === loc.id)
+        const locIndividuals = individualsByLocation.get(loc.id) ?? []
         const activeLocIndividuals = locIndividuals.filter(ind => ind.status === 'active')
-        const locSeedLots = seedLots.filter(lot => lot.locationId === loc.id && lot.status === 'active')
+        const locSeedLots = seedLotsByLocation.get(loc.id) ?? []
         const { rows, cols } = getLocationGridDimensions(loc, locIndividuals.length)
+        const isEntering = enteringRoomId === loc.id
 
         // Previews botánicos por especie para el edificio 2.5D
         const miniPreviews: MiniPlantPreview[] = activeLocIndividuals.slice(0, 6).map(ind => {
           const taxon = accessionToTaxon.get(ind.accessionId)
           return {
-            profile: resolveBotanicalArchetype(taxon),
+            profile: (taxon ? taxonToProfile.get(taxon.id) : undefined) ?? resolveBotanicalArchetype(taxon),
             bbch: ind.currentBBCH ?? 14,
           }
         })
 
-        // Resumen de especies cultivadas en esta sala
+        // Resumen de especies cultivadas en esta sala (usando perfil botánico cacheado)
         const roomSpeciesMap = new Map<string, { label: string; count: number; color: string }>()
-        for (const ind of activeLocIndividuals) {
+        for (let j = 0; j < activeLocIndividuals.length; j++) {
+          const ind = activeLocIndividuals[j]
           const taxon = accessionToTaxon.get(ind.accessionId)
           if (!taxon) continue
-          const profile = resolveBotanicalArchetype(taxon)
+          const profile = taxonToProfile.get(taxon.id) ?? resolveBotanicalArchetype(taxon)
           const existing = roomSpeciesMap.get(taxon.id)
           if (existing) {
             existing.count += 1
@@ -554,15 +599,17 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
             transition={{ duration: 0.25, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
             style={{
               background: 'var(--surface-elevated)',
-              border: '1px solid var(--border)',
+              border: isEntering ? '1.5px solid var(--accent)' : '1px solid var(--border)',
               borderRadius: 'var(--radius-lg)',
               padding: '18px 20px',
-              boxShadow: 'var(--shadow-sm)',
+              boxShadow: isEntering ? '0 0 0 2px rgba(16, 185, 129, 0.25), var(--shadow-md)' : 'var(--shadow-sm)',
+              opacity: enteringRoomId && !isEntering ? 0.65 : 1,
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
               gap: 12,
               position: 'relative',
+              transition: 'border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease',
             }}
           >
             <div>
@@ -666,24 +713,52 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                 role="button"
                 tabIndex={0}
                 aria-label={`Entrar a vista isométrica de ${loc.name}`}
-                onClick={() => onSelectRoom(loc.id)}
+                onClick={() => {
+                  if (!enteringRoomId) onSelectRoom(loc.id)
+                }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if ((e.key === 'Enter' || e.key === ' ') && !enteringRoomId) {
                     e.preventDefault()
                     onSelectRoom(loc.id)
                   }
                 }}
                 style={{
                   background: 'linear-gradient(180deg, var(--surface-subtle) 0%, #f1f5f9 100%)',
-                  border: '1px solid var(--border)',
+                  border: isEntering ? '1px solid var(--accent)' : '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)',
                   padding: '8px 12px 10px',
                   marginBottom: 10,
-                  cursor: 'pointer',
+                  cursor: isEntering ? 'wait' : 'pointer',
                   position: 'relative',
+                  overflow: 'hidden',
                   transition: 'border-color 0.15s ease, transform 0.15s ease',
                 }}
               >
+                {/* Instant 0 ms feedback overlay when room is transitioning */}
+                {isEntering && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(255, 255, 255, 0.78)',
+                      backdropFilter: 'blur(3px)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      zIndex: 20,
+                      color: 'var(--accent)',
+                    }}
+                  >
+                    <Loader2 size={24} className="animate-spin" style={{ animation: 'spin 0.8s linear infinite' }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.01em' }}>
+                      Abriendo sala 3D...
+                    </span>
+                  </div>
+                )}
+
                 <IsometricBuildingGraphic
                   type={loc.type}
                   activeCount={activeLocIndividuals.length}
@@ -704,8 +779,17 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                   }}
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <Eye size={12} />
-                    Abrir plano isométrico interior
+                    {isEntering ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" style={{ animation: 'spin 0.8s linear infinite' }} />
+                        Cargando entorno 3D...
+                      </>
+                    ) : (
+                      <>
+                        <Eye size={12} />
+                        Abrir plano isométrico interior
+                      </>
+                    )}
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-secondary)' }}>
                     {activeLocIndividuals.length} activas
@@ -910,6 +994,7 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <button
                   type="button"
+                  disabled={Boolean(enteringRoomId)}
                   onClick={() => onSelectRoom(loc.id)}
                   style={{
                     flex: 1,
@@ -919,20 +1004,31 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                     gap: 5,
                     padding: '7px 11px',
                     borderRadius: 'var(--radius-sm)',
-                    background: 'var(--accent)',
-                    border: 'none',
-                    color: 'white',
+                    background: isEntering ? 'var(--accent-light)' : 'var(--accent)',
+                    border: isEntering ? '1px solid var(--accent)' : 'none',
+                    color: isEntering ? 'var(--accent)' : 'white',
                     fontSize: 11.5,
                     fontWeight: 600,
-                    cursor: 'pointer',
+                    cursor: isEntering ? 'wait' : Boolean(enteringRoomId) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                  <Eye size={12} />
-                  Entrar a Sala
+                  {isEntering ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" style={{ animation: 'spin 0.8s linear infinite' }} />
+                      Abriendo sala...
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={12} />
+                      Entrar a Sala
+                    </>
+                  )}
                 </button>
 
                 <button
                   type="button"
+                  disabled={Boolean(enteringRoomId)}
                   onClick={() => onSowInRoom(loc.id)}
                   style={{
                     display: 'inline-flex',
@@ -945,7 +1041,9 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                     color: 'var(--accent)',
                     fontSize: 11.5,
                     fontWeight: 600,
-                    cursor: 'pointer',
+                    cursor: enteringRoomId ? 'not-allowed' : 'pointer',
+                    opacity: enteringRoomId ? 0.6 : 1,
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   <Sprout size={12} />

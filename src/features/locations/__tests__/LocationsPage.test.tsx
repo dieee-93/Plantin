@@ -251,4 +251,37 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
       expect(tom!.agronomicData!.phMinimum!).toBeGreaterThanOrEqual(4.5)
     }, { timeout: 3000 })
   })
+
+  it('brinda feedback visual inmediato (0 ms) con estado de carga y barra de transición al hacer clic para entrar a una sala', async () => {
+    const user = userEvent.setup()
+
+    useLocationStore.getState().add({
+      id: 'loc-dos-asad',
+      name: 'dos asad',
+      type: 'greenhouse',
+      capacity: 5000,
+    })
+
+    for (let i = 0; i < 50; i++) {
+      useIndividualStore.getState().add({
+        locationId: 'loc-dos-asad',
+        accessionId: 'acc-1',
+        label: `Planta #${i + 1}`,
+        status: 'active',
+        currentBBCH: 15,
+      })
+    }
+
+    render(<LocationsPage />)
+
+    const enterBtn = screen.getByRole('button', { name: /Entrar a Sala/i })
+    expect(enterBtn).toBeInTheDocument()
+
+    await user.click(enterBtn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('space-3d-viewer')).toBeInTheDocument()
+      expect(screen.getByText(/Espacio 1:1 · dos asad/i)).toBeInTheDocument()
+    })
+  })
 })

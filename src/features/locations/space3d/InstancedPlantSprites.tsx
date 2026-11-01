@@ -146,7 +146,6 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
   onSelectPlant,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
 
   // Precompute calibrated botanical dimensions for all plants in this group
   // Guarantees true image aspect ratio (widthM / heightM === metric.aspectRatio) with 0% distortion
@@ -199,36 +198,59 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
   // Rotation is kept at identity (0, 0, 0) because cylindrical billboarding
   // is executed 100% on the GPU in the vertex shader, eliminating all useFrame CPU loops.
   useLayoutEffect(() => {
-    if (!meshRef.current || count === 0) return;
+    const mesh = meshRef.current;
+    if (!mesh || count === 0) return;
+
+    // Direct TypedArray assignment (Float32Array): eliminates 5,000 matrix compositions on CPU
+    const matrixArray = mesh.instanceMatrix.array as Float32Array;
+
+    if (!mesh.instanceColor) {
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
+    }
+    const colorArray = mesh.instanceColor.array as Float32Array;
 
     for (let i = 0; i < count; i++) {
       const p = plants[i];
       const dims = plantDims[i] ?? { widthM: 0.4, heightM: 0.4 };
+      const mOffset = i * 16;
 
       // Base geometry pivot is translated by +0.5 in Y.
-      // Setting y = PLANT_GROUND_ELEVATION_M (0.02 m) anchors the bottom edge cleanly on the ground,
-      // level with canopy rings and above floor geometry without sinking or clipping.
-      dummy.position.set(p.xM, PLANT_GROUND_ELEVATION_M, p.zM);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(dims.widthM, dims.heightM, 1);
-      dummy.updateMatrix();
+      // Setting y = PLANT_GROUND_ELEVATION_M (0.02 m) anchors the bottom edge cleanly on the ground
+      matrixArray[mOffset] = dims.widthM;
+      matrixArray[mOffset + 1] = 0;
+      matrixArray[mOffset + 2] = 0;
+      matrixArray[mOffset + 3] = 0;
 
-      meshRef.current.setMatrixAt(i, dummy.matrix);
+      matrixArray[mOffset + 4] = 0;
+      matrixArray[mOffset + 5] = dims.heightM;
+      matrixArray[mOffset + 6] = 0;
+      matrixArray[mOffset + 7] = 0;
 
-      const color = p.isSelected
+      matrixArray[mOffset + 8] = 0;
+      matrixArray[mOffset + 9] = 0;
+      matrixArray[mOffset + 10] = 1;
+      matrixArray[mOffset + 11] = 0;
+
+      matrixArray[mOffset + 12] = p.xM;
+      matrixArray[mOffset + 13] = PLANT_GROUND_ELEVATION_M;
+      matrixArray[mOffset + 14] = p.zM;
+      matrixArray[mOffset + 15] = 1;
+
+      const cOffset = i * 3;
+      const col = p.isSelected
         ? SELECTED_COLOR
         : p.isCrowded
         ? CROWDED_COLOR
         : NORMAL_COLOR;
-      meshRef.current.setColorAt(i, color);
+      colorArray[cOffset] = col.r;
+      colorArray[cOffset + 1] = col.g;
+      colorArray[cOffset + 2] = col.b;
     }
 
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    if (meshRef.current.instanceColor) {
-      meshRef.current.instanceColor.needsUpdate = true;
-    }
-    meshRef.current.computeBoundingSphere();
-  }, [plants, count, dummy, plantDims]);
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [plants, count, plantDims]);
 
   return (
     <instancedMesh

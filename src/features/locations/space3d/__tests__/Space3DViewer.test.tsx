@@ -141,8 +141,7 @@ describe('Space3DViewer - Interactive 1:1 Space Builder & Viewer', () => {
     ).toBe(120);
 
     // Change material to wood_fence
-    const select = screen.getByLabelText(/Material de pared/i);
-    fireEvent.change(select, { target: { value: 'wood_fence' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Material Madera' }));
     expect(
       useSpaceLayoutStore.getState().layouts['loc-terrain-test-1'].walls[0].material,
     ).toBe('wood_fence');

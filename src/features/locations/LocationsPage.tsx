@@ -362,6 +362,8 @@ export function LocationsPage() {
 
   // Estado de navegación espacial 1:1
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
+  const [enteringRoomId, setEnteringRoomId] = useState<string | null>(null)
+  const [isPending, startTransition] = React.useTransition()
   const [drawerMode, setDrawerMode] = useState<DrawerMode>(null)
   const [selectedIndividualId, setSelectedIndividualId] = useState<string | null>(null)
 
@@ -547,10 +549,17 @@ export function LocationsPage() {
 
   // ── Handlers de Navegación ──
   const handleEnterRoom = (locationId: string) => {
-    setSelectedRoomId(locationId)
+    // 1. Feedback visual inmediato en 0 ms
+    setEnteringRoomId(locationId)
     setSowPosition('')
     setSelectedIndividualId(null)
     setDrawerMode(null)
+
+    // 2. Transición diferida de React 19 para mantener la UI 100% responsiva mientras se monta el visor 3D
+    startTransition(() => {
+      setSelectedRoomId(locationId)
+      setEnteringRoomId(null)
+    })
   }
 
   // ── Selección rápida de Preset Botánico con auto-registro en TaxonStore ──
@@ -1795,8 +1804,26 @@ export function LocationsPage() {
           background: 'var(--surface-base)',
           display: 'flex',
           flexDirection: 'column',
+          position: 'relative',
         }}
       >
+        {/* Barra superior de carga inmediata al ingresar a una sala 3D */}
+        {(enteringRoomId || isPending) && (
+          <div
+            role="progressbar"
+            aria-label="Cargando espacio 3D"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              zIndex: 9999,
+              background: 'linear-gradient(90deg, #10b981, #38bdf8, #10b981)',
+              backgroundSize: '200% 100%',
+            }}
+          />
+        )}
         {!selectedRoom && (
           <header style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 4 }}>
@@ -1942,14 +1969,19 @@ export function LocationsPage() {
             seedLots={seedLots}
             accessions={accessions}
             taxons={taxons}
+            enteringRoomId={enteringRoomId}
             onSelectRoom={handleEnterRoom}
             onSowInRoom={handleEnterRoom}
             onDeleteRoom={(locId: string) => removeLocation(locId)}
             onOpenNewRoomDrawer={() => setDrawerMode('new-location')}
             onSelectIndividual={(locId: string, indId: string) => {
-              setSelectedRoomId(locId)
-              setSelectedIndividualId(indId)
-              setDrawerMode('inspect')
+              setEnteringRoomId(locId)
+              startTransition(() => {
+                setSelectedRoomId(locId)
+                setSelectedIndividualId(indId)
+                setDrawerMode('inspect')
+                setEnteringRoomId(null)
+              })
             }}
             onNavigateSeedLot={(lotId: string) => navigate(`/seedlots?selectedId=${lotId}`)}
           />

@@ -191,47 +191,49 @@ export interface PlantsLayerProps {
 
 export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
   ({ placedPlants, selectedPlantId, crowdedPlantIds, centerCm, onSelectPlant }) => {
-    // 1. Prepare canopy ring items for instanced rendering (1 draw call for all rings)
+    // 1. Prepare canopy ring items for instanced rendering (preallocated array for O(N) linear speed)
     const ringItems = useMemo<CanopyRingItem[]>(() => {
-      return placedPlants.map((p) => {
-        const xM = (p.xCm - centerCm.x) * CM_TO_M;
-        const zM = (p.yCm - centerCm.y) * CM_TO_M;
-        const radiusM = Math.max(0.08, p.canopyRadiusCm * CM_TO_M);
-        return {
+      const len = placedPlants.length;
+      const items: CanopyRingItem[] = new Array(len);
+      for (let i = 0; i < len; i++) {
+        const p = placedPlants[i];
+        items[i] = {
           id: p.id,
-          xM,
-          zM,
-          radiusM,
+          xM: (p.xCm - centerCm.x) * CM_TO_M,
+          zM: (p.yCm - centerCm.y) * CM_TO_M,
+          radiusM: Math.max(0.08, p.canopyRadiusCm * CM_TO_M),
           isCrowded: crowdedPlantIds.has(p.id),
           isSelected: selectedPlantId === p.id,
         };
-      });
+      }
+      return items;
     }, [placedPlants, centerCm, crowdedPlantIds, selectedPlantId]);
 
     // 2. Group plants by cropCode for instanced billboard rendering (1 draw call per cropCode)
     const plantGroups = useMemo(() => {
-      const groups: Record<string, { cropCode: string; plants: InstancedPlantItem[] }> = {};
-      for (const p of placedPlants) {
+      const groups = new Map<string, { cropCode: string; plants: InstancedPlantItem[] }>();
+      const len = placedPlants.length;
+      for (let i = 0; i < len; i++) {
+        const p = placedPlants[i];
         const cropCode = p.cropCode || 'TOM';
-        if (!groups[cropCode]) {
-          groups[cropCode] = { cropCode, plants: [] };
+        let group = groups.get(cropCode);
+        if (!group) {
+          group = { cropCode, plants: [] };
+          groups.set(cropCode, group);
         }
-        const xM = (p.xCm - centerCm.x) * CM_TO_M;
-        const zM = (p.yCm - centerCm.y) * CM_TO_M;
         const radiusM = Math.max(0.08, p.canopyRadiusCm * CM_TO_M);
-        const bodyHeightM = Math.max(0.25, radiusM * 1.6);
-        groups[cropCode].plants.push({
+        group.plants.push({
           id: p.id,
           label: p.label,
-          xM,
-          zM,
+          xM: (p.xCm - centerCm.x) * CM_TO_M,
+          zM: (p.yCm - centerCm.y) * CM_TO_M,
           radiusM,
-          bodyHeightM,
+          bodyHeightM: Math.max(0.25, radiusM * 1.6),
           isCrowded: crowdedPlantIds.has(p.id),
           isSelected: selectedPlantId === p.id,
         });
       }
-      return Object.values(groups);
+      return Array.from(groups.values());
     }, [placedPlants, centerCm, crowdedPlantIds, selectedPlantId]);
 
     const selectedPlant = useMemo(

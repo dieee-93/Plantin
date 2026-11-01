@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { classifySpacePoint, computeSpaceRegions } from '@/domain/spaceGeometry';
 import { measurePlantNeighbors } from '@/domain/solarAndPlantSpatial';
-import { SPACE_PRESETS, useSpaceLayoutStore } from '../spaceLayoutStore';
+import { flushSpaceLayoutStorage, SPACE_PRESETS, useSpaceLayoutStore } from '../spaceLayoutStore';
 
 describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
   beforeEach(() => {
@@ -408,6 +408,7 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
         yCm: 50,
         canopyRadiusCm: 15,
       });
+      flushSpaceLayoutStorage();
 
       const rawStorage = localStorage.getItem('plantin-space-layout-v1');
       if (rawStorage) {
@@ -431,11 +432,11 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
 
       // Verify that past snapshot has x=800 in independent memory
       const past = useSpaceLayoutStore.getState().history['loc-deep-copy'].past;
-      expect(past[past.length - 1].baseBoundary[1].x).toBe(800);
+      expect(past[past.length - 1].baseBoundary![1].x).toBe(800);
 
       // Mutate current boundary directly to test deep isolation
       useSpaceLayoutStore.getState().getOrCreateSpaceLayout('loc-deep-copy').baseBoundary[1].x = 1200;
-      expect(useSpaceLayoutStore.getState().history['loc-deep-copy'].past[past.length - 1].baseBoundary[1].x).toBe(800);
+      expect(useSpaceLayoutStore.getState().history['loc-deep-copy'].past[past.length - 1].baseBoundary![1].x).toBe(800);
 
       // Undo restores original 800
       store.undo('loc-deep-copy');
@@ -553,6 +554,293 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
       // Now sanitizeBoundary cleans any redundant collinear vertices
       store.sanitizeBoundary('loc-weld-test');
       expect(store.getOrCreateSpaceLayout('loc-weld-test').baseBoundary.length).toBeLessThanOrEqual(5);
+    });
+
+    describe('Delta History (Command Pattern) & High-Scale Plant Operations (5,000 plants)', () => {
+      it('registers placePlant as atomic plant_add delta without cloning entire layout', () => {
+        const store = useSpaceLayoutStore.getState();
+        store.getOrCreateSpaceLayout('loc-delta-1', 'outdoor', 'empty_lot_1to1');
+
+        const plantId = store.placePlant('loc-delta-1', {
+          label: 'Tomatera',
+          cropCode: 'tomato',
+          xCm: 250,
+          yCm: 350,
+          canopyRadiusCm: 30,
+        });
+
+        const history = useSpaceLayoutStore.getState().history['loc-delta-1'];
+        expect(history.past).toHaveLength(1);
+        expect(history.past[0].type).toBe('plant_add');
+        if (history.past[0].type === 'plant_add') {
+          expect(history.past[0].plant.id).toBe(plantId);
+          expect(history.past[0].plant.label).toBe('Tomatera');
+        }
+
+        // Undo removes the plant
+        store.undo('loc-delta-1');
+        expect(store.getOrCreateSpaceLayout('loc-delta-1').placedPlants).toHaveLength(0);
+        expect(store.canUndo('loc-delta-1')).toBe(false);
+        expect(store.canRedo('loc-delta-1')).toBe(true);
+
+        // Redo re-inserts the plant with same id and properties
+        store.redo('loc-delta-1');
+        const plants = store.getOrCreateSpaceLayout('loc-delta-1').placedPlants;
+        expect(plants).toHaveLength(1);
+        expect(plants[0].id).toBe(plantId);
+        expect(plants[0].xCm).toBe(250);
+      });
+
+      it('registers removePlant as atomic plant_remove delta and restores at original index', () => {
+        const store = useSpaceLayoutStore.getState();
+        store.getOrCreateSpaceLayout('loc-delta-2', 'outdoor', 'empty_lot_1to1');
+
+        const id1 = store.placePlant('loc-delta-2', { label: 'Plant 1', xCm: 100, yCm: 100, canopyRadiusCm: 10 });
+        const id2 = store.placePlant('loc-delta-2', { label: 'Plant 2', xCm: 200, yCm: 100, canopyRadiusCm: 10 });
+        const id3 = store.placePlant('loc-delta-2', { label: 'Plant 3', xCm: 300, yCm: 100, canopyRadiusCm: 10 });
+
+        // Remove middle plant (index 1)
+        store.removePlant('loc-delta-2', id2);
+        let plants = store.getOrCreateSpaceLayout('loc-delta-2').placedPlants;
+        expect(plants.map((p) => p.id)).toEqual([id1, id3]);
+
+        const history = useSpaceLayoutStore.getState().history['loc-delta-2'];
+        const lastCmd = history.past[history.past.length - 1];
+        expect(lastCmd.type).toBe('plant_remove');
+        if (lastCmd.type === 'plant_remove') {
+          expect(lastCmd.plant.id).toBe(id2);
+          expect(lastCmd.index).toBe(1);
+        }
+
+        // Undo restores plant 2 back at index 1
+        store.undo('loc-delta-2');
+        plants = store.getOrCreateSpaceLayout('loc-delta-2').placedPlants;
+        expect(plants.map((p) => p.id)).toEqual([id1, id2, id3]);
+
+        // Redo removes plant 2 again
+        store.redo('loc-delta-2');
+        plants = store.getOrCreateSpaceLayout('loc-delta-2').placedPlants;
+        expect(plants.map((p) => p.id)).toEqual([id1, id3]);
+      });
+
+      it('registers movePlant as atomic plant_move delta and undoes/redoes coordinate changes', () => {
+        const store = useSpaceLayoutStore.getState();
+        store.getOrCreateSpaceLayout('loc-delta-3', 'outdoor', 'empty_lot_1to1');
+
+        const id = store.placePlant('loc-delta-3', { label: 'Zanahoria', xCm: 100, yCm: 150, canopyRadiusCm: 10 });
+        store.movePlant('loc-delta-3', id, 220, 340);
+
+        let plant = store.getOrCreateSpaceLayout('loc-delta-3').placedPlants[0];
+        expect(plant.xCm).toBe(220);
+        expect(plant.yCm).toBe(340);
+
+        const history = useSpaceLayoutStore.getState().history['loc-delta-3'];
+        const lastCmd = history.past[history.past.length - 1];
+        expect(lastCmd.type).toBe('plant_move');
+        if (lastCmd.type === 'plant_move') {
+          expect(lastCmd.plantId).toBe(id);
+          expect(lastCmd.prevX).toBe(100);
+          expect(lastCmd.prevY).toBe(150);
+          expect(lastCmd.nextX).toBe(220);
+          expect(lastCmd.nextY).toBe(340);
+        }
+
+        // Undo moves plant back to (100, 150)
+        store.undo('loc-delta-3');
+        plant = store.getOrCreateSpaceLayout('loc-delta-3').placedPlants[0];
+        expect(plant.xCm).toBe(100);
+        expect(plant.yCm).toBe(150);
+
+        // Redo moves plant forward to (220, 340)
+        store.redo('loc-delta-3');
+        plant = store.getOrCreateSpaceLayout('loc-delta-3').placedPlants[0];
+        expect(plant.xCm).toBe(220);
+        expect(plant.yCm).toBe(340);
+      });
+
+      it('atomically batches placePlantLine and fillCultivableSector with single history delta', () => {
+        const store = useSpaceLayoutStore.getState();
+        store.getOrCreateSpaceLayout('loc-delta-batch', 'outdoor', 'patio_croquis');
+
+        // Clear existing plants
+        const initial = store.getOrCreateSpaceLayout('loc-delta-batch').placedPlants;
+        for (const p of initial) {
+          store.removePlant('loc-delta-batch', p.id);
+        }
+        store.clearHistory('loc-delta-batch');
+
+        // Batch line add
+        const lineCount = store.placePlantLine(
+          'loc-delta-batch',
+          { x: 100, y: 500 },
+          { x: 600, y: 500 },
+          50,
+          { label: 'Rabanito', canopyRadiusCm: 10 },
+        );
+        expect(lineCount).toBeGreaterThan(5);
+
+        let history = useSpaceLayoutStore.getState().history['loc-delta-batch'];
+        expect(history.past).toHaveLength(1);
+        expect(history.past[0].type).toBe('plant_batch_add');
+        if (history.past[0].type === 'plant_batch_add') {
+          expect(history.past[0].plants).toHaveLength(lineCount);
+        }
+
+        // Undo line add removes all batch plants in one step
+        store.undo('loc-delta-batch');
+        expect(store.getOrCreateSpaceLayout('loc-delta-batch').placedPlants).toHaveLength(0);
+
+        // Redo restores all batch plants
+        store.redo('loc-delta-batch');
+        expect(store.getOrCreateSpaceLayout('loc-delta-batch').placedPlants).toHaveLength(lineCount);
+
+        // Batch fill sector
+        const fillCount = store.fillCultivableSector(
+          'loc-delta-batch',
+          0,
+          { plantSpacingCm: 80, rowSpacingCm: 80, marginCm: 20 },
+          { label: 'Espinaca', canopyRadiusCm: 12 },
+        );
+        expect(fillCount).toBeGreaterThan(0);
+
+        history = useSpaceLayoutStore.getState().history['loc-delta-batch'];
+        expect(history.past).toHaveLength(2);
+        expect(history.past[1].type).toBe('plant_batch_add');
+
+        // Undo sector fill removes only sector plants
+        store.undo('loc-delta-batch');
+        expect(store.getOrCreateSpaceLayout('loc-delta-batch').placedPlants).toHaveLength(lineCount);
+
+        // Undo line removes remaining plants
+        store.undo('loc-delta-batch');
+        expect(store.getOrCreateSpaceLayout('loc-delta-batch').placedPlants).toHaveLength(0);
+      });
+
+      it('seamlessly interleaves structural changes and plant deltas without plant duplication or loss', () => {
+        const store = useSpaceLayoutStore.getState();
+        store.getOrCreateSpaceLayout('loc-interleave', 'outdoor', 'empty_lot_1to1');
+
+        // 1. Structural change: set boundary
+        store.setBaseBoundary('loc-interleave', [
+          { x: 0, y: 0 },
+          { x: 600, y: 0 },
+          { x: 600, y: 600 },
+          { x: 0, y: 600 },
+        ]);
+
+        // 2. Plant addition
+        const p1 = store.placePlant('loc-interleave', { label: 'Tomate', xCm: 100, yCm: 100, canopyRadiusCm: 20 });
+
+        // 3. Structural change: wall height
+        store.setAllWallsHeight('loc-interleave', 180);
+
+        // 4. Plant addition
+        const p2 = store.placePlant('loc-interleave', { label: 'Morrón', xCm: 200, yCm: 200, canopyRadiusCm: 15 });
+
+        expect(store.getOrCreateSpaceLayout('loc-interleave').placedPlants).toHaveLength(2);
+        expect(store.getOrCreateSpaceLayout('loc-interleave').walls[0].heightCm).toBe(180);
+
+        // Undo 4: remove p2
+        store.undo('loc-interleave');
+        expect(store.getOrCreateSpaceLayout('loc-interleave').placedPlants.map((p) => p.id)).toEqual([p1]);
+        expect(store.getOrCreateSpaceLayout('loc-interleave').walls[0].heightCm).toBe(180);
+
+        // Undo 3: wall height reverted to default (0 for empty lot)
+        store.undo('loc-interleave');
+        expect(store.getOrCreateSpaceLayout('loc-interleave').walls[0].heightCm).toBe(0);
+        expect(store.getOrCreateSpaceLayout('loc-interleave').placedPlants.map((p) => p.id)).toEqual([p1]);
+
+        // Undo 2: remove p1
+        store.undo('loc-interleave');
+        expect(store.getOrCreateSpaceLayout('loc-interleave').placedPlants).toHaveLength(0);
+
+        // Undo 1: boundary reverted to original empty lot (800 x 600)
+        store.undo('loc-interleave');
+        expect(store.getOrCreateSpaceLayout('loc-interleave').baseBoundary[1].x).toBe(800);
+
+        // Redo all forward
+        store.redo('loc-interleave'); // 1. boundary
+        expect(store.getOrCreateSpaceLayout('loc-interleave').baseBoundary[1].x).toBe(600);
+
+        store.redo('loc-interleave'); // 2. p1
+        expect(store.getOrCreateSpaceLayout('loc-interleave').placedPlants.map((p) => p.id)).toEqual([p1]);
+
+        store.redo('loc-interleave'); // 3. wall height
+        expect(store.getOrCreateSpaceLayout('loc-interleave').walls[0].heightCm).toBe(180);
+
+        store.redo('loc-interleave'); // 4. p2
+        expect(store.getOrCreateSpaceLayout('loc-interleave').placedPlants.map((p) => p.id)).toEqual([p1, p2]);
+      });
+
+      it('benchmark: adding, removing, and undoing 1 plant with 5,000 existing plants executes in < 1 ms', () => {
+        const store = useSpaceLayoutStore.getState();
+        store.getOrCreateSpaceLayout('loc-perf-5000', 'outdoor', 'empty_lot_1to1');
+
+        // Pre-populate with 5,000 plants in memory directly
+        const massivePlants = Array.from({ length: 5000 }, (_, i) => ({
+          id: `bench-plant-${i}`,
+          label: `Plant-${i}`,
+          cropCode: 'lettuce',
+          xCm: (i % 100) * 10,
+          yCm: Math.floor(i / 100) * 10,
+          canopyRadiusCm: 15,
+        }));
+
+        useSpaceLayoutStore.setState((state) => ({
+          layouts: {
+            ...state.layouts,
+            'loc-perf-5000': {
+              ...state.layouts['loc-perf-5000'],
+              placedPlants: massivePlants,
+            },
+          },
+        }));
+
+        expect(store.getOrCreateSpaceLayout('loc-perf-5000').placedPlants).toHaveLength(5000);
+
+        // Benchmark placePlant
+        const t0 = performance.now();
+        const newPlantId = store.placePlant('loc-perf-5000', {
+          label: 'Single Plant',
+          cropCode: 'basil',
+          xCm: 500,
+          yCm: 500,
+          canopyRadiusCm: 20,
+        });
+        const placeDurationMs = performance.now() - t0;
+
+        expect(store.getOrCreateSpaceLayout('loc-perf-5000').placedPlants).toHaveLength(5001);
+
+        // Benchmark undo
+        const tUndo = performance.now();
+        store.undo('loc-perf-5000');
+        const undoDurationMs = performance.now() - tUndo;
+
+        expect(store.getOrCreateSpaceLayout('loc-perf-5000').placedPlants).toHaveLength(5000);
+
+        // Benchmark redo
+        const tRedo = performance.now();
+        store.redo('loc-perf-5000');
+        const redoDurationMs = performance.now() - tRedo;
+
+        expect(store.getOrCreateSpaceLayout('loc-perf-5000').placedPlants).toHaveLength(5001);
+
+        // Benchmark removePlant
+        const tRemove = performance.now();
+        store.removePlant('loc-perf-5000', newPlantId);
+        const removeDurationMs = performance.now() - tRemove;
+
+        expect(store.getOrCreateSpaceLayout('loc-perf-5000').placedPlants).toHaveLength(5000);
+
+        console.info(
+          `[BENCHMARK 5000 PLANTS] placePlant: ${placeDurationMs.toFixed(3)}ms | undo: ${undoDurationMs.toFixed(3)}ms | redo: ${redoDurationMs.toFixed(3)}ms | removePlant: ${removeDurationMs.toFixed(3)}ms`,
+        );
+        // Previously structuredClone took 50-150 ms; now it is < 1.0 ms
+        expect(placeDurationMs).toBeLessThan(1.0);
+        expect(undoDurationMs).toBeLessThan(1.0);
+        expect(redoDurationMs).toBeLessThan(1.0);
+        expect(removeDurationMs).toBeLessThan(1.0);
+      });
     });
   });
 });

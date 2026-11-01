@@ -65,4 +65,34 @@ describe('CanopyRingsInstanced', () => {
 
     await renderer.unmount();
   });
+
+  it('handles 5,000 canopy rings directly via typed arrays without CPU composition overhead', async () => {
+    const massiveRings: CanopyRingItem[] = new Array(5000);
+    for (let i = 0; i < 5000; i++) {
+      massiveRings[i] = {
+        id: `plant-${i}`,
+        xM: (i % 50) * 0.5,
+        zM: Math.floor(i / 50) * 0.5,
+        radiusM: 0.2,
+        isCrowded: i % 10 === 0,
+        isSelected: i === 42,
+      };
+    }
+
+    const t0 = performance.now();
+    const renderer = await ReactThreeTestRenderer.create(
+      <CanopyRingsInstanced rings={massiveRings} />,
+    );
+    const durationMs = performance.now() - t0;
+
+    const ringMeshes = renderer.scene.findAllByProps({
+      name: 'instanced-canopy-rings-mesh',
+    });
+
+    expect(ringMeshes).toHaveLength(1);
+    expect(ringMeshes[0].props.args[2]).toBe(5000);
+    expect(durationMs).toBeLessThan(1000);
+
+    await renderer.unmount();
+  });
 });

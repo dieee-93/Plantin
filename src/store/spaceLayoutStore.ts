@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 import { uuidv7 } from 'uuidv7';
 import {
   canInsertVertexAtEdge,
@@ -271,20 +271,89 @@ export interface PlantTemplateInput {
   canopyRadiusCm: number;
 }
 
+export interface StructuralHistoryEntry {
+  type: 'structural';
+  locationId: string;
+  presetId: string;
+  baseBoundary: Polygon2DCm;
+  baseMaterial: FloorMaterialType;
+  hardscapeZones: HardscapeZoneCm[];
+  paths: PathStrokeCm[];
+  walls: WallSegmentCm[];
+  roofConfig?: SpaceRoofConfig;
+  solarConfig: SpaceSolarConfig;
+  placedPlants?: PlacedPlantSpatialCm[];
+}
+
+export interface PlantAddDeltaEntry {
+  type: 'plant_add';
+  plant: PlacedPlantSpatialCm;
+  baseBoundary?: undefined;
+}
+
+export interface PlantRemoveDeltaEntry {
+  type: 'plant_remove';
+  plant: PlacedPlantSpatialCm;
+  index?: number;
+  baseBoundary?: undefined;
+}
+
+export interface PlantMoveDeltaEntry {
+  type: 'plant_move';
+  plantId: string;
+  prevX: number;
+  prevY: number;
+  nextX: number;
+  nextY: number;
+  baseBoundary?: undefined;
+}
+
+export interface PlantBatchAddDeltaEntry {
+  type: 'plant_batch_add';
+  plants: PlacedPlantSpatialCm[];
+  baseBoundary?: undefined;
+}
+
+export type SpaceLayoutHistoryEntry =
+  | StructuralHistoryEntry
+  | PlantAddDeltaEntry
+  | PlantRemoveDeltaEntry
+  | PlantMoveDeltaEntry
+  | PlantBatchAddDeltaEntry;
+
 export interface SpaceLayoutHistory {
-  past: SpaceLayout1to1[];
-  future: SpaceLayout1to1[];
+  past: SpaceLayoutHistoryEntry[];
+  future: SpaceLayoutHistoryEntry[];
 }
 
 const MAX_HISTORY_STEPS = 50;
 
-function pushHistorySnapshot(
+function cloneStructuralSnapshot(
+  layout: SpaceLayout1to1,
+  includePlants = false,
+): StructuralHistoryEntry {
+  return {
+    type: 'structural',
+    locationId: layout.locationId,
+    presetId: layout.presetId,
+    baseBoundary: structuredClone(layout.baseBoundary),
+    baseMaterial: layout.baseMaterial,
+    hardscapeZones: structuredClone(layout.hardscapeZones),
+    paths: structuredClone(layout.paths),
+    walls: structuredClone(layout.walls),
+    roofConfig: layout.roofConfig ? structuredClone(layout.roofConfig) : undefined,
+    solarConfig: { ...layout.solarConfig },
+    placedPlants: includePlants ? structuredClone(layout.placedPlants) : undefined,
+  };
+}
+
+function pushHistoryEntry(
   locationId: string,
-  currentLayout: SpaceLayout1to1,
+  entry: SpaceLayoutHistoryEntry,
   historyMap: Record<string, SpaceLayoutHistory> | undefined,
 ): Record<string, SpaceLayoutHistory> {
   const currentHistory = (historyMap ?? {})[locationId] ?? { past: [], future: [] };
-  const newPast = [...currentHistory.past, structuredClone(currentLayout)];
+  const newPast = [...currentHistory.past, entry];
   if (newPast.length > MAX_HISTORY_STEPS) {
     newPast.shift();
   }
@@ -295,6 +364,19 @@ function pushHistorySnapshot(
       future: [],
     },
   };
+}
+
+function pushStructuralSnapshot(
+  locationId: string,
+  currentLayout: SpaceLayout1to1,
+  historyMap: Record<string, SpaceLayoutHistory> | undefined,
+  includePlants = false,
+): Record<string, SpaceLayoutHistory> {
+  return pushHistoryEntry(
+    locationId,
+    cloneStructuralSnapshot(currentLayout, includePlants),
+    historyMap,
+  );
 }
 
 export interface SpaceLayoutStoreState {
@@ -334,6 +416,12 @@ export interface SpaceLayoutStoreState {
     locationId: string,
     wallId: string,
     openingId: string,
+  ) => void;
+  updateWallOpening: (
+    locationId: string,
+    wallId: string,
+    openingId: string,
+    partial: Partial<Omit<WallOpeningCm, 'id'>>,
   ) => void;
   updateRoofConfig: (
     locationId: string,
@@ -379,6 +467,10 @@ export interface SpaceLayoutStoreState {
   resetAll: () => void;
 }
 
+export interface PersistedSpaceLayoutState {
+  layouts: Record<string, SpaceLayout1to1>;
+}
+
 let pendingStorageFlush: (() => void) | null = null;
 
 export function flushSpaceLayoutStorage(): void {
@@ -387,9 +479,11 @@ export function flushSpaceLayoutStorage(): void {
   }
 }
 
-function createDebouncedLocalStorage(delayMs = 400): StateStorage {
+function createDebouncedPersistStorage(
+  delayMs = 400,
+): PersistStorage<PersistedSpaceLayoutState> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const pendingWrites = new Map<string, string>();
+  const pendingWrites = new Map<string, StorageValue<PersistedSpaceLayoutState>>();
 
   const flush = (key?: string) => {
     if (typeof window === 'undefined' || !window.localStorage) return;
@@ -397,7 +491,7 @@ function createDebouncedLocalStorage(delayMs = 400): StateStorage {
       const val = pendingWrites.get(key);
       if (val !== undefined) {
         try {
-          window.localStorage.setItem(key, val);
+          window.localStorage.setItem(key, JSON.stringify(val));
         } catch (e) {
           console.warn('[spaceLayoutStore] localStorage setItem error:', e);
         }
@@ -406,7 +500,7 @@ function createDebouncedLocalStorage(delayMs = 400): StateStorage {
     } else {
       for (const [k, val] of pendingWrites.entries()) {
         try {
-          window.localStorage.setItem(k, val);
+          window.localStorage.setItem(k, JSON.stringify(val));
         } catch (e) {
           console.warn('[spaceLayoutStore] localStorage setItem error:', e);
         }
@@ -430,37 +524,44 @@ function createDebouncedLocalStorage(delayMs = 400): StateStorage {
   }
 
   return {
-    getItem: (key: string): string | null => {
-      if (pendingWrites.has(key)) {
-        return pendingWrites.get(key)!;
+    getItem: (name: string): StorageValue<PersistedSpaceLayoutState> | null => {
+      if (pendingWrites.has(name)) {
+        return pendingWrites.get(name)!;
       }
       if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
+        const raw = window.localStorage.getItem(name);
+        if (!raw) return null;
+        try {
+          return JSON.parse(raw) as StorageValue<PersistedSpaceLayoutState>;
+        } catch (e) {
+          console.warn('[spaceLayoutStore] localStorage parse error:', e);
+          return null;
+        }
       }
       return null;
     },
-    setItem: (key: string, value: string): void => {
-      pendingWrites.set(key, value);
+    setItem: (name: string, value: StorageValue<PersistedSpaceLayoutState>): void => {
+      pendingWrites.set(name, value);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        flush(key);
+        flush(name);
         timer = null;
       }, delayMs);
     },
-    removeItem: (key: string): void => {
+    removeItem: (name: string): void => {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
-      pendingWrites.delete(key);
+      pendingWrites.delete(name);
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(key);
+        window.localStorage.removeItem(name);
       }
     },
   };
 }
 
-const debouncedLocalStorageInstance = createDebouncedLocalStorage(400);
+const debouncedPersistStorage = createDebouncedPersistStorage(400);
 
 export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
   persist(
@@ -511,7 +612,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const current = get().getOrCreateSpaceLayout(locationId);
         const nextLayout = preset.createLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history, true),
           layouts: {
             ...state.layouts,
             [locationId]: nextLayout,
@@ -524,7 +625,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -539,7 +640,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       setBaseMaterial: (locationId, material) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -553,7 +654,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       snapshotHistory: (locationId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
         }));
       },
 
@@ -579,7 +680,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
           history: recordHistory
-            ? pushHistorySnapshot(locationId, current, state.history)
+            ? pushStructuralSnapshot(locationId, current, state.history)
             : state.history,
           layouts: {
             ...state.layouts,
@@ -601,7 +702,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -620,7 +721,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -639,7 +740,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -657,7 +758,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -672,7 +773,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       updateWall: (locationId, wallId, partial) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -692,7 +793,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id: opening.id ?? `opening-${uuidv7()}`,
         };
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -710,7 +811,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removeWallOpening: (locationId, wallId, openingId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -728,6 +829,29 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         }));
       },
 
+      updateWallOpening: (locationId, wallId, openingId, partial) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushStructuralSnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              walls: current.walls.map((w) =>
+                w.id === wallId
+                  ? {
+                      ...w,
+                      openings: (w.openings ?? []).map((op) =>
+                        op.id === openingId ? { ...op, ...partial } : op,
+                      ),
+                    }
+                  : w,
+              ),
+            },
+          },
+        }));
+      },
+
       updateRoofConfig: (locationId, partial) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         const nextRoof: SpaceRoofConfig = {
@@ -736,7 +860,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           ...partial,
         };
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -750,7 +874,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       setAllWallsHeight: (locationId, heightCm) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -767,7 +891,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       setAllWallsMaterial: (locationId, material) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -788,7 +912,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id: path.id ?? `path-${uuidv7()}`,
         };
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -802,7 +926,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removePathStroke: (locationId, pathId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -820,7 +944,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id: zone.id ?? `zone-${uuidv7()}`,
         };
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -834,7 +958,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removeHardscapeZone: (locationId, zoneId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushStructuralSnapshot(locationId, current, state.history),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -869,7 +993,11 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           id,
         };
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushHistoryEntry(
+            locationId,
+            { type: 'plant_add', plant: newPlant },
+            state.history,
+          ),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -883,15 +1011,30 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
 
       movePlant: (locationId, plantId, xCm, yCm) => {
         const current = get().getOrCreateSpaceLayout(locationId);
+        const targetIndex = current.placedPlants.findIndex((p) => p.id === plantId);
+        if (targetIndex === -1) return;
+        const target = current.placedPlants[targetIndex];
+        const roundedX = Math.round(xCm);
+        const roundedY = Math.round(yCm);
+        if (target.xCm === roundedX && target.yCm === roundedY) return;
+
+        const prevX = target.xCm;
+        const prevY = target.yCm;
+        const updatedPlant = { ...target, xCm: roundedX, yCm: roundedY };
+        const nextPlants = current.placedPlants.slice();
+        nextPlants[targetIndex] = updatedPlant;
+
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushHistoryEntry(
+            locationId,
+            { type: 'plant_move', plantId, prevX, prevY, nextX: roundedX, nextY: roundedY },
+            state.history,
+          ),
           layouts: {
             ...state.layouts,
             [locationId]: {
               ...current,
-              placedPlants: current.placedPlants.map((p) =>
-                p.id === plantId ? { ...p, xCm: Math.round(xCm), yCm: Math.round(yCm) } : p,
-              ),
+              placedPlants: nextPlants,
             },
           },
         }));
@@ -899,13 +1042,23 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
 
       removePlant: (locationId, plantId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
+        const index = current.placedPlants.findIndex((p) => p.id === plantId);
+        if (index === -1) return;
+        const plantToRemove = current.placedPlants[index];
+        const nextPlants = current.placedPlants.slice();
+        nextPlants.splice(index, 1);
+
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushHistoryEntry(
+            locationId,
+            { type: 'plant_remove', plant: plantToRemove, index },
+            state.history,
+          ),
           layouts: {
             ...state.layouts,
             [locationId]: {
               ...current,
-              placedPlants: current.placedPlants.filter((p) => p.id !== plantId),
+              placedPlants: nextPlants,
             },
           },
         }));
@@ -931,7 +1084,11 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         }));
 
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushHistoryEntry(
+            locationId,
+            { type: 'plant_batch_add', plants: addedPlants },
+            state.history,
+          ),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -967,7 +1124,11 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         }));
 
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: pushHistoryEntry(
+            locationId,
+            { type: 'plant_batch_add', plants: addedPlants },
+            state.history,
+          ),
           layouts: {
             ...state.layouts,
             [locationId]: {
@@ -996,9 +1157,82 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         if (!locHist || locHist.past.length === 0) return;
         const current = get().layouts[locationId] ?? get().getOrCreateSpaceLayout(locationId);
 
-        const previous = locHist.past[locHist.past.length - 1];
+        const command = locHist.past[locHist.past.length - 1];
         const newPast = locHist.past.slice(0, -1);
-        const newFuture = [structuredClone(current), ...locHist.future];
+
+        let nextLayout: SpaceLayout1to1;
+        let redoCommand: SpaceLayoutHistoryEntry;
+
+        switch (command.type) {
+          case 'plant_add': {
+            const targetId = command.plant.id;
+            nextLayout = {
+              ...current,
+              placedPlants: current.placedPlants.filter((p) => p.id !== targetId),
+            };
+            redoCommand = command;
+            break;
+          }
+          case 'plant_remove': {
+            const restoredPlants = current.placedPlants.slice();
+            if (
+              typeof command.index === 'number' &&
+              command.index >= 0 &&
+              command.index <= restoredPlants.length
+            ) {
+              restoredPlants.splice(command.index, 0, command.plant);
+            } else {
+              restoredPlants.push(command.plant);
+            }
+            nextLayout = {
+              ...current,
+              placedPlants: restoredPlants,
+            };
+            redoCommand = command;
+            break;
+          }
+          case 'plant_move': {
+            nextLayout = {
+              ...current,
+              placedPlants: current.placedPlants.map((p) =>
+                p.id === command.plantId ? { ...p, xCm: command.prevX, yCm: command.prevY } : p,
+              ),
+            };
+            redoCommand = command;
+            break;
+          }
+          case 'plant_batch_add': {
+            const idsToRemove = new Set(command.plants.map((p) => p.id));
+            nextLayout = {
+              ...current,
+              placedPlants: current.placedPlants.filter((p) => !idsToRemove.has(p.id)),
+            };
+            redoCommand = command;
+            break;
+          }
+          default: {
+            const structuralCmd = command as StructuralHistoryEntry;
+            redoCommand = cloneStructuralSnapshot(current, structuralCmd.placedPlants !== undefined);
+            nextLayout = {
+              ...current,
+              presetId: structuralCmd.presetId ?? current.presetId,
+              baseBoundary: structuredClone(structuralCmd.baseBoundary ?? current.baseBoundary),
+              baseMaterial: structuralCmd.baseMaterial ?? current.baseMaterial,
+              hardscapeZones: structuredClone(structuralCmd.hardscapeZones ?? current.hardscapeZones),
+              paths: structuredClone(structuralCmd.paths ?? current.paths),
+              walls: structuredClone(structuralCmd.walls ?? current.walls),
+              roofConfig: structuralCmd.roofConfig ? structuredClone(structuralCmd.roofConfig) : undefined,
+              solarConfig: structuralCmd.solarConfig ? { ...structuralCmd.solarConfig } : current.solarConfig,
+              placedPlants:
+                structuralCmd.placedPlants !== undefined
+                  ? structuredClone(structuralCmd.placedPlants)
+                  : current.placedPlants,
+            };
+            break;
+          }
+        }
+
+        const newFuture = [redoCommand, ...locHist.future];
 
         set((state) => ({
           history: {
@@ -1010,7 +1244,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           },
           layouts: {
             ...state.layouts,
-            [locationId]: structuredClone(previous),
+            [locationId]: nextLayout,
           },
         }));
       },
@@ -1021,9 +1255,70 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         if (!locHist || locHist.future.length === 0) return;
         const current = get().layouts[locationId] ?? get().getOrCreateSpaceLayout(locationId);
 
-        const next = locHist.future[0];
+        const command = locHist.future[0];
         const newFuture = locHist.future.slice(1);
-        const newPast = [...locHist.past, structuredClone(current)];
+
+        let nextLayout: SpaceLayout1to1;
+        let undoCommand: SpaceLayoutHistoryEntry;
+
+        switch (command.type) {
+          case 'plant_add': {
+            nextLayout = {
+              ...current,
+              placedPlants: [...current.placedPlants, command.plant],
+            };
+            undoCommand = command;
+            break;
+          }
+          case 'plant_remove': {
+            nextLayout = {
+              ...current,
+              placedPlants: current.placedPlants.filter((p) => p.id !== command.plant.id),
+            };
+            undoCommand = command;
+            break;
+          }
+          case 'plant_move': {
+            nextLayout = {
+              ...current,
+              placedPlants: current.placedPlants.map((p) =>
+                p.id === command.plantId ? { ...p, xCm: command.nextX, yCm: command.nextY } : p,
+              ),
+            };
+            undoCommand = command;
+            break;
+          }
+          case 'plant_batch_add': {
+            nextLayout = {
+              ...current,
+              placedPlants: [...current.placedPlants, ...command.plants],
+            };
+            undoCommand = command;
+            break;
+          }
+          default: {
+            const structuralCmd = command as StructuralHistoryEntry;
+            undoCommand = cloneStructuralSnapshot(current, structuralCmd.placedPlants !== undefined);
+            nextLayout = {
+              ...current,
+              presetId: structuralCmd.presetId ?? current.presetId,
+              baseBoundary: structuredClone(structuralCmd.baseBoundary ?? current.baseBoundary),
+              baseMaterial: structuralCmd.baseMaterial ?? current.baseMaterial,
+              hardscapeZones: structuredClone(structuralCmd.hardscapeZones ?? current.hardscapeZones),
+              paths: structuredClone(structuralCmd.paths ?? current.paths),
+              walls: structuredClone(structuralCmd.walls ?? current.walls),
+              roofConfig: structuralCmd.roofConfig ? structuredClone(structuralCmd.roofConfig) : undefined,
+              solarConfig: structuralCmd.solarConfig ? { ...structuralCmd.solarConfig } : current.solarConfig,
+              placedPlants:
+                structuralCmd.placedPlants !== undefined
+                  ? structuredClone(structuralCmd.placedPlants)
+                  : current.placedPlants,
+            };
+            break;
+          }
+        }
+
+        const newPast = [...locHist.past, undoCommand];
 
         set((state) => ({
           history: {
@@ -1035,7 +1330,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           },
           layouts: {
             ...state.layouts,
-            [locationId]: structuredClone(next),
+            [locationId]: nextLayout,
           },
         }));
       },
@@ -1055,7 +1350,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
     {
       name: 'plantin-space-layout-v1',
       version: 1,
-      storage: createJSONStorage(() => debouncedLocalStorageInstance),
+      storage: debouncedPersistStorage,
       partialize: (state) => ({
         layouts: state.layouts,
       }),
