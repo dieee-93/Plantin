@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import {
@@ -6,6 +6,14 @@ import {
   injectCylindricalBillboardShader,
   type InstancedPlantItem,
 } from '../InstancedPlantSprites';
+
+vi.mock('@react-three/drei', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@react-three/drei')>();
+  return {
+    ...actual,
+    useTexture: () => new THREE.Texture(),
+  };
+});
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -33,6 +41,7 @@ describe('InstancedPlantSprites', () => {
     expect(instancedMeshes[0].props.args[2]).toBe(4);
     expect(instancedMeshes[0].props.castShadow).toBe(true);
     expect(instancedMeshes[0].props.customDepthMaterial).toBeDefined();
+    expect(instancedMeshes[0].props.customDepthMaterial.isMeshDepthMaterial).toBe(true);
 
     await renderer.unmount();
   });
@@ -89,7 +98,7 @@ describe('InstancedPlantSprites', () => {
       uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.standard.uniforms),
     };
 
-    material.onBeforeCompile(mockShader, {} as THREE.WebGLRenderer);
+    material.onBeforeCompile(mockShader as any, {} as THREE.WebGLRenderer);
 
     // Verify Vertex Shader transformations:
     // 1. begin_vertex replaced with billboard calculations
@@ -122,7 +131,7 @@ describe('InstancedPlantSprites', () => {
       uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.depth.uniforms),
     };
 
-    depthMat.onBeforeCompile(mockShader, {} as THREE.WebGLRenderer);
+    depthMat.onBeforeCompile(mockShader as any, {} as THREE.WebGLRenderer);
 
     // Depth shader has no defaultnormal_vertex, but has begin_vertex and project_vertex
     expect(mockShader.vertexShader).toContain('billboardWorldPos');

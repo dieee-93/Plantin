@@ -22,7 +22,7 @@ export interface InstancedPlantGroupProps {
   onSelectPlant?: (plantId: string) => void;
 }
 
-interface InnerInstancedMeshProps {
+export interface InnerInstancedMeshProps {
   cropCode: string;
   spriteUrl: string;
   count: number;
@@ -137,7 +137,7 @@ export function injectCylindricalBillboardShader(
   };
 }
 
-const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
+export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
   cropCode,
   spriteUrl,
   count,
@@ -268,15 +268,15 @@ export const InstancedPlantGroup: React.FC<InstancedPlantGroupProps> = ({
     return geo;
   }, []);
 
-  const fallbackMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#16a34a',
-        roughness: 0.6,
-        side: THREE.DoubleSide,
-      }),
-    [],
-  );
+  const fallbackMaterial = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#16a34a',
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    });
+    injectCylindricalBillboardShader(mat);
+    return mat;
+  }, []);
 
   useEffect(() => {
     return () => {
