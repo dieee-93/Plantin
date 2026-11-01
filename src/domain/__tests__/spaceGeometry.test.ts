@@ -1,17 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculatePolygonAreaM2,
+  calculatePolygonPerimeterM,
+  canInsertVertexAtEdge,
   classifySpacePoint,
   computeSpaceRegions,
+  createDefaultDoorOpening,
+  createDefaultWindowOpening,
+  createLShapePolygon,
   createPerimeterWalls,
   createRectPolygon,
+  decomposeWallIntoPrisms,
+  findClosestEdgeOnPolygon,
+  findNextOpeningSlot,
   inflatePathToPolygon,
   insertPolygonVertex,
   isPointInPolygonCm,
+  isRectangularPolygon,
   movePolygonVertex,
+  removePolygonVertex,
+  sanitizeAndWeldPolygon,
+  scalePolygonFromCenter,
+  syncWallsWithBoundary,
+  wouldPolygonSelfIntersect,
   type HardscapeZoneCm,
   type PathStrokeCm,
   type Polygon2DCm,
+  type WallSegmentCm,
 } from '../spaceGeometry';
 
 describe('spaceGeometry - Slice 1: Rectangles and Polygon Area (1:1 cm scale)', () => {
@@ -25,6 +40,8 @@ describe('spaceGeometry - Slice 1: Rectangles and Polygon Area (1:1 cm scale)', 
       { x: 0, y: 600 },
     ]);
     expect(calculatePolygonAreaM2(baseLot)).toBe(60);
+    expect(calculatePolygonPerimeterM(baseLot)).toBe(32); // 2*(10+6) = 32m
+    expect(isRectangularPolygon(baseLot)).toBe(true);
 
     const offsetRect = createRectPolygon(200, 150, { x: 100, y: 50 });
     expect(offsetRect).toEqual([
@@ -48,6 +65,16 @@ describe('spaceGeometry - Slice 1: Rectangles and Polygon Area (1:1 cm scale)', 
       { x: 0, y: 200 },
     ];
     expect(calculatePolygonAreaM2(lShapePolygon)).toBe(44);
+    expect(isRectangularPolygon(lShapePolygon)).toBe(false);
+  });
+
+  it('creates an L-shaped parcel polygon and scales polygons smoothly from center', () => {
+    const lShape = createLShapePolygon(1000, 600, 0.4, 0.5);
+    expect(lShape).toHaveLength(6);
+    expect(isRectangularPolygon(lShape)).toBe(false);
+
+    const scaled = scalePolygonFromCenter(createRectPolygon(1000, 600), 1.1);
+    expect(calculatePolygonAreaM2(scaled)).toBeCloseTo(72.6, 1); // 60 * 1.1^2 = 72.6 m2
   });
 });
 
@@ -228,7 +255,256 @@ describe('spaceGeometry - Slice 5: Vertex Editing & Perimeter Walls Generation',
       material: 'brick',
     });
   });
+
+  it('removes polygon vertices without dropping below 3 vertices, finds closest edges for wall splitting, and synchronizes walls preserving height and materials', () => {
+    const rect = createRectPolygon(1000, 600);
+    const withVertex = insertPolygonVertex(rect, 0, { x: 500, y: 0 });
+    expect(withVertex).toHaveLength(5);
+
+    // Remove vertex 1 (the newly inserted one at 500,0)
+    const afterRemove = removePolygonVertex(withVertex, 1);
+    expect(afterRemove).toHaveLength(4);
+    expect(afterRemove[0]).toEqual({ x: 0, y: 0 });
+    expect(afterRemove[1]).toEqual({ x: 1000, y: 0 });
+
+    // Guard: will not remove if length <= 3
+    const triangle: Polygon2DCm = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 0, y: 100 },
+    ];
+    expect(removePolygonVertex(triangle, 0)).toHaveLength(3);
+
+    // Find closest edge on rectangle for a click at (505, 12) -> should project to edge 0 (0,0)->(1000,0)
+    const closest = findClosestEdgeOnPolygon(rect, { x: 505, y: 12 });
+    expect(closest).not.toBeNull();
+    expect(closest?.edgeIndex).toBe(0);
+    expect(closest?.projectedPoint).toEqual({ x: 505, y: 0 });
+    expect(closest?.distanceCm).toBe(12);
+
+    // Wall sync preserving individual custom wall heights and materials
+    const customWalls: WallSegmentCm[] = [
+      {
+        id: 'wall-wood-fence',
+        start: { x: 0, y: 0 },
+        end: { x: 1000, y: 0 },
+        heightCm: 120,
+        thicknessCm: 10,
+        material: 'wood_fence',
+        openings: [],
+      },
+      {
+        id: 'wall-brick-tall',
+        start: { x: 1000, y: 0 },
+        end: { x: 1000, y: 600 },
+        heightCm: 250,
+        thicknessCm: 20,
+        material: 'brick',
+        openings: [],
+      },
+      {
+        id: 'wall-open-ground',
+        start: { x: 1000, y: 600 },
+        end: { x: 0, y: 600 },
+        heightCm: 0,
+        thicknessCm: 15,
+        material: 'concrete',
+        openings: [],
+      },
+      {
+        id: 'wall-wire-fence',
+        start: { x: 0, y: 600 },
+        end: { x: 0, y: 0 },
+        heightCm: 120,
+        thicknessCm: 10,
+        material: 'wire_fence',
+        openings: [],
+      },
+    ];
+
+    // Move vertex 1 from (1000, 0) to (950, 50)
+    const movedBoundary = movePolygonVertex(rect, 1, { x: 950, y: 50 });
+    const syncedMoved = syncWallsWithBoundary(movedBoundary, customWalls);
+    expect(syncedMoved).toHaveLength(4);
+    // Preserved wood_fence material and 120 cm height on first wall
+    expect(syncedMoved[0].material).toBe('wood_fence');
+    expect(syncedMoved[0].heightCm).toBe(120);
+    expect(syncedMoved[0].end).toEqual({ x: 950, y: 50 });
+    // Preserved 0 cm (open) on third wall
+    expect(syncedMoved[2].heightCm).toBe(0);
+  });
 });
+
+describe('spaceGeometry - Slice 8: Wall Openings Decomposition (Doors & Windows)', () => {
+  it('decomposes solid wall without openings into 1 single full-height prism', () => {
+    const prisms = decomposeWallIntoPrisms(400, 250, []);
+    expect(prisms).toHaveLength(1);
+    expect(prisms[0]).toEqual({
+      xStartM: 0,
+      xEndM: 4.0,
+      yBottomM: 0,
+      yTopM: 2.5,
+    });
+  });
+
+  it('decomposes wall with centered door into left, right, and lintel prisms', () => {
+    // 400 cm wall, 250 cm high, door 90 cm wide x 210 cm high at offset 155 cm
+    const door = createDefaultDoorOpening(400, 155);
+    expect(door.kind).toBe('door');
+    expect(door.sillHeightCm).toBe(0);
+
+    const prisms = decomposeWallIntoPrisms(400, 250, [door]);
+    expect(prisms).toHaveLength(3);
+
+    // Left segment: 0 to 1.55m, full height (0 to 2.5m)
+    expect(prisms[0].xStartM).toBeCloseTo(0, 3);
+    expect(prisms[0].xEndM).toBeCloseTo(1.55, 3);
+    expect(prisms[0].yBottomM).toBe(0);
+    expect(prisms[0].yTopM).toBe(2.5);
+
+    // Lintel above door: 1.55 to 2.45m, Y from 2.1m to 2.5m
+    expect(prisms[1].xStartM).toBeCloseTo(1.55, 3);
+    expect(prisms[1].xEndM).toBeCloseTo(2.45, 3);
+    expect(prisms[1].yBottomM).toBeCloseTo(2.1, 3);
+    expect(prisms[1].yTopM).toBe(2.5);
+
+    // Right segment: 2.45m to 4.0m, full height (0 to 2.5m)
+    expect(prisms[2].xStartM).toBeCloseTo(2.45, 3);
+    expect(prisms[2].xEndM).toBeCloseTo(4.0, 3);
+    expect(prisms[2].yBottomM).toBe(0);
+    expect(prisms[2].yTopM).toBe(2.5);
+  });
+
+  it('decomposes wall with window into left, right, sill (bottom), and lintel (top) prisms', () => {
+    // 400 cm wall, 250 cm high, window 120 cm wide x 110 cm high, sill 90 cm at offset 140 cm
+    const window = createDefaultWindowOpening(400, 140);
+    expect(window.kind).toBe('window');
+    expect(window.sillHeightCm).toBe(90);
+
+    const prisms = decomposeWallIntoPrisms(400, 250, [window]);
+    expect(prisms).toHaveLength(4);
+
+    // Left segment: 0 to 1.4m
+    expect(prisms[0].xStartM).toBeCloseTo(0, 3);
+    expect(prisms[0].xEndM).toBeCloseTo(1.4, 3);
+
+    // Sill segment: 1.4 to 2.6m, Y from 0 to 0.9m
+    expect(prisms[1].xStartM).toBeCloseTo(1.4, 3);
+    expect(prisms[1].xEndM).toBeCloseTo(2.6, 3);
+    expect(prisms[1].yBottomM).toBe(0);
+    expect(prisms[1].yTopM).toBeCloseTo(0.9, 3);
+
+    // Lintel segment: 1.4 to 2.6m, Y from (0.9 + 1.1 = 2.0m) to 2.5m
+    expect(prisms[2].xStartM).toBeCloseTo(1.4, 3);
+    expect(prisms[2].xEndM).toBeCloseTo(2.6, 3);
+    expect(prisms[2].yBottomM).toBeCloseTo(2.0, 3);
+    expect(prisms[2].yTopM).toBe(2.5);
+
+    // Right segment: 2.6m to 4.0m
+    expect(prisms[3].xStartM).toBeCloseTo(2.6, 3);
+    expect(prisms[3].xEndM).toBeCloseTo(4.0, 3);
+  });
+
+  it('findNextOpeningSlot calculates free interval slots respecting structural margins and detects when space is exhausted', () => {
+    // 300 cm wall. Door width = 90 cm.
+    // 1. Empty wall: centered slot
+    const slot1 = findNextOpeningSlot(300, 90, []);
+    expect(slot1.canPlace).toBe(true);
+    expect(slot1.offsetCm).toBe(105);
+
+    // 2. Wall with door at offset 20 (span: 20 to 110)
+    // Next opening: Window (120 cm).
+    const slot2 = findNextOpeningSlot(300, 120, [
+      { id: 'd1', kind: 'door', offsetCm: 20, widthCm: 90, heightCm: 210, sillHeightCm: 0 },
+    ]);
+    expect(slot2.canPlace).toBe(true);
+    expect(slot2.offsetCm).toBe(125);
+
+    // 3. Wall where space is exhausted
+    const slot3 = findNextOpeningSlot(250, 90, [
+      { id: 'd1', kind: 'door', offsetCm: 15, widthCm: 90, heightCm: 210, sillHeightCm: 0 },
+      { id: 'w1', kind: 'window', offsetCm: 120, widthCm: 120, heightCm: 110, sillHeightCm: 90 },
+    ]);
+    expect(slot3.canPlace).toBe(false);
+    expect(slot3.reason).toBeDefined();
+
+    // 4. decomposeWallIntoPrisms sanitizes overlapping openings gracefully
+    const overlappingPrisms = decomposeWallIntoPrisms(400, 250, [
+      { id: 'd1', kind: 'door', offsetCm: 100, widthCm: 90, heightCm: 210, sillHeightCm: 0 },
+      { id: 'w1', kind: 'window', offsetCm: 120, widthCm: 120, heightCm: 110, sillHeightCm: 90 }, // overlaps d1!
+    ]);
+    expect(overlappingPrisms.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('wouldPolygonSelfIntersect detects self-intersection and degenerated polygons preventing hourglass/bow-tie shapes', () => {
+    // 1000x600 rectangle: (0,0), (1000,0), (1000,600), (0,600)
+    const rect = createRectPolygon(1000, 600);
+
+    // Valid move: moving (1000, 0) slightly inwards to (800, 100) -> valid concave polygon
+    expect(wouldPolygonSelfIntersect(rect, 1, { x: 800, y: 100 })).toBe(false);
+
+    // Invalid move: moving (1000, 0) all the way across to (-200, 300) crosses edge (0,600)-(0,0)
+    expect(wouldPolygonSelfIntersect(rect, 1, { x: -200, y: 300 })).toBe(true);
+
+    // Invalid move: crossing opposite edge (1000, 600)-(0, 600) produces an hourglass/bow-tie
+    expect(wouldPolygonSelfIntersect(rect, 0, { x: 500, y: 800 })).toBe(true);
+
+    // Degenerate move: collapsing polygon to near-zero area (< 2m2)
+    const smallTriangle = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 0, y: 200 },
+    ];
+    // Triangle is 2.0 m2. Moving vertex 1 inwards to (100, 0) reduces area to 1.0 m2 (< 2.0 m2 threshold)
+    expect(wouldPolygonSelfIntersect(smallTriangle, 1, { x: 100, y: 0 })).toBe(true);
+
+    // Proximity guard: moving vertex 1 too close to adjacent vertex 0 (< 60 cm) is blocked (prevents wall folding)
+    expect(wouldPolygonSelfIntersect(rect, 1, { x: 40, y: 0 })).toBe(true);
+
+    // Proximity guard: moving vertex 1 on top of non-adjacent vertex 3 (0, 600) is blocked
+    expect(wouldPolygonSelfIntersect(rect, 1, { x: 10, y: 590 })).toBe(true);
+  });
+
+  it('canInsertVertexAtEdge enforces minimum edge length and distance to existing vertices', () => {
+    const rect = createRectPolygon(1000, 600); // edges: 1000cm, 600cm, 1000cm, 600cm
+
+    // Valid: split midpoint of 1000cm edge (edge 0: (0,0)-(1000,0)) at (500,0)
+    expect(canInsertVertexAtEdge(rect, 0, { x: 500, y: 0 })).toBe(true);
+
+    // Invalid: point too close to corner 0 (dist = 30cm < 60cm)
+    expect(canInsertVertexAtEdge(rect, 0, { x: 30, y: 0 })).toBe(false);
+
+    // Invalid: edge is shorter than 120 cm
+    const shortPoly = [
+      { x: 0, y: 0 },
+      { x: 80, y: 0 },
+      { x: 80, y: 200 },
+      { x: 0, y: 200 },
+    ];
+    expect(canInsertVertexAtEdge(shortPoly, 0, { x: 40, y: 0 })).toBe(false);
+  });
+
+  it('sanitizeAndWeldPolygon welds clustered duplicate vertices and cleans collinear redundancy', () => {
+    // Simulate user scenario: 10 vertices where 6 are stacked around (500, 0) with 0-5 cm spacing
+    const corruptPoly = [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 501, y: 0 },
+      { x: 502, y: 0 },
+      { x: 503, y: 0 },
+      { x: 505, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 600 },
+      { x: 0, y: 600 },
+    ];
+
+    const sanitized = sanitizeAndWeldPolygon(corruptPoly, 40);
+    // All clustered vertices around (500, 0) are collapsed into one, and collinear points are pruned
+    expect(sanitized.length).toBeLessThanOrEqual(5);
+    expect(sanitized.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
 
 
 

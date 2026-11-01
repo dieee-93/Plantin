@@ -32,7 +32,14 @@ export interface SpaceCommandDockProps {
   setCustomDepthM: (v: string) => void;
   onApplyDimensions: () => void;
   onInsertVertex: () => void;
+  onScaleParcel?: (factor: number) => void;
   vertexCount: number;
+  baseMaterial?: FloorMaterialType;
+  onChangeBaseMaterial?: (mat: FloorMaterialType) => void;
+  onSetAllWallsHeight?: (heightCm: number) => void;
+  selectedVertexIndex?: number | null;
+  onRemoveSelectedVertex?: () => void;
+  onSanitizeBoundary?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -42,6 +49,7 @@ export interface SpaceCommandDockProps {
 const TOOL_BUTTONS: Array<{ tool: SpaceBuilderTool; label: string }> = [
   { tool: 'inspect', label: 'Inspeccionar' },
   { tool: 'draw_path', label: 'Trazar Camino' },
+  { tool: 'walls', label: 'Muros' },
   { tool: 'edit_boundary', label: 'Editar Contorno' },
   { tool: 'plant_single', label: 'Plantar Individual' },
   { tool: 'plant_line', label: 'Surco/Fila' },
@@ -83,7 +91,14 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   setCustomDepthM,
   onApplyDimensions,
   onInsertVertex,
+  onScaleParcel,
   vertexCount,
+  baseMaterial,
+  onChangeBaseMaterial,
+  onSetAllWallsHeight,
+  selectedVertexIndex,
+  onRemoveSelectedVertex,
+  onSanitizeBoundary,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -212,50 +227,176 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
             </div>
           )}
 
-          {/* Contextual Options for Boundary Tool */}
+          {/* Contextual Options for Walls Tool */}
+          {activeTool === 'walls' && (
+            <div className="flex flex-col gap-1.5 border-t border-slate-100 pt-1.5 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-slate-700">Cerramiento perimetral:</span>
+                {onSetAllWallsHeight && (
+                  <div className="flex items-center gap-1">
+                    {[
+                      { label: '0m (Abierto)', h: 0 },
+                      { label: '1.2m (Cerco)', h: 120 },
+                      { label: '2.0m (Medianera)', h: 200 },
+                      { label: '2.5m (Pared)', h: 250 },
+                    ].map((p) => (
+                      <button
+                        key={p.h}
+                        type="button"
+                        onClick={() => onSetAllWallsHeight(p.h)}
+                        className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200 transition"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <span className="ml-auto text-[11px] text-slate-500 italic">
+                  💡 Haz clic en cualquier pared en el plano para ajustarla o añadir aberturas
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Contextual Options for Boundary & Terrain Tool */}
           {activeTool === 'edit_boundary' && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-1.5 text-xs">
-              <label className="flex items-center gap-1 font-medium text-slate-600">
-                <span>Ancho Terreno (m)</span>
-                <input
-                  type="number"
-                  aria-label="Ancho Terreno (m)"
-                  step="0.5"
-                  min="1"
-                  value={customWidthM}
-                  onChange={(e) => setCustomWidthM(e.target.value)}
-                  className="w-16 rounded border border-slate-200 px-1.5 py-0.5 font-mono"
-                />
-              </label>
-              <label className="flex items-center gap-1 font-medium text-slate-600">
-                <span>Largo Terreno (m)</span>
-                <input
-                  type="number"
-                  aria-label="Largo Terreno (m)"
-                  step="0.5"
-                  min="1"
-                  value={customDepthM}
-                  onChange={(e) => setCustomDepthM(e.target.value)}
-                  className="w-16 rounded border border-slate-200 px-1.5 py-0.5 font-mono"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={onApplyDimensions}
-                className="rounded-lg bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700"
-              >
-                Aplicar Dimensiones
-              </button>
-              <button
-                type="button"
-                onClick={onInsertVertex}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Insertar Vértice (Ochava/L)
-              </button>
-              <span className="font-mono text-[11px] text-slate-500">
-                {vertexCount} vértices
-              </span>
+            <div className="flex flex-col gap-2 border-t border-slate-100 pt-1.5 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1 font-medium text-slate-600">
+                  <span>Ancho (m)</span>
+                  <input
+                    type="number"
+                    aria-label="Ancho Terreno (m)"
+                    step="0.5"
+                    min="1"
+                    value={customWidthM}
+                    onChange={(e) => setCustomWidthM(e.target.value)}
+                    className="w-16 rounded border border-slate-200 px-1.5 py-0.5 font-mono"
+                  />
+                </label>
+                <label className="flex items-center gap-1 font-medium text-slate-600">
+                  <span>Largo (m)</span>
+                  <input
+                    type="number"
+                    aria-label="Largo Terreno (m)"
+                    step="0.5"
+                    min="1"
+                    value={customDepthM}
+                    onChange={(e) => setCustomDepthM(e.target.value)}
+                    className="w-16 rounded border border-slate-200 px-1.5 py-0.5 font-mono"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={onApplyDimensions}
+                  className="rounded-lg bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700 transition"
+                >
+                  Aplicar Cotas
+                </button>
+
+                {onScaleParcel && (
+                  <div className="flex items-center gap-1 pl-1 border-l border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => onScaleParcel(1.1)}
+                      className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-200 transition"
+                      title="Agrandar parcela +10% conservando su forma"
+                    >
+                      +10% Agrandar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onScaleParcel(0.9)}
+                      className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-200 transition"
+                      title="Reducir parcela -10% conservando su forma"
+                    >
+                      -10% Reducir
+                    </button>
+                  </div>
+                )}
+
+                {onChangeBaseMaterial && (
+                  <label className="flex items-center gap-1 font-medium text-slate-600 pl-1 border-l border-slate-200">
+                    <span>Suelo:</span>
+                    <select
+                      aria-label="Suelo base del terreno"
+                      value={baseMaterial ?? 'soil'}
+                      onChange={(e) =>
+                        onChangeBaseMaterial(e.target.value as FloorMaterialType)
+                      }
+                      className="rounded border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-800"
+                    >
+                      <option value="soil">Tierra de cultivo</option>
+                      <option value="grass">Césped / Pasto</option>
+                      <option value="concrete">Hormigón / Cemento</option>
+                      <option value="gravel">Grava / Piedra</option>
+                      <option value="tile">Baldosas</option>
+                      <option value="wood">Madera</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              {/* Quick Wall Enclosure Height Bar */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100">
+                <span className="font-semibold text-slate-500 text-[11px]">
+                  Cerramiento perimetral:
+                </span>
+                {onSetAllWallsHeight && (
+                  <div className="flex items-center gap-1">
+                    {[
+                      { label: '0m (Abierto)', h: 0 },
+                      { label: '1.2m (Cerco)', h: 120 },
+                      { label: '2.0m (Medianera)', h: 200 },
+                      { label: '2.5m (Pared)', h: 250 },
+                    ].map((p) => (
+                      <button
+                        key={p.h}
+                        type="button"
+                        onClick={() => onSetAllWallsHeight(p.h)}
+                        className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-200 transition"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {onSanitizeBoundary && vertexCount > 4 && (
+                  <button
+                    type="button"
+                    onClick={onSanitizeBoundary}
+                    className="ml-auto rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 font-medium text-amber-800 hover:bg-amber-100 text-[11px] transition"
+                    title="Fusiona vértices amontonados a menos de 40 cm y limpia puntos colineales redundantes"
+                  >
+                    🧹 Sanear Vértices
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onInsertVertex}
+                  className={`${onSanitizeBoundary && vertexCount > 4 ? '' : 'ml-auto '}rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 font-medium text-slate-700 hover:bg-slate-100 text-[11px]`}
+                  title="Añade un nuevo vértice en el muro más largo"
+                >
+                  + Vértice ({vertexCount})
+                </button>
+
+                {selectedVertexIndex !== null &&
+                  selectedVertexIndex !== undefined &&
+                  vertexCount > 3 &&
+                  onRemoveSelectedVertex && (
+                    <button
+                      type="button"
+                      onClick={onRemoveSelectedVertex}
+                      className="rounded-lg bg-red-50 border border-red-200 px-2 py-0.5 font-semibold text-red-600 hover:bg-red-100 text-[11px]"
+                      title="Elimina el vértice seleccionado"
+                    >
+                      Eliminar Vértice
+                    </button>
+                  )}
+              </div>
             </div>
           )}
 

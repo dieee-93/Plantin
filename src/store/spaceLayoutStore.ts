@@ -2,17 +2,24 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { uuidv7 } from 'uuidv7';
 import {
+  canInsertVertexAtEdge,
   computeSpaceRegions,
   createPerimeterWalls,
   createRectPolygon,
   insertPolygonVertex,
   movePolygonVertex,
+  removePolygonVertex,
+  sanitizeAndWeldPolygon,
+  scalePolygonFromCenter,
+  syncWallsWithBoundary,
+  wouldPolygonSelfIntersect,
   type FloorMaterialType,
   type HardscapeZoneCm,
   type PathStrokeCm,
   type Point2DCm,
   type Polygon2DCm,
   type WallMaterialType,
+  type WallOpeningCm,
   type WallSegmentCm,
 } from '@/domain/spaceGeometry';
 import {
@@ -30,6 +37,19 @@ export interface SpaceSolarConfig {
   hourOfDay: number;
 }
 
+export type RoofKind =
+  | 'none'
+  | 'gabled_greenhouse'
+  | 'flat_ceiling'
+  | 'shade_cloth';
+
+export interface SpaceRoofConfig {
+  kind: RoofKind;
+  heightCm?: number;
+  material?: 'polycarbonate' | 'glass' | 'concrete' | 'shade_mesh';
+  hasGrowLights?: boolean;
+}
+
 export interface SpaceLayout1to1 {
   locationId: string;
   presetId: string;
@@ -38,6 +58,7 @@ export interface SpaceLayout1to1 {
   hardscapeZones: HardscapeZoneCm[];
   paths: PathStrokeCm[];
   walls: WallSegmentCm[];
+  roofConfig?: SpaceRoofConfig;
   solarConfig: SpaceSolarConfig;
   placedPlants: PlacedPlantSpatialCm[];
 }
@@ -173,6 +194,11 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
           },
         ],
         walls: createPerimeterWalls(baseBoundary, 240, 'polycarbonate'),
+        roofConfig: {
+          kind: 'gabled_greenhouse',
+          heightCm: 140,
+          material: 'polycarbonate',
+        },
         solarConfig: { ...DEFAULT_SOLAR_CONFIG },
         placedPlants: [],
       };
@@ -192,6 +218,12 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
         hardscapeZones: [],
         paths: [],
         walls: createPerimeterWalls(baseBoundary, 250, 'brick'),
+        roofConfig: {
+          kind: 'flat_ceiling',
+          heightCm: 0,
+          material: 'concrete',
+          hasGrowLights: true,
+        },
         solarConfig: { ...DEFAULT_SOLAR_CONFIG },
         placedPlants: [],
       };
@@ -210,7 +242,7 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
         baseMaterial: 'soil',
         hardscapeZones: [],
         paths: [],
-        walls: createPerimeterWalls(baseBoundary, 200, 'brick'),
+        walls: createPerimeterWalls(baseBoundary, 0, 'wire_fence'),
         solarConfig: { ...DEFAULT_SOLAR_CONFIG },
         placedPlants: [],
       };
@@ -221,7 +253,15 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
 function resolveDefaultPresetId(locationType?: string, presetId?: string): string {
   if (presetId && SPACE_PRESETS[presetId]) return presetId;
   if (locationType === 'greenhouse') return 'greenhouse_1to1';
-  if (locationType === 'indoor') return 'indoor_room_1to1';
+  if (
+    locationType === 'indoor' ||
+    locationType === 'room' ||
+    locationType === 'growth_chamber' ||
+    locationType === 'lab'
+  ) {
+    return 'indoor_room_1to1';
+  }
+  if (locationType === 'field') return 'empty_lot_1to1';
   return 'patio_croquis';
 }
 
@@ -267,13 +307,40 @@ export interface SpaceLayoutStoreState {
   ) => SpaceLayout1to1;
   applyPreset: (locationId: string, presetId: string) => void;
   setBaseBoundary: (locationId: string, boundary: Polygon2DCm) => void;
+  setBaseMaterial: (locationId: string, material: FloorMaterialType) => void;
+  snapshotHistory: (locationId: string) => void;
   moveBoundaryVertex: (
     locationId: string,
     vertexIndex: number,
     newPoint: Point2DCm,
     snapCm?: number,
+    recordHistory?: boolean,
   ) => void;
   insertBoundaryVertex: (locationId: string, edgeIndex: number, point: Point2DCm) => void;
+  removeBoundaryVertex: (locationId: string, vertexIndex: number) => void;
+  sanitizeBoundary: (locationId: string) => void;
+  scaleBoundary: (locationId: string, factor: number) => void;
+  updateWall: (
+    locationId: string,
+    wallId: string,
+    partial: Partial<Pick<WallSegmentCm, 'heightCm' | 'material' | 'thicknessCm'>>,
+  ) => void;
+  addWallOpening: (
+    locationId: string,
+    wallId: string,
+    opening: Omit<WallOpeningCm, 'id'> & { id?: string },
+  ) => void;
+  removeWallOpening: (
+    locationId: string,
+    wallId: string,
+    openingId: string,
+  ) => void;
+  updateRoofConfig: (
+    locationId: string,
+    partial: Partial<SpaceRoofConfig>,
+  ) => void;
+  setAllWallsHeight: (locationId: string, heightCm: number) => void;
+  setAllWallsMaterial: (locationId: string, material: WallMaterialType) => void;
   addPathStroke: (
     locationId: string,
     path: Omit<PathStrokeCm, 'id'> & { id?: string },
@@ -321,6 +388,26 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       getOrCreateSpaceLayout: (locationId, locationType, presetId) => {
         const existing = get().layouts[locationId];
         if (existing) {
+          // Auto-heal corrupt layouts with degenerate clustered vertices (> 8 vertices)
+          if (existing.baseBoundary && existing.baseBoundary.length > 8) {
+            const sanitized = sanitizeAndWeldPolygon(existing.baseBoundary, 40);
+            if (sanitized.length < existing.baseBoundary.length) {
+              const wallMaterial = getWallMaterialForPreset(existing.presetId, existing.walls);
+              const wallHeight = existing.walls[0]?.heightCm ?? 200;
+              const healed = {
+                ...existing,
+                baseBoundary: sanitized,
+                walls: syncWallsWithBoundary(sanitized, existing.walls, wallHeight, wallMaterial),
+              };
+              set((state) => ({
+                layouts: {
+                  ...state.layouts,
+                  [locationId]: healed,
+                },
+              }));
+              return healed;
+            }
+          }
           return existing;
         }
         const resolvedPresetId = resolveDefaultPresetId(locationType, presetId);
@@ -360,14 +447,45 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
             [locationId]: {
               ...current,
               baseBoundary: boundary,
-              walls: createPerimeterWalls(boundary, wallHeight, wallMaterial),
+              walls: syncWallsWithBoundary(boundary, current.walls, wallHeight, wallMaterial),
             },
           },
         }));
       },
 
-      moveBoundaryVertex: (locationId, vertexIndex, newPoint, snapCm = 1) => {
+      setBaseMaterial: (locationId, material) => {
         const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              baseMaterial: material,
+            },
+          },
+        }));
+      },
+
+      snapshotHistory: (locationId) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+        }));
+      },
+
+      moveBoundaryVertex: (
+        locationId,
+        vertexIndex,
+        newPoint,
+        snapCm = 1,
+        recordHistory = true,
+      ) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        // Prevent moving into a self-intersecting polygon (hourglass/bow-tie)
+        if (wouldPolygonSelfIntersect(current.baseBoundary, vertexIndex, newPoint)) {
+          return;
+        }
         const nextBoundary = movePolygonVertex(
           current.baseBoundary,
           vertexIndex,
@@ -377,13 +495,15 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
         set((state) => ({
-          history: pushHistorySnapshot(locationId, current, state.history),
+          history: recordHistory
+            ? pushHistorySnapshot(locationId, current, state.history)
+            : state.history,
           layouts: {
             ...state.layouts,
             [locationId]: {
               ...current,
               baseBoundary: nextBoundary,
-              walls: createPerimeterWalls(nextBoundary, wallHeight, wallMaterial),
+              walls: syncWallsWithBoundary(nextBoundary, current.walls, wallHeight, wallMaterial),
             },
           },
         }));
@@ -391,6 +511,9 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
 
       insertBoundaryVertex: (locationId, edgeIndex, point) => {
         const current = get().getOrCreateSpaceLayout(locationId);
+        if (!canInsertVertexAtEdge(current.baseBoundary, edgeIndex, point)) {
+          return;
+        }
         const nextBoundary = insertPolygonVertex(current.baseBoundary, edgeIndex, point);
         const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
         const wallHeight = current.walls[0]?.heightCm ?? 200;
@@ -401,7 +524,175 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
             [locationId]: {
               ...current,
               baseBoundary: nextBoundary,
-              walls: createPerimeterWalls(nextBoundary, wallHeight, wallMaterial),
+              walls: syncWallsWithBoundary(nextBoundary, current.walls, wallHeight, wallMaterial),
+            },
+          },
+        }));
+      },
+
+      sanitizeBoundary: (locationId) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        const sanitized = sanitizeAndWeldPolygon(current.baseBoundary, 40);
+        if (sanitized.length === current.baseBoundary.length) return;
+        const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
+        const wallHeight = current.walls[0]?.heightCm ?? 200;
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              baseBoundary: sanitized,
+              walls: syncWallsWithBoundary(sanitized, current.walls, wallHeight, wallMaterial),
+            },
+          },
+        }));
+      },
+
+      removeBoundaryVertex: (locationId, vertexIndex) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        if (current.baseBoundary.length <= 3) return;
+        const nextBoundary = removePolygonVertex(current.baseBoundary, vertexIndex);
+        const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
+        const wallHeight = current.walls[0]?.heightCm ?? 200;
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              baseBoundary: nextBoundary,
+              walls: syncWallsWithBoundary(nextBoundary, current.walls, wallHeight, wallMaterial),
+            },
+          },
+        }));
+      },
+
+      scaleBoundary: (locationId, factor) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        const nextBoundary = scalePolygonFromCenter(current.baseBoundary, factor);
+        const wallMaterial = getWallMaterialForPreset(current.presetId, current.walls);
+        const wallHeight = current.walls[0]?.heightCm ?? 200;
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              baseBoundary: nextBoundary,
+              walls: syncWallsWithBoundary(nextBoundary, current.walls, wallHeight, wallMaterial),
+            },
+          },
+        }));
+      },
+
+      updateWall: (locationId, wallId, partial) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              walls: current.walls.map((w) =>
+                w.id === wallId ? { ...w, ...partial } : w,
+              ),
+            },
+          },
+        }));
+      },
+
+      addWallOpening: (locationId, wallId, opening) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        const newOpening: WallOpeningCm = {
+          ...opening,
+          id: opening.id ?? `opening-${uuidv7()}`,
+        };
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              walls: current.walls.map((w) =>
+                w.id === wallId
+                  ? { ...w, openings: [...(w.openings ?? []), newOpening] }
+                  : w,
+              ),
+            },
+          },
+        }));
+      },
+
+      removeWallOpening: (locationId, wallId, openingId) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              walls: current.walls.map((w) =>
+                w.id === wallId
+                  ? {
+                      ...w,
+                      openings: (w.openings ?? []).filter((op) => op.id !== openingId),
+                    }
+                  : w,
+              ),
+            },
+          },
+        }));
+      },
+
+      updateRoofConfig: (locationId, partial) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        const nextRoof: SpaceRoofConfig = {
+          kind: current.roofConfig?.kind ?? 'none',
+          ...current.roofConfig,
+          ...partial,
+        };
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              roofConfig: nextRoof,
+            },
+          },
+        }));
+      },
+
+      setAllWallsHeight: (locationId, heightCm) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              walls: current.walls.map((w) => ({
+                ...w,
+                heightCm: Math.max(0, Math.round(heightCm)),
+              })),
+            },
+          },
+        }));
+      },
+
+      setAllWallsMaterial: (locationId, material) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushHistorySnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              walls: current.walls.map((w) => ({
+                ...w,
+                material,
+              })),
             },
           },
         }));

@@ -441,5 +441,118 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
       store.undo('loc-deep-copy');
       expect(store.getOrCreateSpaceLayout('loc-deep-copy').baseBoundary[1].x).toBe(800);
     });
+
+    it('atomic drag transactions: snapshots once on drag start and allows intermediate moves without polluting history', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-drag-atomic', 'outdoor', 'empty_lot_1to1');
+      const initialLayout = store.getOrCreateSpaceLayout('loc-drag-atomic');
+      expect(initialLayout.baseBoundary[0]).toEqual({ x: 0, y: 0 });
+
+      // Drag starts -> snapshot history once
+      store.snapshotHistory('loc-drag-atomic');
+      expect(useSpaceLayoutStore.getState().history['loc-drag-atomic'].past).toHaveLength(1);
+
+      // Simulate 20 mouse-move events during drag with recordHistory: false
+      for (let i = 1; i <= 20; i++) {
+        store.moveBoundaryVertex('loc-drag-atomic', 0, { x: i * 10, y: i * 5 }, 1, false);
+      }
+
+      // History stack must still only have 1 entry (not 21!)
+      expect(useSpaceLayoutStore.getState().history['loc-drag-atomic'].past).toHaveLength(1);
+      expect(store.getOrCreateSpaceLayout('loc-drag-atomic').baseBoundary[0]).toEqual({ x: 200, y: 100 });
+
+      // Exactly ONE undo restores back to original { x: 0, y: 0 } immediately!
+      store.undo('loc-drag-atomic');
+      expect(store.getOrCreateSpaceLayout('loc-drag-atomic').baseBoundary[0]).toEqual({ x: 0, y: 0 });
+      expect(useSpaceLayoutStore.getState().history['loc-drag-atomic'].past).toHaveLength(0);
+
+      // Redo restores to final drag position { x: 200, y: 100 }
+      store.redo('loc-drag-atomic');
+      expect(store.getOrCreateSpaceLayout('loc-drag-atomic').baseBoundary[0]).toEqual({ x: 200, y: 100 });
+    });
+
+    it('updates individual wall height and material, sets all walls properties, and removes vertices', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-wall-test', 'outdoor', 'empty_lot_1to1');
+      let layout = store.getOrCreateSpaceLayout('loc-wall-test');
+
+      // Update specific wall 0 to 120 cm wood_fence
+      const wall0Id = layout.walls[0].id;
+      store.updateWall('loc-wall-test', wall0Id, {
+        heightCm: 120,
+        material: 'wood_fence',
+      });
+      layout = store.getOrCreateSpaceLayout('loc-wall-test');
+      expect(layout.walls[0].heightCm).toBe(120);
+      expect(layout.walls[0].material).toBe('wood_fence');
+
+      // Set all walls to 0 cm (open outdoor space)
+      store.setAllWallsHeight('loc-wall-test', 0);
+      layout = store.getOrCreateSpaceLayout('loc-wall-test');
+      expect(layout.walls.every((w) => w.heightCm === 0)).toBe(true);
+
+      // Set all walls material to wire_fence
+      store.setAllWallsMaterial('loc-wall-test', 'wire_fence');
+      layout = store.getOrCreateSpaceLayout('loc-wall-test');
+      expect(layout.walls.every((w) => w.material === 'wire_fence')).toBe(true);
+
+      // Insert and remove vertex
+      store.insertBoundaryVertex('loc-wall-test', 0, { x: 400, y: 0 });
+      expect(store.getOrCreateSpaceLayout('loc-wall-test').baseBoundary).toHaveLength(5);
+      store.removeBoundaryVertex('loc-wall-test', 1);
+      expect(store.getOrCreateSpaceLayout('loc-wall-test').baseBoundary).toHaveLength(4);
+
+      // Set base material
+      store.setBaseMaterial('loc-wall-test', 'grass');
+      expect(store.getOrCreateSpaceLayout('loc-wall-test').baseMaterial).toBe('grass');
+
+      // Add door opening to wall0
+      store.addWallOpening('loc-wall-test', wall0Id, {
+        kind: 'door',
+        offsetCm: 150,
+        widthCm: 90,
+        heightCm: 210,
+        sillHeightCm: 0,
+      });
+      layout = store.getOrCreateSpaceLayout('loc-wall-test');
+      expect(layout.walls[0].openings).toHaveLength(1);
+      expect(layout.walls[0].openings?.[0].kind).toBe('door');
+      const openingId = layout.walls[0].openings![0].id;
+
+      // Remove door opening
+      store.removeWallOpening('loc-wall-test', wall0Id, openingId);
+      layout = store.getOrCreateSpaceLayout('loc-wall-test');
+      expect(layout.walls[0].openings).toHaveLength(0);
+    });
+
+    it('moveBoundaryVertex rejects self-intersecting moves preserving boundary shape', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-intersect-test', 'outdoor', 'empty_lot_1to1');
+      const initialBoundary = [...store.getOrCreateSpaceLayout('loc-intersect-test').baseBoundary];
+
+      // Attempt to drag vertex 0 across the opposite edge creating a self-intersecting bow-tie
+      store.moveBoundaryVertex('loc-intersect-test', 0, { x: 500, y: 800 });
+
+      // Boundary remains completely unchanged
+      const currentBoundary = store.getOrCreateSpaceLayout('loc-intersect-test').baseBoundary;
+      expect(currentBoundary[0]).toEqual(initialBoundary[0]);
+    });
+
+    it('insertBoundaryVertex rejects points too close to corners, and sanitizeBoundary welds clustered vertices', () => {
+      const store = useSpaceLayoutStore.getState();
+      store.getOrCreateSpaceLayout('loc-weld-test', 'outdoor', 'empty_lot_1to1');
+
+      // Attempt inserting at (10, 0) which is 10 cm from corner (0,0) -> rejected!
+      store.insertBoundaryVertex('loc-weld-test', 0, { x: 10, y: 0 });
+      expect(store.getOrCreateSpaceLayout('loc-weld-test').baseBoundary).toHaveLength(4);
+
+      // Valid insert at (500, 0)
+      store.insertBoundaryVertex('loc-weld-test', 0, { x: 500, y: 0 });
+      expect(store.getOrCreateSpaceLayout('loc-weld-test').baseBoundary).toHaveLength(5);
+
+      // Now sanitizeBoundary cleans any redundant collinear vertices
+      store.sanitizeBoundary('loc-weld-test');
+      expect(store.getOrCreateSpaceLayout('loc-weld-test').baseBoundary.length).toBeLessThanOrEqual(5);
+    });
   });
 });

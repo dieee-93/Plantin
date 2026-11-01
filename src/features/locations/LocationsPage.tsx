@@ -7,7 +7,7 @@ import { useAccessionStore } from '@/store/accessionStore'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
-import { useSpaceLayoutStore, SPACE_PRESETS } from '@/store/spaceLayoutStore'
+import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
 import { createRectPolygon } from '@/domain/spaceGeometry'
 import {
   getAllGridPositions,
@@ -225,6 +225,89 @@ const TYPE_LABELS: Record<LocationType, string> = {
   lab: 'Laboratorio / Cámara Fría',
 }
 
+interface TypePresetOption {
+  id: string
+  label: string
+  description?: string
+}
+
+const PRESETS_BY_TYPE: Record<LocationType, TypePresetOption[]> = {
+  greenhouse: [
+    {
+      id: 'greenhouse_1to1',
+      label: 'Invernadero 6 × 12 m (pasillo central, muros policarbonato)',
+      description: 'Estructura semicerrada con paredes de 2.4 m y suelo de cultivo.',
+    },
+    {
+      id: 'custom',
+      label: '📐 Medidas Personalizadas en Metros...',
+      description: 'Define ancho y largo exactos manteniendo cerramiento de invernadero.',
+    },
+  ],
+  field: [
+    {
+      id: 'empty_lot_1to1',
+      label: 'Campo Abierto 8 × 6 m (a cielo libre, sin muros)',
+      description: 'Terreno a cielo abierto con muros de 0 cm y suelo de cultivo.',
+    },
+    {
+      id: 'patio_croquis',
+      label: 'Huerta con Caminos en Y 10 × 6 m (playón y senderos)',
+      description: 'Patio o huerta con sectores cultivables y caminería transitable.',
+    },
+    {
+      id: 'custom',
+      label: '📐 Medidas Personalizadas en Metros...',
+      description: 'Define ancho y largo exactos a cielo abierto.',
+    },
+  ],
+  room: [
+    {
+      id: 'indoor_room_1to1',
+      label: 'Sala Indoor 4 × 4 m (muros perimetrales)',
+      description: 'Espacio interior cerrado con muros de mampostería de 2.5 m y suelo de hormigón.',
+    },
+    {
+      id: 'custom',
+      label: '📐 Medidas Personalizadas en Metros...',
+      description: 'Define ancho y largo exactos para sala cerrada.',
+    },
+  ],
+  growth_chamber: [
+    {
+      id: 'indoor_room_1to1',
+      label: 'Cámara Climatizada 4 × 4 m (ambiente controlado)',
+      description: 'Recinto cerrado para control estricto de temperatura y fotoperiodo.',
+    },
+    {
+      id: 'custom',
+      label: '📐 Medidas Personalizadas en Metros...',
+    },
+  ],
+  bench: [
+    {
+      id: 'patio_croquis',
+      label: 'Sector de Mesadas 10 × 6 m (con pasillos)',
+      description: 'Bancos y pasillos para almácigos y bandejas.',
+    },
+    {
+      id: 'custom',
+      label: '📐 Medidas Personalizadas en Metros...',
+    },
+  ],
+  lab: [
+    {
+      id: 'indoor_room_1to1',
+      label: 'Laboratorio / Cámara Fría 4 × 4 m',
+      description: 'Espacio cerrado para aislamiento y conservación.',
+    },
+    {
+      id: 'custom',
+      label: '📐 Medidas Personalizadas en Metros...',
+    },
+  ],
+}
+
 const TYPE_AGRO_BUFFER: Record<LocationType, { label: string; bg: string; border: string; text: string }> = {
   greenhouse:     { label: 'Protección térmica (+5°C / anti-heladas)', bg: '#d8f3dc', border: '#b7e4c7', text: '#1b4332' },
   field:          { label: 'Exposición directa a intemperie',          bg: '#fef3c7', border: '#fde68a', text: '#78350f' },
@@ -283,13 +366,21 @@ export function LocationsPage() {
   const [selectedIndividualId, setSelectedIndividualId] = useState<string | null>(null)
 
   // Estado del formulario de Nueva Ubicación 1:1
-  const [space3dPresetId, setSpace3dPresetId] = useState<string>('patio_croquis')
+  const [type, setType] = useState<LocationType>('greenhouse')
+  const [space3dPresetId, setSpace3dPresetId] = useState<string>('greenhouse_1to1')
   const [customWidthM, setCustomWidthM] = useState<string>('10.0')
   const [customDepthM, setCustomDepthM] = useState<string>('6.0')
   const [name, setName] = useState('')
-  const [type, setType] = useState<LocationType>('greenhouse')
   const [capacity, setCapacity] = useState('')
   const [description, setDescription] = useState('')
+
+  const handleTypeChange = (newType: LocationType) => {
+    setType(newType)
+    if (space3dPresetId !== 'custom') {
+      const options = PRESETS_BY_TYPE[newType] ?? PRESETS_BY_TYPE.field
+      setSpace3dPresetId(options[0].id)
+    }
+  }
 
   // Sub-pestaña del Drawer de Siembra / Alta unificada: 'inventory' | 'new-material'
   const [sowSubTab, setSowSubTab] = useState<'inventory' | 'new-material'>('inventory')
@@ -422,12 +513,30 @@ export function LocationsPage() {
       coordinates: farmCoordinates,
     })
 
+    const store = useSpaceLayoutStore.getState()
     if (space3dPresetId && space3dPresetId !== 'custom') {
-      useSpaceLayoutStore.getState().applyPreset(newLoc.id, space3dPresetId)
+      store.applyPreset(newLoc.id, space3dPresetId)
     } else {
       const wCm = Math.max(100, Math.round((Number(customWidthM) || 10) * 100))
       const dCm = Math.max(100, Math.round((Number(customDepthM) || 6) * 100))
-      useSpaceLayoutStore.getState().setBaseBoundary(newLoc.id, createRectPolygon(wCm, dCm))
+      const boundary = createRectPolygon(wCm, dCm)
+      const wallHeight = type === 'field' ? 0 : type === 'greenhouse' ? 240 : 250
+      const wallMat =
+        type === 'greenhouse'
+          ? 'polycarbonate'
+          : type === 'field'
+          ? 'wire_fence'
+          : 'brick'
+      const baseMat =
+        type === 'room' || type === 'growth_chamber' || type === 'lab'
+          ? 'concrete'
+          : 'soil'
+
+      store.getOrCreateSpaceLayout(newLoc.id, type)
+      store.setBaseBoundary(newLoc.id, boundary)
+      store.setAllWallsHeight(newLoc.id, wallHeight)
+      store.setAllWallsMaterial(newLoc.id, wallMat)
+      store.setBaseMaterial(newLoc.id, baseMat)
     }
 
     setName('')
@@ -806,7 +915,7 @@ export function LocationsPage() {
                   <select
                     style={INPUT_STYLE}
                     value={type}
-                    onChange={e => setType(e.target.value as LocationType)}
+                    onChange={e => handleTypeChange(e.target.value as LocationType)}
                   >
                     {Object.entries(TYPE_LABELS).map(([val, label]) => (
                       <option key={val} value={val}>{label}</option>
@@ -827,26 +936,32 @@ export function LocationsPage() {
                 </div>
               </div>
 
-              {/* Configuración Espacial 1:1 */}
+              {/* Configuración Espacial 1:1 según el Tipo de Espacio */}
               <div>
-                <label htmlFor="space3d-preset-select" style={LABEL_STYLE}>Plantilla Espacial 1:1</label>
+                <label htmlFor="space3d-preset-select" style={LABEL_STYLE}>Distribución y Medidas</label>
                 <select
                   id="space3d-preset-select"
+                  aria-label="Plantilla Espacial 1:1"
                   style={INPUT_STYLE}
                   value={space3dPresetId}
                   onChange={e => setSpace3dPresetId(e.target.value)}
                 >
-                  <option value="patio_croquis">Patio / Huerta con Caminos (Croquis 1:1) — 10×6 m, playón en L y caminos en Y</option>
-                  <option value="greenhouse_1to1">Invernadero 1:1 — 6×12 m con pasillo central y muros de policarbonato</option>
-                  <option value="indoor_room_1to1">Sala Indoor 1:1 — 4×4 m con muros perimetrales</option>
-                  <option value="empty_lot_1to1">Terreno Vacío — 8×6 m de tierra fértil</option>
-                  <option value="custom">📐 Medidas Personalizadas en Metros...</option>
+                  {(PRESETS_BY_TYPE[type] ?? PRESETS_BY_TYPE.field).map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
-                {SPACE_PRESETS[space3dPresetId] && (
-                  <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.4 }}>
-                    {SPACE_PRESETS[space3dPresetId].description}
-                  </p>
-                )}
+                {(() => {
+                  const currentOpt = (PRESETS_BY_TYPE[type] ?? PRESETS_BY_TYPE.field).find(
+                    (p) => p.id === space3dPresetId,
+                  );
+                  return currentOpt?.description ? (
+                    <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.4 }}>
+                      {currentOpt.description}
+                    </p>
+                  ) : null;
+                })()}
               </div>
 
               {space3dPresetId === 'custom' && (

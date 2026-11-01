@@ -2,8 +2,15 @@ import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera } from '@react-three/drei';
 import {
+  calculatePolygonAreaM2,
+  calculatePolygonPerimeterM,
   computeSpaceRegions,
+  createDefaultDoorOpening,
+  createDefaultWindowOpening,
+  createLShapePolygon,
   createRectPolygon,
+  findClosestEdgeOnPolygon,
+  isRectangularPolygon,
   type Point2DCm,
   type Polygon2DCm,
 } from '@/domain/spaceGeometry';
@@ -19,6 +26,7 @@ import { SpaceLensBar, type AnalyticalLensType } from './SpaceLensBar';
 import { SpaceCommandDock } from './SpaceCommandDock';
 import { SpaceCameraWidget } from './SpaceCameraWidget';
 import { SpacePlantActionBar } from './SpacePlantActionBar';
+import { SpaceWallActionBar } from './SpaceWallActionBar';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import {
   computeCursorPlantPreview,
@@ -94,6 +102,8 @@ function canUseWebGL(): boolean {
   }
 }
 
+const INITIAL_CAMERA_POSITION_3D: [number, number, number] = [0, 8.5, 9.5];
+
 export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   locationId,
   locationName,
@@ -115,8 +125,27 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const addPathStroke = useSpaceLayoutStore((state) => state.addPathStroke);
   const removePathStroke = useSpaceLayoutStore((state) => state.removePathStroke);
   const setBaseBoundary = useSpaceLayoutStore((state) => state.setBaseBoundary);
+  const setBaseMaterial = useSpaceLayoutStore((state) => state.setBaseMaterial);
   const insertBoundaryVertex = useSpaceLayoutStore(
     (state) => state.insertBoundaryVertex,
+  );
+  const snapshotHistory = useSpaceLayoutStore((state) => state.snapshotHistory);
+  const moveBoundaryVertex = useSpaceLayoutStore(
+    (state) => state.moveBoundaryVertex,
+  );
+  const removeBoundaryVertex = useSpaceLayoutStore(
+    (state) => state.removeBoundaryVertex,
+  );
+  const sanitizeBoundary = useSpaceLayoutStore((state) => state.sanitizeBoundary);
+  const scaleBoundary = useSpaceLayoutStore((state) => state.scaleBoundary);
+  const updateWall = useSpaceLayoutStore((state) => state.updateWall);
+  const addWallOpening = useSpaceLayoutStore((state) => state.addWallOpening);
+  const removeWallOpening = useSpaceLayoutStore((state) => state.removeWallOpening);
+  const setAllWallsHeight = useSpaceLayoutStore(
+    (state) => state.setAllWallsHeight,
+  );
+  const setAllWallsMaterial = useSpaceLayoutStore(
+    (state) => state.setAllWallsMaterial,
   );
   const placePlant = useSpaceLayoutStore((state) => state.placePlant);
   const removePlant = useSpaceLayoutStore((state) => state.removePlant);
@@ -138,8 +167,12 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
   const [viewMode, setViewMode] = useState<SpaceViewMode>('3d');
   const [cameraAzimuthDeg, setCameraAzimuthDeg] = useState<number>(0);
+  const cameraAzimuthDegRef = useRef(cameraAzimuthDeg);
+  cameraAzimuthDegRef.current = cameraAzimuthDeg;
+  const orbitControlsRef = useRef<any>(null);
   const [zoomPercent, setZoomPercent] = useState<number>(75);
   const [showLabels, setShowLabels] = useState<boolean>(true);
+  const [showRoof, setShowRoof] = useState<boolean>(true);
   const [activeLens, setActiveLens] = useState<AnalyticalLensType | null>(null);
   const [speciesFilter, setSpeciesFilter] = useState<string | null>(null);
   const [dockMode, setDockMode] = useState<'crop' | 'design'>(initialMode ?? 'design');
@@ -202,6 +235,21 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     [layout.baseBoundary],
   );
 
+  const areaM2 = useMemo(
+    () => calculatePolygonAreaM2(layout.baseBoundary),
+    [layout.baseBoundary],
+  );
+
+  const perimeterM = useMemo(
+    () => calculatePolygonPerimeterM(layout.baseBoundary),
+    [layout.baseBoundary],
+  );
+
+  const isRectangular = useMemo(
+    () => isRectangularPolygon(layout.baseBoundary),
+    [layout.baseBoundary],
+  );
+
   const [customWidthM, setCustomWidthM] = useState<string>(() =>
     (bbox.widthCm / 100).toFixed(1),
   );
@@ -237,11 +285,84 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     [layout.placedPlants, builderState.selectedPlantId],
   );
 
+  const selectedWall = useMemo(
+    () =>
+      layout.walls.find((w) => w.id === builderState.selectedWallId) ?? null,
+    [layout.walls, builderState.selectedWallId],
+  );
+
+  const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (draggingVertexIndex === null) return;
+    const handleGlobalPointerUp = () => {
+      setDraggingVertexIndex(null);
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('mouseup', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('mouseup', handleGlobalPointerUp);
+    };
+  }, [draggingVertexIndex]);
+
+  // Stable workspace coordinates with 1.2m margin around the terrain
+  const canvasViewBox = useMemo(() => {
+    let minX = 0;
+    let maxX = 1000;
+    let minY = 0;
+    let maxY = 600;
+    if (layout.baseBoundary.length > 0) {
+      minX = Math.min(0, ...layout.baseBoundary.map((p) => p.x));
+      maxX = Math.max(1000, ...layout.baseBoundary.map((p) => p.x));
+      minY = Math.min(0, ...layout.baseBoundary.map((p) => p.y));
+      maxY = Math.max(600, ...layout.baseBoundary.map((p) => p.y));
+    }
+    const pad = 120;
+    return {
+      minX: Math.round(minX - pad),
+      minY: Math.round(minY - pad),
+      width: Math.round(maxX - minX + pad * 2),
+      height: Math.round(maxY - minY + pad * 2),
+    };
+  }, [
+    // Freeze viewBox while dragging so origin/scale does not jitter under the mouse
+    draggingVertexIndex === null ? layout.baseBoundary : null,
+  ]);
+
+  const edgeInsertionPreview = useMemo(() => {
+    if (builderState.activeTool !== 'edit_boundary' || !builderState.cursorCm || draggingVertexIndex !== null) {
+      return null;
+    }
+    const closest = findClosestEdgeOnPolygon(layout.baseBoundary, builderState.cursorCm);
+    if (closest && closest.distanceCm <= 40) {
+      const p1 = layout.baseBoundary[closest.edgeIndex];
+      const p2 = layout.baseBoundary[(closest.edgeIndex + 1) % layout.baseBoundary.length];
+      const edgeLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (edgeLen >= 120) {
+        return closest;
+      }
+    }
+    return null;
+  }, [builderState.activeTool, builderState.cursorCm, layout.baseBoundary, draggingVertexIndex]);
+
   useEffect(() => {
     if (builderState.selectedPlantId && !selectedPlant) {
       dispatch({ type: 'SELECT_PLANT', plantId: null });
     }
   }, [builderState.selectedPlantId, selectedPlant]);
+
+  useEffect(() => {
+    if (builderState.selectedWallId && !selectedWall) {
+      dispatch({ type: 'SELECT_WALL', wallId: null });
+    }
+  }, [builderState.selectedWallId, selectedWall]);
+
+  useEffect(() => {
+    if (layout.baseBoundary.length > 8) {
+      sanitizeBoundary(locationId);
+    }
+  }, [locationId, layout.baseBoundary.length, sanitizeBoundary]);
 
   const matchingIndividual = useMemo(() => {
     if (!selectedPlant) return null;
@@ -266,18 +387,32 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     };
   }, [cameraAzimuthDeg, bbox]);
 
-  const cameraPosition3D = useMemo<[number, number, number]>(() => {
-    if (viewMode === '2d') {
-      return [0, 14, 0.01];
+  const handleRotateCamera = (deltaDeg: number) => {
+    const nextDeg = (((cameraAzimuthDeg + deltaDeg) % 360) + 360) % 360;
+    cameraAzimuthDegRef.current = nextDeg;
+    setCameraAzimuthDeg(nextDeg);
+    if (orbitControlsRef.current) {
+      const azRad = (nextDeg * Math.PI) / 180;
+      orbitControlsRef.current.setAzimuthalAngle(azRad);
+      orbitControlsRef.current.update();
     }
-    const rad = (cameraAzimuthDeg * Math.PI) / 180;
-    const horizontalDistM = 9.5;
-    return [
-      Math.sin(rad) * horizontalDistM,
-      8.5,
-      Math.cos(rad) * horizontalDistM,
-    ];
-  }, [viewMode, cameraAzimuthDeg]);
+  };
+
+  const handleResetCameraNorth = () => {
+    cameraAzimuthDegRef.current = 0;
+    setCameraAzimuthDeg(0);
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.setAzimuthalAngle(0);
+      orbitControlsRef.current.update();
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === '3d' && orbitControlsRef.current && cameraAzimuthDeg !== 0) {
+      orbitControlsRef.current.setAzimuthalAngle((cameraAzimuthDeg * Math.PI) / 180);
+      orbitControlsRef.current.update();
+    }
+  }, [viewMode]);
 
   const webglSupported = useMemo(() => canUseWebGL(), []);
 
@@ -336,6 +471,13 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       y: Math.max(0, Math.min(bbox.depthCm, Math.round(pointCm.y))),
     };
 
+    if (builderState.activeTool === 'inspect') {
+      dispatch({ type: 'SELECT_PLANT', plantId: null });
+      dispatch({ type: 'SELECT_WALL', wallId: null });
+      dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+      return;
+    }
+
     if (builderState.activeTool === 'draw_path') {
       if (!builderState.draftStartCm) {
         dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
@@ -364,6 +506,12 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       return;
     }
 
+    if (builderState.activeTool === 'edit_boundary') {
+      dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+      dispatch({ type: 'SELECT_WALL', wallId: null });
+      return;
+    }
+
     if (builderState.activeTool === 'plant_line') {
       if (!builderState.draftStartCm) {
         dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
@@ -386,15 +534,33 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   };
 
   const resolveEventPointCm = (
-    e: React.MouseEvent<SVGSVGElement, MouseEvent>,
+    e: React.MouseEvent<SVGSVGElement, MouseEvent> | React.PointerEvent<SVGSVGElement>,
   ): Point2DCm => {
+    const svg = (e.currentTarget.ownerSVGElement || e.currentTarget) as unknown as SVGSVGElement;
+    if (svg && typeof svg.createSVGPoint === 'function' && typeof svg.getScreenCTM === 'function') {
+      try {
+        const ctm = svg.getScreenCTM();
+        if (ctm) {
+          const pt = svg.createSVGPoint();
+          pt.x = e.clientX;
+          pt.y = e.clientY;
+          const transformed = pt.matrixTransform(ctm.inverse());
+          return {
+            x: Math.round(transformed.x),
+            y: Math.round(transformed.y),
+          };
+        }
+      } catch {
+        // Fall back to bounding rect calculation
+      }
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       const relX = (e.clientX - rect.left) / rect.width;
       const relY = (e.clientY - rect.top) / rect.height;
       return {
-        x: Math.round(relX * bbox.widthCm),
-        y: Math.round(relY * bbox.depthCm),
+        x: Math.round(canvasViewBox.minX + relX * canvasViewBox.width),
+        y: Math.round(canvasViewBox.minY + relY * canvasViewBox.height),
       };
     }
     return {
@@ -487,12 +653,26 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   };
 
   const handleInsertVertex = () => {
-    const first = layout.baseBoundary[0] ?? { x: 0, y: 0 };
-    const second = layout.baseBoundary[1] ?? { x: 200, y: 0 };
-    insertBoundaryVertex(locationId, 0, {
-      x: Math.round((first.x + second.x) / 2),
-      y: Math.round((first.y + second.y) / 2 + 80),
-    });
+    let bestEdge = 0;
+    let maxLen = -1;
+    const n = layout.baseBoundary.length;
+    for (let i = 0; i < n; i++) {
+      const a = layout.baseBoundary[i];
+      const b = layout.baseBoundary[(i + 1) % n];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len > maxLen) {
+        maxLen = len;
+        bestEdge = i;
+      }
+    }
+    if (maxLen >= 120) {
+      const a = layout.baseBoundary[bestEdge];
+      const b = layout.baseBoundary[(bestEdge + 1) % n];
+      insertBoundaryVertex(locationId, bestEdge, {
+        x: Math.round((a.x + b.x) / 2),
+        y: Math.round((a.y + b.y) / 2),
+      });
+    }
   };
 
   return (
@@ -509,6 +689,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           capacity={capacity}
           widthM={bbox.widthCm / 100}
           depthM={bbox.depthCm / 100}
+          areaM2={areaM2}
+          perimeterM={perimeterM}
+          isRectangular={isRectangular}
           vertexCount={layout.baseBoundary.length}
           onBackToCampus={onBackToCampus}
           onApplyDimensions={(w, d) => {
@@ -519,6 +702,14 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               createRectPolygon(Math.round(w * 100), Math.round(d * 100)),
             );
           }}
+          onApplyShapePreset={(shape) => {
+            if (shape === 'rect') {
+              setBaseBoundary(locationId, createRectPolygon(1000, 600));
+            } else {
+              setBaseBoundary(locationId, createLShapePolygon(1000, 600, 0.4, 0.45));
+            }
+          }}
+          onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
           onInsertVertex={handleInsertVertex}
         />
 
@@ -527,6 +718,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           layout={layout}
           showLabels={showLabels}
           onToggleShowLabels={() => setShowLabels((v) => !v)}
+          showRoof={showRoof}
+          onToggleShowRoof={() => setShowRoof((v) => !v)}
+          hasRoof={Boolean(layout.roofConfig && layout.roofConfig.kind !== 'none')}
           activeLens={activeLens}
           onSelectLens={setActiveLens}
           speciesFilter={speciesFilter}
@@ -544,52 +738,130 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         {/* 3D WebGL Canvas Viewport */}
         {webglSupported && viewMode === '3d' && (
           <div className="absolute inset-0 h-full w-full">
-            <Canvas shadows>
+            <Canvas
+              shadows
+              onPointerMissed={() => {
+                if (builderState.activeTool === 'inspect') {
+                  dispatch({ type: 'SELECT_PLANT', plantId: null });
+                  dispatch({ type: 'SELECT_WALL', wallId: null });
+                  dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+                } else if (builderState.activeTool === 'edit_boundary') {
+                  dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+                  dispatch({ type: 'SELECT_WALL', wallId: null });
+                }
+              }}
+            >
               <color attach="background" args={['#f8fafc']} />
               <OrthographicCamera
                 makeDefault
-                position={cameraPosition3D}
+                position={INITIAL_CAMERA_POSITION_3D}
                 zoom={42 * (zoomPercent / 100)}
                 near={-50}
                 far={100}
               />
               <OrbitControls
+                ref={orbitControlsRef}
                 makeDefault
-                enableRotate={viewMode === '3d'}
+                enabled={viewMode === '3d' && draggingVertexIndex === null}
+                enableRotate={viewMode === '3d' && draggingVertexIndex === null}
                 target={[0, 0, 0]}
+                maxPolarAngle={Math.PI / 2 - 0.05}
+                minPolarAngle={0.05}
+                onChange={(e) => {
+                  const controls = e?.target;
+                  if (controls?.object) {
+                    const cam = controls.object;
+                    const azRad = Math.atan2(cam.position.x, cam.position.z);
+                    const azDeg = Math.round((azRad * 180) / Math.PI);
+                    const normDeg = ((azDeg % 360) + 360) % 360;
+                    const diff = Math.abs(normDeg - cameraAzimuthDegRef.current);
+                    const circularDiff = Math.min(diff, 360 - diff);
+                    if (circularDiff >= 2) {
+                      cameraAzimuthDegRef.current = normDeg;
+                      setCameraAzimuthDeg(normDeg);
+                    }
+                  }
+                }}
               />
               <SpaceSceneGraph
                 layout={layout}
                 viewMode={viewMode}
                 cameraGroundPosCm={cameraGroundPosCm}
+                showRoof={showRoof}
                 selectedPlantId={builderState.selectedPlantId}
+                selectedWallId={builderState.selectedWallId}
+                selectedVertexIndex={builderState.selectedVertexIndex}
+                isBoundaryEditMode={
+                  builderState.activeTool === 'edit_boundary'
+                }
                 onSelectPlant={(plantId) =>
                   dispatch({ type: 'SELECT_PLANT', plantId })
                 }
+                onSelectWall={(wallId) =>
+                  dispatch({ type: 'SELECT_WALL', wallId })
+                }
+                onSelectVertex={(idx) => {
+                  dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
+                  dispatch({ type: 'SELECT_WALL', wallId: null });
+                }}
+                onStartDragVertex={(idx) => {
+                  snapshotHistory(locationId);
+                  setDraggingVertexIndex(idx);
+                  dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
+                  dispatch({ type: 'SELECT_WALL', wallId: null });
+                }}
+                onInsertVertexAtEdge={(edgeIndex, pointCm) => {
+                  insertBoundaryVertex(locationId, edgeIndex, pointCm);
+                }}
                 onGroundPointClickCm={handlePlanePointClick}
               />
-              <mesh
-                rotation={[-Math.PI / 2, 0, 0]}
-                position={[0, 0.001, 0]}
-                onPointerMove={(e) => {
-                  e.stopPropagation();
-                  const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
-                  const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
-                  dispatch({
-                    type: 'MOVE_CURSOR',
-                    pointCm: { x: xCm, y: yCm },
-                  });
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
-                  const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
-                  handlePlanePointClick({ x: xCm, y: yCm });
-                }}
-              >
-                <planeGeometry args={[bbox.widthCm / 100, bbox.depthCm / 100]} />
-                <meshBasicMaterial transparent opacity={0} />
-              </mesh>
+              {/* Active 3D ground drag capture plane (captures smooth drag across entire ground) */}
+              {draggingVertexIndex !== null ? (
+                <mesh
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  position={[0, 0, 0]}
+                  onPointerMove={(e) => {
+                    e.stopPropagation();
+                    const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
+                    const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
+                    moveBoundaryVertex(locationId, draggingVertexIndex, { x: xCm, y: yCm }, 10, false);
+                    dispatch({
+                      type: 'MOVE_CURSOR',
+                      pointCm: { x: xCm, y: yCm },
+                    });
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    setDraggingVertexIndex(null);
+                  }}
+                >
+                  <planeGeometry args={[200, 200]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              ) : (
+                <mesh
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  position={[0, 0.001, 0]}
+                  onPointerMove={(e) => {
+                    e.stopPropagation();
+                    const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
+                    const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
+                    dispatch({
+                      type: 'MOVE_CURSOR',
+                      pointCm: { x: xCm, y: yCm },
+                    });
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
+                    const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
+                    handlePlanePointClick({ x: xCm, y: yCm });
+                  }}
+                >
+                  <planeGeometry args={[Math.max(30, (bbox.widthCm / 100) * 2), Math.max(30, (bbox.depthCm / 100) * 2)]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              )}
             </Canvas>
           </div>
         )}
@@ -623,13 +895,34 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
           <svg
             data-testid="interactive-plane-1to1"
-            viewBox={`0 0 ${bbox.widthCm} ${bbox.depthCm}`}
+            viewBox={`${canvasViewBox.minX} ${canvasViewBox.minY} ${canvasViewBox.width} ${canvasViewBox.height}`}
             className="h-full w-full cursor-crosshair select-none"
-            onMouseMove={(e) => {
+            onPointerMove={(e) => {
               const pt = resolveEventPointCm(e);
+              if (draggingVertexIndex !== null) {
+                moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
+              }
               dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
             }}
+            onMouseMove={(e) => {
+              const pt = resolveEventPointCm(e);
+              if (draggingVertexIndex !== null) {
+                moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
+              }
+              dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
+            }}
+            onPointerUp={() => {
+              if (draggingVertexIndex !== null) {
+                setDraggingVertexIndex(null);
+              }
+            }}
+            onMouseUp={() => {
+              if (draggingVertexIndex !== null) {
+                setDraggingVertexIndex(null);
+              }
+            }}
             onClick={(e) => {
+              if (draggingVertexIndex !== null) return;
               const pt = resolveEventPointCm(e);
               handlePlanePointClick(pt);
             }}
@@ -653,8 +946,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
             {/* Base Background Grid */}
             <rect
-              width={bbox.widthCm}
-              height={bbox.depthCm}
+              x={canvasViewBox.minX}
+              y={canvasViewBox.minY}
+              width={canvasViewBox.width}
+              height={canvasViewBox.height}
               fill="url(#cad-grid-pattern)"
             />
 
@@ -663,7 +958,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               points={polygonToSvgPoints(layout.baseBoundary)}
               fill="#f8fafc"
               stroke="#94a3b8"
-              strokeWidth={6}
+              strokeWidth={3}
             />
 
             {/* Cultivable sectors */}
@@ -687,6 +982,201 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 strokeWidth={2}
               />
             ))}
+
+            {/* 1:1 Perimeter Walls & Openings on 2D CAD Plane */}
+            {layout.walls.map((wall) => {
+              const isSelected = builderState.selectedWallId === wall.id;
+              const isOpen = wall.heightCm === 0;
+              const strokeColor = isSelected
+                ? '#0284c7'
+                : isOpen
+                ? '#94a3b8'
+                : wall.material === 'wood_fence'
+                ? '#92400e'
+                : wall.material === 'wire_fence'
+                ? '#64748b'
+                : wall.material === 'polycarbonate'
+                ? '#38bdf8'
+                : '#b45309';
+
+              const dx = wall.end.x - wall.start.x;
+              const dy = wall.end.y - wall.start.y;
+              const wallLen = Math.hypot(dx, dy);
+              const ux = wallLen > 0 ? dx / wallLen : 0;
+              const uy = wallLen > 0 ? dy / wallLen : 0;
+              const hasOpenings = Boolean(wall.openings && wall.openings.length > 0);
+
+              return (
+                <g key={`svg-wall-group-${wall.id}`}>
+                  <line
+                    data-testid={`wall-segment-${wall.id}`}
+                    x1={wall.start.x}
+                    y1={wall.start.y}
+                    x2={wall.end.x}
+                    y2={wall.end.y}
+                    stroke={strokeColor}
+                    strokeWidth={isSelected ? 14 : isOpen ? 5 : 9}
+                    strokeDasharray={isOpen ? '10 8' : undefined}
+                    strokeLinecap="round"
+                    className="cursor-pointer hover:opacity-80 transition-all"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      dispatch({ type: 'SELECT_WALL', wallId: wall.id });
+                      dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+                    }}
+                  />
+
+                  {/* 2D Architectural CAD Symbols for Doors and Windows */}
+                  {hasOpenings &&
+                    wall.openings!.map((op) => {
+                      const opStartX = wall.start.x + ux * op.offsetCm;
+                      const opStartY = wall.start.y + uy * op.offsetCm;
+                      const opEndX = wall.start.x + ux * (op.offsetCm + op.widthCm);
+                      const opEndY = wall.start.y + uy * (op.offsetCm + op.widthCm);
+
+                      if (op.kind === 'door') {
+                        const nx = -uy;
+                        const ny = ux;
+                        const leafX = opStartX + nx * op.widthCm;
+                        const leafY = opStartY + ny * op.widthCm;
+
+                        return (
+                          <g key={`svg-op-${op.id}`} className="pointer-events-none">
+                            <line
+                              x1={opStartX}
+                              y1={opStartY}
+                              x2={opEndX}
+                              y2={opEndY}
+                              stroke="#ffffff"
+                              strokeWidth={11}
+                            />
+                            <line
+                              x1={opStartX}
+                              y1={opStartY}
+                              x2={opEndX}
+                              y2={opEndY}
+                              stroke="#475569"
+                              strokeWidth={2}
+                            />
+                            <line
+                              x1={opStartX}
+                              y1={opStartY}
+                              x2={leafX}
+                              y2={leafY}
+                              stroke="#b45309"
+                              strokeWidth={2.5}
+                            />
+                          </g>
+                        );
+                      }
+
+                      return (
+                        <g key={`svg-op-${op.id}`} className="pointer-events-none">
+                          <line
+                            x1={opStartX}
+                            y1={opStartY}
+                            x2={opEndX}
+                            y2={opEndY}
+                            stroke="#ffffff"
+                            strokeWidth={11}
+                          />
+                          <line
+                            x1={opStartX}
+                            y1={opStartY}
+                            x2={opEndX}
+                            y2={opEndY}
+                            stroke="#38bdf8"
+                            strokeWidth={4.5}
+                          />
+                        </g>
+                      );
+                    })}
+                </g>
+              );
+            })}
+
+            {/* Interactive Wall Splitting Indicator */}
+            {edgeInsertionPreview && draggingVertexIndex === null && (
+              <g
+                data-testid="edge-insertion-indicator"
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  insertBoundaryVertex(
+                    locationId,
+                    edgeInsertionPreview.edgeIndex,
+                    edgeInsertionPreview.projectedPoint,
+                  );
+                }}
+              >
+                <circle
+                  cx={edgeInsertionPreview.projectedPoint.x}
+                  cy={edgeInsertionPreview.projectedPoint.y}
+                  r={12}
+                  fill="#10b981"
+                  fillOpacity={0.85}
+                  stroke="#ffffff"
+                  strokeWidth={2.5}
+                />
+                <text
+                  x={edgeInsertionPreview.projectedPoint.x}
+                  y={edgeInsertionPreview.projectedPoint.y + 4}
+                  textAnchor="middle"
+                  fontSize={14}
+                  fontWeight="bold"
+                  fill="#ffffff"
+                  className="pointer-events-none select-none font-sans"
+                >
+                  +
+                </text>
+              </g>
+            )}
+
+            {/* Draggable Handles for Boundary Vertices (Edit Boundary Tool) */}
+            {builderState.activeTool === 'edit_boundary' &&
+              layout.baseBoundary.map((pt, idx) => {
+                const isSelected = builderState.selectedVertexIndex === idx;
+                const isDragging = draggingVertexIndex === idx;
+                return (
+                  <g key={`vertex-handle-${idx}`}>
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={isDragging ? 14 : isSelected ? 12 : 9}
+                      data-testid={`boundary-vertex-${idx}`}
+                      fill={isDragging ? '#0284c7' : isSelected ? '#38bdf8' : '#ffffff'}
+                      stroke="#0284c7"
+                      strokeWidth={3}
+                      className="cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        snapshotHistory(locationId);
+                        setDraggingVertexIndex(idx);
+                        dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
+                        dispatch({ type: 'SELECT_WALL', wallId: null });
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
+                        dispatch({ type: 'SELECT_WALL', wallId: null });
+                      }}
+                    />
+                    {isSelected && (
+                      <text
+                        x={pt.x}
+                        y={pt.y - 14}
+                        textAnchor="middle"
+                        fontSize={10}
+                        fontWeight="bold"
+                        fill="#0284c7"
+                        className="pointer-events-none select-none font-mono"
+                      >
+                        {(pt.x / 100).toFixed(1)}, {(pt.y / 100).toFixed(1)}m
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
 
             {/* Active draft line */}
             {draftMetrics && (
@@ -772,6 +1262,51 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             }
             onTakeCutting={() => onTakeCutting?.(selectedPlant.id)}
             onRemovePlant={handleRemoveSelectedPlant}
+          />
+        </div>
+      )}
+
+      {/* ── 3.5. Floating Contextual Popover for Selected Wall ── */}
+      {selectedWall && (
+        <div className="absolute top-20 right-4 z-40">
+          <SpaceWallActionBar
+            wall={selectedWall}
+            onClose={() => dispatch({ type: 'SELECT_WALL', wallId: null })}
+            onUpdateHeight={(heightCm) =>
+              updateWall(locationId, selectedWall.id, { heightCm })
+            }
+            onUpdateMaterial={(material) =>
+              updateWall(locationId, selectedWall.id, { material })
+            }
+            onApplyToAllWalls={() => {
+              setAllWallsHeight(locationId, selectedWall.heightCm);
+              setAllWallsMaterial(locationId, selectedWall.material);
+            }}
+            onAddDoor={() => {
+              const dx = selectedWall.end.x - selectedWall.start.x;
+              const dy = selectedWall.end.y - selectedWall.start.y;
+              const wallLenCm = Math.round(Math.hypot(dx, dy));
+              const door = createDefaultDoorOpening(
+                wallLenCm,
+                undefined,
+                selectedWall.openings,
+              );
+              addWallOpening(locationId, selectedWall.id, door);
+            }}
+            onAddWindow={() => {
+              const dx = selectedWall.end.x - selectedWall.start.x;
+              const dy = selectedWall.end.y - selectedWall.start.y;
+              const wallLenCm = Math.round(Math.hypot(dx, dy));
+              const win = createDefaultWindowOpening(
+                wallLenCm,
+                undefined,
+                selectedWall.openings,
+              );
+              addWallOpening(locationId, selectedWall.id, win);
+            }}
+            onRemoveOpening={(openingId) => {
+              removeWallOpening(locationId, selectedWall.id, openingId);
+            }}
           />
         </div>
       )}
@@ -883,7 +1418,19 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           setCustomDepthM={setCustomDepthM}
           onApplyDimensions={handleApplyDimensions}
           onInsertVertex={handleInsertVertex}
+          onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
           vertexCount={layout.baseBoundary.length}
+          baseMaterial={layout.baseMaterial}
+          onChangeBaseMaterial={(mat) => setBaseMaterial(locationId, mat)}
+          onSetAllWallsHeight={(h) => setAllWallsHeight(locationId, h)}
+          selectedVertexIndex={builderState.selectedVertexIndex}
+          onRemoveSelectedVertex={() => {
+            if (builderState.selectedVertexIndex !== null) {
+              removeBoundaryVertex(locationId, builderState.selectedVertexIndex);
+              dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+            }
+          }}
+          onSanitizeBoundary={() => sanitizeBoundary(locationId)}
           canUndo={canUndo}
           canRedo={canRedo}
           onUndo={() => undo(locationId)}
@@ -897,10 +1444,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           zoomPercent={zoomPercent}
           onZoomIn={() => setZoomPercent((z) => Math.min(200, z + 15))}
           onZoomOut={() => setZoomPercent((z) => Math.max(30, z - 15))}
-          onRotateCamera={(delta) =>
-            setCameraAzimuthDeg((prev) => (((prev + delta) % 360) + 360) % 360)
-          }
-          onResetCameraNorth={() => setCameraAzimuthDeg(0)}
+          onRotateCamera={handleRotateCamera}
+          onResetCameraNorth={handleResetCameraNorth}
           cameraAzimuthDeg={cameraAzimuthDeg}
         />
       </div>

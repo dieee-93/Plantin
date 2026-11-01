@@ -98,4 +98,52 @@ describe('SpaceLensBar - Top-Right Glassmorphism Quick Pills & Floating Analytic
     fireEvent.change(slider, { target: { value: '15' } });
     expect(onUpdateSolar).toHaveBeenCalledWith({ hourOfDay: 15 });
   });
+
+  it('renders roof toggle pill when space has roof config and calls onToggleShowRoof', () => {
+    const onToggleShowRoof = vi.fn();
+    const greenhouseLayout = SPACE_PRESETS.greenhouse_1to1.createLayout('loc-gh-1');
+
+    const { rerender } = render(
+      <SpaceLensBar
+        layout={greenhouseLayout}
+        showLabels={true}
+        onToggleShowLabels={vi.fn()}
+        showRoof={true}
+        onToggleShowRoof={onToggleShowRoof}
+        hasRoof={true}
+        activeLens={null}
+        onSelectLens={vi.fn()}
+        speciesFilter={null}
+        onSelectSpeciesFilter={vi.fn()}
+        onUpdateSolar={vi.fn()}
+        onApplyPreset={vi.fn()}
+      />,
+    );
+
+    const roofBtn = screen.getByTestId('toggle-roof-btn');
+    expect(roofBtn).toBeInTheDocument();
+    expect(roofBtn).toHaveTextContent('Techo');
+    fireEvent.click(roofBtn);
+    expect(onToggleShowRoof).toHaveBeenCalledTimes(1);
+
+    // If hasRoof is false, toggle button is hidden
+    rerender(
+      <SpaceLensBar
+        layout={greenhouseLayout}
+        showLabels={true}
+        onToggleShowLabels={vi.fn()}
+        showRoof={true}
+        onToggleShowRoof={onToggleShowRoof}
+        hasRoof={false}
+        activeLens={null}
+        onSelectLens={vi.fn()}
+        speciesFilter={null}
+        onSelectSpeciesFilter={vi.fn()}
+        onUpdateSolar={vi.fn()}
+        onApplyPreset={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('toggle-roof-btn')).not.toBeInTheDocument();
+  });
 });

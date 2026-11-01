@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, Sun, Tag } from 'lucide-react';
+import { Eye, Home, Sun, Tag } from 'lucide-react';
 import { computeSpaceRegions } from '@/domain/spaceGeometry';
 import {
   computeShadowLengthCm,
@@ -19,6 +19,9 @@ export interface SpaceLensBarProps {
   layout: SpaceLayout1to1;
   showLabels: boolean;
   onToggleShowLabels: () => void;
+  showRoof?: boolean;
+  onToggleShowRoof?: () => void;
+  hasRoof?: boolean;
   activeLens: AnalyticalLensType | null;
   onSelectLens: (lens: AnalyticalLensType | null) => void;
   speciesFilter: string | null;
@@ -47,6 +50,9 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
   layout,
   showLabels,
   onToggleShowLabels,
+  showRoof = true,
+  onToggleShowRoof,
+  hasRoof = Boolean(layout.roofConfig && layout.roofConfig.kind !== 'none'),
   activeLens,
   onSelectLens,
   speciesFilter,
@@ -102,6 +108,19 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
     return list;
   }, [availableSpecies, layout.placedPlants]);
 
+  const roofKindLabel = useMemo(() => {
+    switch (layout.roofConfig?.kind) {
+      case 'gabled_greenhouse':
+        return 'Invernadero (A dos aguas)';
+      case 'flat_ceiling':
+        return 'Indoor (Losa + Luces Quantum)';
+      case 'shade_cloth':
+        return 'Pérgola (Media-sombra)';
+      default:
+        return 'Estructura superior';
+    }
+  }, [layout.roofConfig?.kind]);
+
   return (
     <div className="relative pointer-events-auto flex items-center gap-2">
       {/* Quick Pills Bar */}
@@ -156,6 +175,28 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
           <Eye size={12} />
           <span>👁️ Lentes</span>
         </button>
+
+        {/* 🏠 Techo Toggle */}
+        {hasRoof && onToggleShowRoof && (
+          <button
+            type="button"
+            data-testid="toggle-roof-btn"
+            onClick={onToggleShowRoof}
+            className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
+              showRoof
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+            title={
+              showRoof
+                ? `Ocultar ${roofKindLabel} para inspección interior`
+                : `Mostrar ${roofKindLabel}`
+            }
+          >
+            <Home size={12} />
+            <span>🏠 Techo</span>
+          </button>
+        )}
       </div>
 
       {/* Floating Panel: Analytical Lenses */}

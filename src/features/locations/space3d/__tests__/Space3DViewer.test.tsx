@@ -96,4 +96,66 @@ describe('Space3DViewer - Interactive 1:1 Space Builder & Viewer', () => {
     expect(inspector).toHaveTextContent(/Distancia a Morrón:\s*45\s*cm/i);
     expect(inspector).toHaveTextContent(/Distancia a Lechuga:\s*120\s*cm/i);
   });
+
+  it('renders interactive boundary vertex handles, supports dragging vertices, and wall selection with height/material editing', () => {
+    render(
+      <Space3DViewer
+        locationId="loc-terrain-test-1"
+        locationName="Lote Pruebas"
+        locationType="outdoor"
+      />,
+    );
+
+    // Initially, handles are not rendered in default select tool
+    expect(screen.queryByTestId('boundary-vertex-0')).not.toBeInTheDocument();
+
+    // Switch to "Editar Contorno" tool
+    fireEvent.click(screen.getByRole('button', { name: /Editar Contorno/i }));
+
+    // Boundary vertex handles should be rendered on the 2D plane
+    const vertex0 = screen.getByTestId('boundary-vertex-0');
+    expect(vertex0).toBeInTheDocument();
+    expect(screen.getByTestId('boundary-vertex-1')).toBeInTheDocument();
+
+    // Drag vertex 1 from (1000, 0) to (900, 50)
+    const plane = screen.getByTestId('interactive-plane-1to1');
+    fireEvent.pointerDown(screen.getByTestId('boundary-vertex-1'));
+    fireEvent.pointerMove(plane, { clientX: 900, clientY: 50 });
+    fireEvent.pointerUp(plane);
+
+    // Wall segments should be rendered and selectable
+    const wall0 = useSpaceLayoutStore.getState().layouts['loc-terrain-test-1'].walls[0];
+    const wallElement = screen.getByTestId(`wall-segment-${wall0.id}`);
+    expect(wallElement).toBeInTheDocument();
+
+    // Click on the wall segment to open SpaceWallActionBar
+    fireEvent.click(wallElement);
+    const wallInspector = screen.getByTestId('selected-wall-inspector');
+    expect(wallInspector).toBeInTheDocument();
+    expect(wallInspector).toHaveTextContent(/Pared \/ Cerramiento/i);
+
+    // Change wall height to 120 cm (Cerco)
+    fireEvent.click(screen.getByRole('button', { name: '120 cm (Cerco)' }));
+    expect(
+      useSpaceLayoutStore.getState().layouts['loc-terrain-test-1'].walls[0].heightCm,
+    ).toBe(120);
+
+    // Change material to wood_fence
+    const select = screen.getByLabelText(/Material de pared/i);
+    fireEvent.change(select, { target: { value: 'wood_fence' } });
+    expect(
+      useSpaceLayoutStore.getState().layouts['loc-terrain-test-1'].walls[0].material,
+    ).toBe('wood_fence');
+
+    // Change to 0 cm (Abierto)
+    fireEvent.click(screen.getByRole('button', { name: '0 cm (Abierto)' }));
+    expect(
+      useSpaceLayoutStore.getState().layouts['loc-terrain-test-1'].walls[0].heightCm,
+    ).toBe(0);
+    expect(wallInspector).toHaveTextContent(/Límite Abierto/i);
+
+    // Switch tool back to "Inspeccionar" -> boundary handles should disappear
+    fireEvent.click(screen.getByRole('button', { name: /Inspeccionar/i }));
+    expect(screen.queryByTestId('boundary-vertex-0')).not.toBeInTheDocument();
+  });
 });

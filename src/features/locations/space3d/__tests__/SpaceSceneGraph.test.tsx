@@ -154,4 +154,233 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
 
     await renderer.unmount();
   });
+
+  it('renders 3D interactive vertex corner handles and edge split indicators when isBoundaryEditMode is true', async () => {
+    const layout = SPACE_PRESETS.patio_croquis.createLayout('loc-handles-test');
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layout}
+        viewMode="3d"
+        isBoundaryEditMode={true}
+        selectedVertexIndex={1}
+      />,
+    );
+
+    const vertexHandles = renderer.scene.findAllByProps({
+      name: 'boundary-vertex-handle-3d',
+    });
+    const vertexSpheres = renderer.scene.findAllByProps({
+      name: 'boundary-vertex-sphere',
+    });
+    const edgeIndicators = renderer.scene.findAllByProps({
+      name: 'edge-split-indicator-3d',
+    });
+
+    expect(vertexHandles).toHaveLength(layout.baseBoundary.length);
+    expect(vertexSpheres).toHaveLength(layout.baseBoundary.length);
+    expect(edgeIndicators).toHaveLength(layout.baseBoundary.length);
+
+    // Selected vertex has isSelected: true
+    expect(vertexHandles[1].props.userData.isSelected).toBe(true);
+    expect(vertexHandles[0].props.userData.isSelected).toBe(false);
+
+    await renderer.unmount();
+  });
+
+  it('omits split handles for short boundary edges (< 120 cm) preventing handle saturation', async () => {
+    const layout = {
+      ...SPACE_PRESETS.empty_lot_1to1.createLayout('loc-short-edge'),
+      baseBoundary: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 }, // edge 0-1 is 50 cm (< 120 cm)
+        { x: 50, y: 500 }, // edge 1-2 is 500 cm (>= 120 cm)
+        { x: 0, y: 500 }, // edge 2-3 is 50 cm (< 120 cm), edge 3-0 is 500 cm (>= 120 cm)
+      ],
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph layout={layout} viewMode="3d" isBoundaryEditMode={true} />,
+    );
+    const edgeIndicators = renderer.scene.findAllByProps({
+      name: 'edge-split-indicator-3d',
+    });
+    // Out of 4 edges, only 2 are >= 120 cm
+    expect(edgeIndicators).toHaveLength(2);
+    await renderer.unmount();
+  });
+
+  it('renders 3D architectural carpentry (door-opening-node and window-opening-node) and decomposes walls with openings', async () => {
+    const baseLayout = SPACE_PRESETS.indoor_room_1to1.createLayout('loc-openings-3d');
+    // Wall 0 (North): add door (90x210) and window (120x110)
+    const layoutWithOpenings = {
+      ...baseLayout,
+      walls: baseLayout.walls.map((w, idx) =>
+        idx === 0
+          ? {
+              ...w,
+              openings: [
+                {
+                  id: 'op-door-1',
+                  kind: 'door' as const,
+                  offsetCm: 50,
+                  widthCm: 90,
+                  heightCm: 210,
+                  sillHeightCm: 0,
+                },
+                {
+                  id: 'op-win-1',
+                  kind: 'window' as const,
+                  offsetCm: 200,
+                  widthCm: 120,
+                  heightCm: 110,
+                  sillHeightCm: 90,
+                },
+              ],
+            }
+          : w,
+      ),
+    };
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layoutWithOpenings}
+        viewMode="3d"
+        cameraGroundPosCm={{ x: 200, y: 800 }}
+      />,
+    );
+
+    const doorNodes = renderer.scene.findAllByProps({
+      name: 'door-opening-node',
+    });
+    const windowNodes = renderer.scene.findAllByProps({
+      name: 'window-opening-node',
+    });
+
+    expect(doorNodes).toHaveLength(1);
+    expect(windowNodes).toHaveLength(1);
+
+    await renderer.unmount();
+  });
+
+  it('renders 3D gabled greenhouse roof with trusses and translucent slopes, and hides it when showRoof is false', async () => {
+    const layout = SPACE_PRESETS.greenhouse_1to1.createLayout('loc-gh-roof');
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layout}
+        viewMode="3d"
+        showRoof={true}
+        cameraGroundPosCm={{ x: 500, y: 950 }}
+      />,
+    );
+
+    const roofRoot = renderer.scene.findAllByProps({ name: 'space-roof-root' });
+    expect(roofRoot).toHaveLength(1);
+
+    const gabledGroup = renderer.scene.findAllByProps({
+      name: 'gabled-greenhouse-roof-group',
+    });
+    expect(gabledGroup).toHaveLength(1);
+
+    const leftSlope = renderer.scene.findAllByProps({
+      name: 'greenhouse-roof-slope-left',
+    });
+    const rightSlope = renderer.scene.findAllByProps({
+      name: 'greenhouse-roof-slope-right',
+    });
+    expect(leftSlope).toHaveLength(1);
+    expect(rightSlope).toHaveLength(1);
+
+    // Toggle showRoof={false}
+    await renderer.update(
+      <SpaceSceneGraph
+        layout={layout}
+        viewMode="3d"
+        showRoof={false}
+        cameraGroundPosCm={{ x: 500, y: 950 }}
+      />,
+    );
+
+    expect(renderer.scene.findAllByProps({ name: 'space-roof-root' })).toHaveLength(0);
+
+    await renderer.unmount();
+  });
+
+  it('renders flat indoor ceiling with suspended grow light nodes', async () => {
+    const layout = SPACE_PRESETS.indoor_room_1to1.createLayout('loc-indoor-roof');
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layout}
+        viewMode="3d"
+        showRoof={true}
+        cameraGroundPosCm={{ x: 200, y: 800 }}
+      />,
+    );
+
+    const flatCeilingGroup = renderer.scene.findAllByProps({
+      name: 'flat-ceiling-indoor-group',
+    });
+    expect(flatCeilingGroup).toHaveLength(1);
+
+    const growLights = renderer.scene.findAllByProps({
+      name: 'suspended-grow-light-node',
+    });
+    expect(growLights.length).toBeGreaterThanOrEqual(1);
+
+    await renderer.unmount();
+  });
+
+  it('renders shade cloth pergola with corner timber posts and mesh', async () => {
+    const baseLayout = SPACE_PRESETS.patio_croquis.createLayout('loc-shade-test');
+    const layoutWithShade = {
+      ...baseLayout,
+      roofConfig: {
+        kind: 'shade_cloth' as const,
+        heightCm: 230,
+      },
+    };
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layoutWithShade}
+        viewMode="3d"
+        showRoof={true}
+        cameraGroundPosCm={{ x: 500, y: 950 }}
+      />,
+    );
+
+    const shadeGroup = renderer.scene.findAllByProps({
+      name: 'shade-cloth-roof-group',
+    });
+    expect(shadeGroup).toHaveLength(1);
+
+    await renderer.unmount();
+  });
+
+  it('renders open-boundary-line-mesh for open wall boundaries (heightCm: 0) so they can be seen and selected in 3D', async () => {
+    const baseLayout = SPACE_PRESETS.patio_croquis.createLayout('loc-open-walls');
+    const layoutWithOpenWall = {
+      ...baseLayout,
+      walls: baseLayout.walls.map((w, idx) =>
+        idx === 0 ? { ...w, heightCm: 0 } : w,
+      ),
+    };
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layoutWithOpenWall}
+        viewMode="3d"
+        cameraGroundPosCm={{ x: 500, y: 950 }}
+      />,
+    );
+
+    const openBoundaryMeshes = renderer.scene.findAllByProps({
+      name: 'open-boundary-line-mesh',
+    });
+    expect(openBoundaryMeshes).toHaveLength(1);
+    expect(openBoundaryMeshes[0].props.userData.isOpen).toBe(true);
+
+    await renderer.unmount();
+  });
 });

@@ -1,0 +1,182 @@
+import type { FloorMaterialType, WallMaterialType } from '@/domain/spaceGeometry';
+
+export interface SpaceMaterialConfig {
+  id: string;
+  label: string;
+  fallbackColor: string;
+  roughness: number;
+  metalness?: number;
+  transparent?: boolean;
+  opacity?: number;
+  metersPerTileX: number;
+  metersPerTileY: number;
+  textureUrl?: string;
+  tintColor?: string;
+}
+
+export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConfig> = {
+  soil: {
+    id: 'soil',
+    label: 'Tierra de cultivo',
+    fallbackColor: '#5c4033',
+    roughness: 0.92,
+    metalness: 0.0,
+    metersPerTileX: 1.5,
+    metersPerTileY: 1.5,
+    textureUrl: '/textures/floors/soil/albedo.webp',
+  },
+  grass: {
+    id: 'grass',
+    label: 'Césped',
+    fallbackColor: '#4d7c0f',
+    roughness: 0.85,
+    metalness: 0.0,
+    metersPerTileX: 1.2,
+    metersPerTileY: 1.2,
+    textureUrl: '/textures/floors/grass/albedo.webp',
+  },
+  concrete: {
+    id: 'concrete',
+    label: 'Hormigón / Cemento',
+    fallbackColor: '#94a3b8',
+    roughness: 0.75,
+    metalness: 0.05,
+    metersPerTileX: 2.0,
+    metersPerTileY: 2.0,
+    textureUrl: '/textures/floors/concrete/albedo.webp',
+  },
+  gravel: {
+    id: 'gravel',
+    label: 'Grava / Canto rodado',
+    fallbackColor: '#78716c',
+    roughness: 0.95,
+    metalness: 0.0,
+    metersPerTileX: 1.0,
+    metersPerTileY: 1.0,
+    textureUrl: '/textures/floors/gravel/albedo.webp',
+  },
+  tile: {
+    id: 'tile',
+    label: 'Baldosas / Cerámica',
+    fallbackColor: '#cbd5e1',
+    roughness: 0.45,
+    metalness: 0.1,
+    metersPerTileX: 0.5,
+    metersPerTileY: 0.5,
+    textureUrl: '/textures/floors/tile/albedo.webp',
+  },
+  wood: {
+    id: 'wood',
+    label: 'Deck de madera',
+    fallbackColor: '#92400e',
+    roughness: 0.6,
+    metalness: 0.0,
+    metersPerTileX: 1.0,
+    metersPerTileY: 0.2,
+    textureUrl: '/textures/floors/wood/albedo.webp',
+  },
+  mulch: {
+    id: 'mulch',
+    label: 'Mulch / Cobertura orgánica',
+    fallbackColor: '#713f12',
+    roughness: 0.96,
+    metalness: 0.0,
+    metersPerTileX: 1.0,
+    metersPerTileY: 1.0,
+    textureUrl: '/textures/floors/mulch/albedo.webp',
+  },
+};
+
+export const WALL_MATERIAL_CONFIGS: Record<WallMaterialType, SpaceMaterialConfig> = {
+  brick: {
+    id: 'brick',
+    label: 'Ladrillo visto',
+    fallbackColor: '#b45309',
+    roughness: 0.85,
+    metalness: 0.0,
+    metersPerTileX: 0.5,
+    metersPerTileY: 0.25,
+    textureUrl: '/textures/walls/brick/albedo.webp',
+  },
+  concrete: {
+    id: 'concrete',
+    label: 'Hormigón',
+    fallbackColor: '#9ca3af',
+    roughness: 0.7,
+    metalness: 0.05,
+    metersPerTileX: 1.5,
+    metersPerTileY: 1.5,
+    textureUrl: '/textures/walls/concrete/albedo.webp',
+  },
+  glass_greenhouse: {
+    id: 'glass_greenhouse',
+    label: 'Vidrio de invernadero',
+    fallbackColor: '#bae6fd',
+    roughness: 0.1,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.45,
+    metersPerTileX: 1.0,
+    metersPerTileY: 1.0,
+  },
+  polycarbonate: {
+    id: 'polycarbonate',
+    label: 'Policarbonato alveolar',
+    fallbackColor: '#e0f2fe',
+    roughness: 0.35,
+    metalness: 0.05,
+    transparent: true,
+    opacity: 0.55,
+    metersPerTileX: 1.0,
+    metersPerTileY: 1.0,
+  },
+  wood_fence: {
+    id: 'wood_fence',
+    label: 'Cerco de madera',
+    fallbackColor: '#92400e',
+    roughness: 0.65,
+    metalness: 0.0,
+    metersPerTileX: 1.0,
+    metersPerTileY: 0.2,
+    textureUrl: '/textures/walls/wood_fence/albedo.webp',
+  },
+  wire_fence: {
+    id: 'wire_fence',
+    label: 'Tejido de alambre',
+    fallbackColor: '#94a3b8',
+    roughness: 0.55,
+    metalness: 0.5,
+    transparent: true,
+    opacity: 0.55,
+    metersPerTileX: 0.5,
+    metersPerTileY: 0.5,
+  },
+  drywall: {
+    id: 'drywall',
+    label: 'Yeso / Durlock',
+    fallbackColor: '#e5e7eb',
+    roughness: 0.8,
+    metalness: 0.0,
+    metersPerTileX: 1.2,
+    metersPerTileY: 2.4,
+    textureUrl: '/textures/walls/drywall/albedo.webp',
+  },
+};
+
+export function getFloorMaterialConfig(
+  type: FloorMaterialType,
+  tintColor?: string,
+): SpaceMaterialConfig {
+  const base = FLOOR_MATERIAL_CONFIGS[type] ?? FLOOR_MATERIAL_CONFIGS.soil;
+  if (!tintColor) return base;
+  return { ...base, tintColor, fallbackColor: tintColor };
+}
+
+export function getWallMaterialConfig(
+  type: WallMaterialType,
+  tintColor?: string,
+): SpaceMaterialConfig {
+  const base = WALL_MATERIAL_CONFIGS[type] ?? WALL_MATERIAL_CONFIGS.brick;
+  if (!tintColor) return base;
+  return { ...base, tintColor, fallbackColor: tintColor };
+}

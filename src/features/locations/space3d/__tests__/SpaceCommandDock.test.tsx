@@ -95,6 +95,7 @@ describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tool
     );
 
     expect(screen.getByRole('button', { name: /Trazar Camino/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Muros/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Editar Contorno/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Plantar Individual/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Surco\/Fila/i })).toBeInTheDocument();
@@ -103,6 +104,47 @@ describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tool
     // Clicking 100 cm width option
     fireEvent.click(screen.getByRole('button', { name: '100 cm' }));
     expect(onChangePathWidth).toHaveBeenCalledWith(100);
+  });
+
+  it('renders wall presets toolbar when activeTool is "walls"', () => {
+    const onSetAllWallsHeight = vi.fn();
+    render(
+      <SpaceCommandDock
+        mode="design"
+        onChangeMode={vi.fn()}
+        onOpenSowModalOrDrawer={vi.fn()}
+        isTrayOpen={false}
+        onToggleTray={vi.fn()}
+        activeTool="walls"
+        onChangeTool={vi.fn()}
+        pathWidthCm={80}
+        onChangePathWidth={vi.fn()}
+        pathMaterial="concrete"
+        onChangePathMaterial={vi.fn()}
+        paths={[]}
+        onRemovePath={vi.fn()}
+        plantCropCode="tomato"
+        onChangePlantCropCode={vi.fn()}
+        plantSpacingCm={30}
+        onChangePlantSpacing={vi.fn()}
+        cultivableSectorCount={2}
+        onFillSector={vi.fn()}
+        customWidthM="10"
+        setCustomWidthM={vi.fn()}
+        customDepthM="6"
+        setCustomDepthM={vi.fn()}
+        onApplyDimensions={vi.fn()}
+        onInsertVertex={vi.fn()}
+        vertexCount={4}
+        onSetAllWallsHeight={onSetAllWallsHeight}
+      />,
+    );
+
+    expect(screen.getByText(/Cerramiento perimetral:/i)).toBeInTheDocument();
+    const wall2mBtn = screen.getByRole('button', { name: /2.0m \(Medianera\)/i });
+    expect(wall2mBtn).toBeInTheDocument();
+    fireEvent.click(wall2mBtn);
+    expect(onSetAllWallsHeight).toHaveBeenCalledWith(200);
   });
 
   it('renders Deshacer (Undo) and Rehacer (Redo) buttons in design mode with enabled/disabled states', () => {

@@ -14,6 +14,7 @@ export type SpaceBuilderTool =
   | 'inspect'
   | 'draw_path'
   | 'edit_boundary'
+  | 'walls'
   | 'plant_single'
   | 'plant_line'
   | 'plant_fill_sector';
@@ -67,6 +68,7 @@ export interface SpaceBuilderState {
   draftStartCm: Point2DCm | null;
   cursorCm: Point2DCm | null;
   selectedVertexIndex: number | null;
+  selectedWallId: string | null;
   selectedPlantId: string | null;
 }
 
@@ -83,6 +85,7 @@ export type SpaceBuilderEvent =
   | { type: 'SET_DRAFT_START'; pointCm: Point2DCm | null }
   | { type: 'MOVE_CURSOR'; pointCm: Point2DCm | null }
   | { type: 'SELECT_VERTEX'; vertexIndex: number | null }
+  | { type: 'SELECT_WALL'; wallId: string | null }
   | { type: 'SELECT_PLANT'; plantId: string | null };
 
 export function createInitialBuilderState(): SpaceBuilderState {
@@ -94,6 +97,7 @@ export function createInitialBuilderState(): SpaceBuilderState {
     draftStartCm: null,
     cursorCm: null,
     selectedVertexIndex: null,
+    selectedWallId: null,
     selectedPlantId: null,
   };
 }
@@ -109,6 +113,7 @@ export function spaceBuilderReducer(
         activeTool: event.tool,
         draftStartCm: null,
         selectedVertexIndex: null,
+        selectedWallId: null,
       };
     case 'SET_PATH_WIDTH':
       return {
@@ -161,6 +166,11 @@ export function spaceBuilderReducer(
       return {
         ...state,
         selectedVertexIndex: event.vertexIndex,
+      };
+    case 'SELECT_WALL':
+      return {
+        ...state,
+        selectedWallId: event.wallId,
       };
     case 'SELECT_PLANT':
       return {
