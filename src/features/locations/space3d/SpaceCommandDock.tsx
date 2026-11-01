@@ -50,6 +50,7 @@ const TOOL_BUTTONS: Array<{ tool: SpaceBuilderTool; label: string }> = [
   { tool: 'inspect', label: 'Inspeccionar' },
   { tool: 'draw_path', label: 'Trazar Camino' },
   { tool: 'walls', label: 'Muros' },
+  { tool: 'roof', label: 'Techo' },
   { tool: 'edit_boundary', label: 'Editar Contorno' },
   { tool: 'plant_single', label: 'Plantar Individual' },
   { tool: 'plant_line', label: 'Surco/Fila' },
@@ -224,6 +225,23 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Contextual Options for Roof Tool */}
+          {activeTool === 'roof' && (
+            <div className="flex flex-col gap-1.5 border-t border-slate-100 pt-1.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <span>🏠 Configuración de Cubierta</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    (Selecciona estilo arquitectónico en el panel superior)
+                  </span>
+                </span>
+                <span className="text-[11px] text-emerald-600 font-medium italic">
+                  💡 Invernadero, Pérgola Media-Sombra, Losa Indoor o Cielo Abierto
+                </span>
+              </div>
             </div>
           )}
 

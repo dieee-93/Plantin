@@ -63,4 +63,31 @@ describe('materialRegistry', () => {
     expect(tintedBrick.tintColor).toBe('#78350f');
     expect(tintedBrick.fallbackColor).toBe('#78350f');
   });
+
+  it('defines valid, well-formed texture URLs for textured floor and wall materials', () => {
+    const expectedFloorTextures: Record<string, string> = {
+      soil: '/textures/floors/soil/albedo.webp',
+      grass: '/textures/floors/grass/albedo.webp',
+      concrete: '/textures/floors/concrete/albedo.webp',
+      gravel: '/textures/floors/gravel/albedo.webp',
+      tile: '/textures/floors/tile/albedo.webp',
+      wood: '/textures/floors/wood/albedo.webp',
+      mulch: '/textures/floors/mulch/albedo.webp',
+    };
+
+    for (const [key, expectedUrl] of Object.entries(expectedFloorTextures)) {
+      expect(FLOOR_MATERIAL_CONFIGS[key as keyof typeof FLOOR_MATERIAL_CONFIGS]?.textureUrl).toBe(expectedUrl);
+    }
+
+    const expectedWallTextures: Record<string, string> = {
+      brick: '/textures/walls/brick/albedo.webp',
+      concrete: '/textures/walls/concrete/albedo.webp',
+      wood_fence: '/textures/walls/wood_fence/albedo.webp',
+      drywall: '/textures/walls/drywall/albedo.webp',
+    };
+
+    for (const [key, expectedUrl] of Object.entries(expectedWallTextures)) {
+      expect(WALL_MATERIAL_CONFIGS[key as keyof typeof WALL_MATERIAL_CONFIGS]?.textureUrl).toBe(expectedUrl);
+    }
+  });
 });

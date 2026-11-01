@@ -172,6 +172,178 @@ export function measurePlantNeighbors(
     .sort((a, b) => a.distanceCm - b.distanceCm);
 }
 
+function findNearestNeighborLinear(
+  target: PlacedPlantSpatialCm,
+  plants: PlacedPlantSpatialCm[],
+): PlantNeighborMeasurement | null {
+  let nearest: PlantNeighborMeasurement | null = null;
+  let minDistance = Infinity;
+
+  for (let i = 0; i < plants.length; i++) {
+    const other = plants[i];
+    if (other.id === target.id) continue;
+    const dx = other.xCm - target.xCm;
+    const dy = other.yCm - target.yCm;
+    const distanceCm = Math.round(Math.hypot(dx, dy) * 10) / 10;
+    if (distanceCm < minDistance) {
+      minDistance = distanceCm;
+      const requiredRadiusSum = target.canopyRadiusCm + other.canopyRadiusCm;
+      const clearanceCm = Math.round((distanceCm - requiredRadiusSum) * 10) / 10;
+      nearest = {
+        neighborId: other.id,
+        neighborLabel: other.label,
+        distanceCm,
+        clearanceCm,
+        isCrowded: clearanceCm < 0,
+      };
+    }
+  }
+
+  return nearest;
+}
+
+/**
+ * Fast O(1) average nearest neighbor lookup using Spatial Hash Grid when plants are dense,
+ * falling back to linear scan if target is isolated or plants count is small.
+ * Avoids allocating neighbor arrays and O(N log N) sorting.
+ */
+export function findNearestNeighbor(
+  target: PlacedPlantSpatialCm,
+  plants: PlacedPlantSpatialCm[],
+): PlantNeighborMeasurement | null {
+  if (plants.length === 0) return null;
+  if (plants.length === 1 && plants[0].id === target.id) return null;
+  if (plants.length <= 32) {
+    return findNearestNeighborLinear(target, plants);
+  }
+
+  let maxRadius = target.canopyRadiusCm;
+  for (let i = 0; i < plants.length; i++) {
+    if (plants[i].canopyRadiusCm > maxRadius) {
+      maxRadius = plants[i].canopyRadiusCm;
+    }
+  }
+  const cellSize = Math.max(50, maxRadius * 2);
+
+  const grid = new Map<string, PlacedPlantSpatialCm[]>();
+  for (let i = 0; i < plants.length; i++) {
+    const p = plants[i];
+    if (p.id === target.id) continue;
+    const key = `${Math.floor(p.xCm / cellSize)},${Math.floor(p.yCm / cellSize)}`;
+    let cell = grid.get(key);
+    if (!cell) {
+      cell = [];
+      grid.set(key, cell);
+    }
+    cell.push(p);
+  }
+
+  const cx = Math.floor(target.xCm / cellSize);
+  const cy = Math.floor(target.yCm / cellSize);
+
+  let nearestOther: PlacedPlantSpatialCm | null = null;
+  let minDistanceCm = Infinity;
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const cell = grid.get(`${cx + dx},${cy + dy}`);
+      if (!cell) continue;
+      for (let j = 0; j < cell.length; j++) {
+        const other = cell[j];
+        const dist = Math.round(Math.hypot(other.xCm - target.xCm, other.yCm - target.yCm) * 10) / 10;
+        if (dist < minDistanceCm) {
+          minDistanceCm = dist;
+          nearestOther = other;
+        }
+      }
+    }
+  }
+
+  if (nearestOther && minDistanceCm < cellSize) {
+    const requiredRadiusSum = target.canopyRadiusCm + nearestOther.canopyRadiusCm;
+    const clearanceCm = Math.round((minDistanceCm - requiredRadiusSum) * 10) / 10;
+    return {
+      neighborId: nearestOther.id,
+      neighborLabel: nearestOther.label,
+      distanceCm: minDistanceCm,
+      clearanceCm,
+      isCrowded: clearanceCm < 0,
+    };
+  }
+
+  return findNearestNeighborLinear(target, plants);
+}
+
+/**
+ * Computes the set of plant IDs that are considered crowded in O(n) time using a 2D Spatial Hash Grid.
+ * Preserves the exact semantics of measurePlantNeighbors(target, plants)[0]?.isCrowded:
+ * A plant is crowded if and only if its nearest neighbor by Euclidean distance has clearance < 0.
+ */
+export function computeCrowdedPlantIds(plants: PlacedPlantSpatialCm[]): Set<string> {
+  const crowdedIds = new Set<string>();
+  if (plants.length <= 1) {
+    return crowdedIds;
+  }
+
+  let maxRadius = 0;
+  for (let i = 0; i < plants.length; i++) {
+    if (plants[i].canopyRadiusCm > maxRadius) {
+      maxRadius = plants[i].canopyRadiusCm;
+    }
+  }
+  const cellSize = Math.max(50, maxRadius * 2);
+
+  // Map cell key -> array of plants with their original indices
+  const grid = new Map<string, { plant: PlacedPlantSpatialCm; index: number }[]>();
+  for (let i = 0; i < plants.length; i++) {
+    const p = plants[i];
+    const key = `${Math.floor(p.xCm / cellSize)},${Math.floor(p.yCm / cellSize)}`;
+    let cell = grid.get(key);
+    if (!cell) {
+      cell = [];
+      grid.set(key, cell);
+    }
+    cell.push({ plant: p, index: i });
+  }
+
+  for (let i = 0; i < plants.length; i++) {
+    const target = plants[i];
+    const cx = Math.floor(target.xCm / cellSize);
+    const cy = Math.floor(target.yCm / cellSize);
+
+    let nearestDist = Infinity;
+    let nearestClearance = 0;
+    let nearestIndex = -1;
+
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const cell = grid.get(`${cx + dx},${cy + dy}`);
+        if (!cell) continue;
+        for (let j = 0; j < cell.length; j++) {
+          const item = cell[j];
+          if (item.index === i) continue;
+          const other = item.plant;
+          const dist = Math.round(Math.hypot(other.xCm - target.xCm, other.yCm - target.yCm) * 10) / 10;
+          if (dist < nearestDist || (dist === nearestDist && item.index < nearestIndex)) {
+            nearestDist = dist;
+            nearestIndex = item.index;
+            const requiredRadiusSum = target.canopyRadiusCm + other.canopyRadiusCm;
+            nearestClearance = Math.round((dist - requiredRadiusSum) * 10) / 10;
+          }
+        }
+      }
+    }
+
+    if (nearestIndex !== -1 && nearestDist < cellSize) {
+      if (nearestClearance < 0) {
+        crowdedIds.add(target.id);
+      }
+    }
+  }
+
+  return crowdedIds;
+}
+
 export function generateLinePlantPositions(
   start: Point2DCm,
   end: Point2DCm,

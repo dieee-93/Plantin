@@ -12,6 +12,10 @@ describe('SpacePlantSprite & resolvePlantSpriteUrl', () => {
     expect(resolvePlantSpriteUrl('CITRUS_ORANGE')).toBe('/textures/plants/CITRUS_ORANGE/fruiting.webp');
     expect(resolvePlantSpriteUrl('ONION')).toBe('/textures/plants/ONION/fruiting.webp');
     expect(resolvePlantSpriteUrl('HEMP')).toBe('/textures/plants/HEMP/fruiting.webp');
+    // Corn / Maize mapped to upright stalk fallback
+    expect(resolvePlantSpriteUrl('CORN')).toBe('/textures/plants/HEMP/fruiting.webp');
+    expect(resolvePlantSpriteUrl('corn')).toBe('/textures/plants/HEMP/fruiting.webp');
+    expect(resolvePlantSpriteUrl('MAI')).toBe('/textures/plants/HEMP/fruiting.webp');
   });
 
   it('resolves correct sprite URLs from plant labels when cropCode is missing', () => {
@@ -19,6 +23,8 @@ describe('SpacePlantSprite & resolvePlantSpriteUrl', () => {
     expect(resolvePlantSpriteUrl(undefined, 'Zanahoria Nantes')).toBe('/textures/plants/CARROT/fruiting.webp');
     expect(resolvePlantSpriteUrl(undefined, 'Morrón Rojo')).toBe('/textures/plants/PEPPER_SWEET/fruiting.webp');
     expect(resolvePlantSpriteUrl(undefined, 'Zapallo Kabutia')).toBe('/textures/plants/SQUASH/fruiting.webp');
+    expect(resolvePlantSpriteUrl(undefined, 'Maíz dulce')).toBe('/textures/plants/HEMP/fruiting.webp');
+    expect(resolvePlantSpriteUrl(undefined, 'Choclo')).toBe('/textures/plants/HEMP/fruiting.webp');
   });
 
   it('respects requested phenological phase', () => {

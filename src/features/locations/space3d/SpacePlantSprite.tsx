@@ -1,7 +1,12 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
+import {
+  calculatePlantDimensions,
+  PLANT_BOTANICAL_METRICS,
+  resolveCanonicalCropCode,
+} from './plantMetrics';
 
 export interface SpacePlantSpriteProps {
   cropCode?: string;
@@ -17,47 +22,12 @@ export function resolvePlantSpriteUrl(
   label?: string,
   phase = 'fruiting',
 ): string | null {
-  const code = (cropCode || '').toUpperCase().trim();
-  const name = (label || '').toLowerCase().trim();
+  const canonical = resolveCanonicalCropCode(cropCode, label);
+  const metric = PLANT_BOTANICAL_METRICS[canonical];
+  if (!metric) return null;
 
-  let resolvedCode: string | null = null;
-  if (code === 'TOM' || code === 'TOMATO' || name.includes('tomat')) {
-    resolvedCode = 'TOM';
-  } else if (code === 'CARROT' || name.includes('zanahori')) {
-    resolvedCode = 'CARROT';
-  } else if (
-    code === 'PEPPER' ||
-    code === 'PEPPER_SWEET' ||
-    name.includes('morr') ||
-    name.includes('pimiento')
-  ) {
-    resolvedCode = 'PEPPER_SWEET';
-  } else if (
-    code === 'SQUASH' ||
-    name.includes('zapall') ||
-    name.includes('calabaz')
-  ) {
-    resolvedCode = 'SQUASH';
-  } else if (code === 'LETTUCE' || name.includes('lechug')) {
-    resolvedCode = 'LETTUCE';
-  } else if (
-    code === 'CITRUS_ORANGE' ||
-    name.includes('naranj') ||
-    name.includes('citric')
-  ) {
-    resolvedCode = 'CITRUS_ORANGE';
-  } else if (code === 'ONION' || name.includes('ceboll')) {
-    resolvedCode = 'ONION';
-  } else if (
-    code === 'HEMP' ||
-    name.includes('cáñam') ||
-    name.includes('canam')
-  ) {
-    resolvedCode = 'HEMP';
-  }
-
-  if (!resolvedCode) return null;
-  return `/textures/plants/${resolvedCode}/${phase}.webp`;
+  const folder = metric.fallbackSpriteCode ?? metric.cropCode;
+  return `/textures/plants/${folder}/${phase}.webp`;
 }
 
 interface PlantErrorBoundaryProps {
@@ -111,12 +81,10 @@ const PlantBillboardPlane: React.FC<PlantBillboardPlaneProps> = ({
   });
 
   const groupRef = useRef<THREE.Group>(null);
-  const worldPos = useMemo(() => new THREE.Vector3(), []);
 
   // Dynamically face the active camera in real-time so it never appears edge-on ("as paper")
   useFrame(({ camera }) => {
     if (!groupRef.current) return;
-    groupRef.current.getWorldPosition(worldPos);
     groupRef.current.lookAt(camera.position.x, camera.position.y, camera.position.z);
   });
 
@@ -153,8 +121,9 @@ export const SpacePlantSprite: React.FC<SpacePlantSpriteProps> = ({
   isCrowded = false,
 }) => {
   const spriteUrl = resolvePlantSpriteUrl(cropCode, label, phase);
-  const spriteWidthM = Math.max(0.25, radiusM * 2.0);
-  const spriteHeightM = Math.max(0.35, bodyHeightM * 1.1);
+  const dims = calculatePlantDimensions(cropCode, radiusM, bodyHeightM, label);
+  const spriteWidthM = dims.widthM;
+  const spriteHeightM = dims.heightM;
 
   const fallbackGeometricMesh = (
     <mesh

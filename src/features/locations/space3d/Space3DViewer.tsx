@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera } from '@react-three/drei';
 import {
@@ -16,7 +16,7 @@ import {
 } from '@/domain/spaceGeometry';
 import { measurePlantNeighbors, type PlacedPlantSpatialCm } from '@/domain/solarAndPlantSpatial';
 import type { Individual } from '@/domain/individual';
-import { useSpaceLayoutStore } from '@/store/spaceLayoutStore';
+import { flushSpaceLayoutStorage, useSpaceLayoutStore } from '@/store/spaceLayoutStore';
 import { useIndividualStore } from '@/store/individualStore';
 import { useSeedLotStore } from '@/store/seedLotStore';
 import { useTaxonStore } from '@/store/taxonStore';
@@ -27,6 +27,7 @@ import { SpaceCommandDock } from './SpaceCommandDock';
 import { SpaceCameraWidget } from './SpaceCameraWidget';
 import { SpacePlantActionBar } from './SpacePlantActionBar';
 import { SpaceWallActionBar } from './SpaceWallActionBar';
+import { SpaceRoofActionBar } from './SpaceRoofActionBar';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import {
   computeCursorPlantPreview,
@@ -35,6 +36,14 @@ import {
   spaceBuilderReducer,
   type PlantPresetKey,
 } from './spaceBuilderReducer';
+
+const CURSOR_TOOLS: string[] = [
+  'draw_path',
+  'plant_line',
+  'edit_boundary',
+  'plant_single',
+  'plant_fill_sector',
+];
 
 export interface Space3DViewerProps {
   locationId: string;
@@ -146,6 +155,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   );
   const setAllWallsMaterial = useSpaceLayoutStore(
     (state) => state.setAllWallsMaterial,
+  );
+  const updateRoofConfig = useSpaceLayoutStore(
+    (state) => state.updateRoofConfig,
   );
   const placePlant = useSpaceLayoutStore((state) => state.placePlant);
   const removePlant = useSpaceLayoutStore((state) => state.removePlant);
@@ -297,6 +309,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     if (draggingVertexIndex === null) return;
     const handleGlobalPointerUp = () => {
       setDraggingVertexIndex(null);
+      flushSpaceLayoutStorage();
     };
     window.addEventListener('pointerup', handleGlobalPointerUp);
     window.addEventListener('mouseup', handleGlobalPointerUp);
@@ -305,6 +318,86 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       window.removeEventListener('mouseup', handleGlobalPointerUp);
     };
   }, [draggingVertexIndex]);
+
+  const lastDispatchedCursorRef = useRef<Point2DCm | null>(null);
+  const cursorRafIdRef = useRef<number | null>(null);
+  const pendingCursorPointRef = useRef<Point2DCm | null>(null);
+  const lastSvgPointerTimeRef = useRef<number>(0);
+
+  const dispatchThrottledCursor = useCallback(
+    (pt: Point2DCm) => {
+      const isCursorNeeded =
+        CURSOR_TOOLS.includes(builderState.activeTool) || draggingVertexIndex !== null;
+      if (!isCursorNeeded) {
+        return;
+      }
+      const last = lastDispatchedCursorRef.current;
+      if (last && last.x === pt.x && last.y === pt.y) {
+        return;
+      }
+      lastDispatchedCursorRef.current = pt;
+
+      const isTestEnv =
+        (typeof globalThis !== 'undefined' &&
+          (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env?.NODE_ENV ===
+            'test') ||
+        import.meta.env?.MODE === 'test';
+      if (isTestEnv || typeof requestAnimationFrame === 'undefined') {
+        dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
+        return;
+      }
+
+      pendingCursorPointRef.current = pt;
+      if (cursorRafIdRef.current === null) {
+        cursorRafIdRef.current = requestAnimationFrame(() => {
+          cursorRafIdRef.current = null;
+          const nextPt = pendingCursorPointRef.current;
+          if (nextPt) {
+            dispatch({ type: 'MOVE_CURSOR', pointCm: nextPt });
+          }
+        });
+      }
+    },
+    [builderState.activeTool, draggingVertexIndex],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (cursorRafIdRef.current !== null) {
+        cancelAnimationFrame(cursorRafIdRef.current);
+      }
+    };
+  }, []);
+
+  const handleSelectPlant = useCallback((plantId: string) => {
+    dispatch({ type: 'SELECT_PLANT', plantId });
+  }, []);
+
+  const handleSelectWall = useCallback((wallId: string) => {
+    dispatch({ type: 'SELECT_WALL', wallId });
+  }, []);
+
+  const handleSelectVertex = useCallback((idx: number | null) => {
+    dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
+    dispatch({ type: 'SELECT_WALL', wallId: null });
+  }, []);
+
+  const handleStartDragVertex = useCallback(
+    (idx: number) => {
+      snapshotHistory(locationId);
+      setDraggingVertexIndex(idx);
+      dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
+      dispatch({ type: 'SELECT_WALL', wallId: null });
+    },
+    [locationId, snapshotHistory],
+  );
+
+  const handleInsertVertexAtEdge = useCallback(
+    (edgeIndex: number, pointCm: Point2DCm) => {
+      insertBoundaryVertex(locationId, edgeIndex, pointCm);
+    },
+    [locationId, insertBoundaryVertex],
+  );
 
   // Stable workspace coordinates with 1.2m margin around the terrain
   const canvasViewBox = useMemo(() => {
@@ -465,73 +558,89 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       }));
   }, [individuals, layout.placedPlants]);
 
-  const handlePlanePointClick = (pointCm: Point2DCm) => {
-    const pt = {
-      x: Math.max(0, Math.min(bbox.widthCm, Math.round(pointCm.x))),
-      y: Math.max(0, Math.min(bbox.depthCm, Math.round(pointCm.y))),
-    };
+  const handlePlanePointClick = useCallback(
+    (pointCm: Point2DCm) => {
+      const pt = {
+        x: Math.max(0, Math.min(bbox.widthCm, Math.round(pointCm.x))),
+        y: Math.max(0, Math.min(bbox.depthCm, Math.round(pointCm.y))),
+      };
 
-    if (builderState.activeTool === 'inspect') {
-      dispatch({ type: 'SELECT_PLANT', plantId: null });
-      dispatch({ type: 'SELECT_WALL', wallId: null });
-      dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
-      return;
-    }
+      if (builderState.activeTool === 'inspect') {
+        dispatch({ type: 'SELECT_PLANT', plantId: null });
+        dispatch({ type: 'SELECT_WALL', wallId: null });
+        dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+        return;
+      }
 
-    if (builderState.activeTool === 'draw_path') {
-      if (!builderState.draftStartCm) {
-        dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
-        dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
-      } else {
-        addPathStroke(locationId, {
-          label: `Camino ${layout.paths.length + 1}`,
-          material: builderState.pathMaterial,
-          widthCm: builderState.pathWidthCm,
-          points: [builderState.draftStartCm, pt],
+      if (builderState.activeTool === 'draw_path') {
+        if (!builderState.draftStartCm) {
+          dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
+          dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
+        } else {
+          addPathStroke(locationId, {
+            label: `Camino ${layout.paths.length + 1}`,
+            material: builderState.pathMaterial,
+            widthCm: builderState.pathWidthCm,
+            points: [builderState.draftStartCm, pt],
+          });
+          dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+        }
+        return;
+      }
+
+      if (builderState.activeTool === 'plant_single') {
+        const newId = placePlant(locationId, {
+          label: builderState.plantTemplate.label,
+          cropCode: builderState.plantTemplate.cropCode,
+          xCm: pt.x,
+          yCm: pt.y,
+          canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
         });
-        dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+        dispatch({ type: 'SELECT_PLANT', plantId: newId });
+        return;
       }
-      return;
-    }
 
-    if (builderState.activeTool === 'plant_single') {
-      const newId = placePlant(locationId, {
-        label: builderState.plantTemplate.label,
-        cropCode: builderState.plantTemplate.cropCode,
-        xCm: pt.x,
-        yCm: pt.y,
-        canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
-      });
-      dispatch({ type: 'SELECT_PLANT', plantId: newId });
-      return;
-    }
-
-    if (builderState.activeTool === 'edit_boundary') {
-      dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
-      dispatch({ type: 'SELECT_WALL', wallId: null });
-      return;
-    }
-
-    if (builderState.activeTool === 'plant_line') {
-      if (!builderState.draftStartCm) {
-        dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
-        dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
-      } else {
-        placePlantLine(
-          locationId,
-          builderState.draftStartCm,
-          pt,
-          builderState.plantTemplate.plantSpacingCm,
-          {
-            label: builderState.plantTemplate.label,
-            cropCode: builderState.plantTemplate.cropCode,
-            canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
-          },
-        );
-        dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+      if (builderState.activeTool === 'edit_boundary') {
+        dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+        dispatch({ type: 'SELECT_WALL', wallId: null });
+        return;
       }
-    }
-  };
+
+      if (builderState.activeTool === 'plant_line') {
+        if (!builderState.draftStartCm) {
+          dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
+          dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
+        } else {
+          placePlantLine(
+            locationId,
+            builderState.draftStartCm,
+            pt,
+            builderState.plantTemplate.plantSpacingCm,
+            {
+              label: builderState.plantTemplate.label,
+              cropCode: builderState.plantTemplate.cropCode,
+              canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
+            },
+          );
+          dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+        }
+      }
+    },
+    [
+      bbox.widthCm,
+      bbox.depthCm,
+      builderState.activeTool,
+      builderState.draftStartCm,
+      builderState.pathMaterial,
+      builderState.pathWidthCm,
+      builderState.plantTemplate,
+      layout.paths.length,
+      locationId,
+      addPathStroke,
+      placePlant,
+      placePlantLine,
+    ],
+  );
 
   const resolveEventPointCm = (
     e: React.MouseEvent<SVGSVGElement, MouseEvent> | React.PointerEvent<SVGSVGElement>,
@@ -721,6 +830,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           showRoof={showRoof}
           onToggleShowRoof={() => setShowRoof((v) => !v)}
           hasRoof={Boolean(layout.roofConfig && layout.roofConfig.kind !== 'none')}
+          onOpenRoofBuilder={() => dispatch({ type: 'SET_TOOL', tool: 'roof' })}
           activeLens={activeLens}
           onSelectLens={setActiveLens}
           speciesFilter={speciesFilter}
@@ -740,6 +850,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           <div className="absolute inset-0 h-full w-full">
             <Canvas
               shadows
+              dpr={[1, 1.5]}
+              gl={{ antialias: true, powerPreference: 'high-performance' }}
               onPointerMissed={() => {
                 if (builderState.activeTool === 'inspect') {
                   dispatch({ type: 'SELECT_PLANT', plantId: null });
@@ -776,7 +888,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     const normDeg = ((azDeg % 360) + 360) % 360;
                     const diff = Math.abs(normDeg - cameraAzimuthDegRef.current);
                     const circularDiff = Math.min(diff, 360 - diff);
-                    if (circularDiff >= 2) {
+                    if (circularDiff >= 15) {
                       cameraAzimuthDegRef.current = normDeg;
                       setCameraAzimuthDeg(normDeg);
                     }
@@ -794,25 +906,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 isBoundaryEditMode={
                   builderState.activeTool === 'edit_boundary'
                 }
-                onSelectPlant={(plantId) =>
-                  dispatch({ type: 'SELECT_PLANT', plantId })
-                }
-                onSelectWall={(wallId) =>
-                  dispatch({ type: 'SELECT_WALL', wallId })
-                }
-                onSelectVertex={(idx) => {
-                  dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
-                  dispatch({ type: 'SELECT_WALL', wallId: null });
-                }}
-                onStartDragVertex={(idx) => {
-                  snapshotHistory(locationId);
-                  setDraggingVertexIndex(idx);
-                  dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
-                  dispatch({ type: 'SELECT_WALL', wallId: null });
-                }}
-                onInsertVertexAtEdge={(edgeIndex, pointCm) => {
-                  insertBoundaryVertex(locationId, edgeIndex, pointCm);
-                }}
+                onSelectPlant={handleSelectPlant}
+                onSelectWall={handleSelectWall}
+                onSelectVertex={handleSelectVertex}
+                onStartDragVertex={handleStartDragVertex}
+                onInsertVertexAtEdge={handleInsertVertexAtEdge}
                 onGroundPointClickCm={handlePlanePointClick}
               />
               {/* Active 3D ground drag capture plane (captures smooth drag across entire ground) */}
@@ -825,14 +923,12 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
                     const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
                     moveBoundaryVertex(locationId, draggingVertexIndex, { x: xCm, y: yCm }, 10, false);
-                    dispatch({
-                      type: 'MOVE_CURSOR',
-                      pointCm: { x: xCm, y: yCm },
-                    });
+                    dispatchThrottledCursor({ x: xCm, y: yCm });
                   }}
                   onPointerUp={(e) => {
                     e.stopPropagation();
                     setDraggingVertexIndex(null);
+                    flushSpaceLayoutStorage();
                   }}
                 >
                   <planeGeometry args={[200, 200]} />
@@ -846,10 +942,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     e.stopPropagation();
                     const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
                     const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
-                    dispatch({
-                      type: 'MOVE_CURSOR',
-                      pointCm: { x: xCm, y: yCm },
-                    });
+                    dispatchThrottledCursor({ x: xCm, y: yCm });
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -866,67 +959,70 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           </div>
         )}
 
-        {/* 2D Interactive CAD Plane (always accessible in DOM for 1:1 precision & headless tests) */}
-        <div
-          className={`absolute inset-0 flex flex-col justify-between p-3 select-none transition-opacity duration-200 ${
-            viewMode === '2d' || !webglSupported
-              ? 'opacity-100 z-10 pointer-events-auto'
-              : 'opacity-0 -z-10 pointer-events-none'
-          }`}
-        >
-          {/* Draft metrics indicator */}
-          {draftMetrics && (
-            <div
-              data-testid="draft-path-metrics"
-              className="absolute top-16 left-6 z-20 rounded-full border border-amber-300 bg-amber-50/95 px-3 py-1 font-mono text-xs font-bold text-amber-800 shadow-md backdrop-blur-sm"
-            >
-              Tramo: {draftMetrics.lengthCm} cm · {draftMetrics.angleDeg}°
-            </div>
-          )}
-
-          {cursorPreview && !draftMetrics && (
-            <div className="absolute top-16 left-6 z-20 rounded-full border border-emerald-300 bg-emerald-50/95 px-3 py-1 font-mono text-[11px] font-bold text-emerald-800 shadow-sm backdrop-blur-sm">
-              Cursor ({cursorPreview.pointCm.x}, {cursorPreview.pointCm.y} cm) ·{' '}
-              {cursorPreview.surface === 'cultivable'
-                ? 'Tierra Cultivable'
-                : 'Vereda/Camino'}
-            </div>
-          )}
-
-          <svg
-            data-testid="interactive-plane-1to1"
-            viewBox={`${canvasViewBox.minX} ${canvasViewBox.minY} ${canvasViewBox.width} ${canvasViewBox.height}`}
-            className="h-full w-full cursor-crosshair select-none"
-            onPointerMove={(e) => {
-              const pt = resolveEventPointCm(e);
-              if (draggingVertexIndex !== null) {
-                moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
-              }
-              dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
-            }}
-            onMouseMove={(e) => {
-              const pt = resolveEventPointCm(e);
-              if (draggingVertexIndex !== null) {
-                moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
-              }
-              dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
-            }}
-            onPointerUp={() => {
-              if (draggingVertexIndex !== null) {
-                setDraggingVertexIndex(null);
-              }
-            }}
-            onMouseUp={() => {
-              if (draggingVertexIndex !== null) {
-                setDraggingVertexIndex(null);
-              }
-            }}
-            onClick={(e) => {
-              if (draggingVertexIndex !== null) return;
-              const pt = resolveEventPointCm(e);
-              handlePlanePointClick(pt);
-            }}
+        {/* 2D Interactive CAD Plane (only mounted in 2D mode or when webgl is unsupported, e.g. headless tests) */}
+        {(viewMode === '2d' || !webglSupported) && (
+          <div
+            className="absolute inset-0 flex flex-col justify-between p-3 select-none transition-opacity duration-200 opacity-100 z-10 pointer-events-auto"
           >
+            {/* Draft metrics indicator */}
+            {draftMetrics && (
+              <div
+                data-testid="draft-path-metrics"
+                className="absolute top-16 left-6 z-20 rounded-full border border-amber-300 bg-amber-50/95 px-3 py-1 font-mono text-xs font-bold text-amber-800 shadow-md backdrop-blur-sm"
+              >
+                Tramo: {draftMetrics.lengthCm} cm · {draftMetrics.angleDeg}°
+              </div>
+            )}
+
+            {cursorPreview && !draftMetrics && (
+              <div className="absolute top-16 left-6 z-20 rounded-full border border-emerald-300 bg-emerald-50/95 px-3 py-1 font-mono text-[11px] font-bold text-emerald-800 shadow-sm backdrop-blur-sm">
+                Cursor ({cursorPreview.pointCm.x}, {cursorPreview.pointCm.y} cm) ·{' '}
+                {cursorPreview.surface === 'cultivable'
+                  ? 'Tierra Cultivable'
+                  : 'Vereda/Camino'}
+              </div>
+            )}
+
+            <svg
+              data-testid="interactive-plane-1to1"
+              viewBox={`${canvasViewBox.minX} ${canvasViewBox.minY} ${canvasViewBox.width} ${canvasViewBox.height}`}
+              className="h-full w-full cursor-crosshair select-none"
+              onPointerMove={(e) => {
+                lastSvgPointerTimeRef.current = Date.now();
+                const pt = resolveEventPointCm(e);
+                if (draggingVertexIndex !== null) {
+                  moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
+                }
+                dispatchThrottledCursor(pt);
+              }}
+              onMouseMove={(e) => {
+                if (Date.now() - lastSvgPointerTimeRef.current < 50) return;
+                const pt = resolveEventPointCm(e);
+                if (draggingVertexIndex !== null) {
+                  moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
+                }
+                dispatchThrottledCursor(pt);
+              }}
+              onPointerUp={() => {
+                lastSvgPointerTimeRef.current = Date.now();
+                if (draggingVertexIndex !== null) {
+                  setDraggingVertexIndex(null);
+                  flushSpaceLayoutStorage();
+                }
+              }}
+              onMouseUp={() => {
+                if (Date.now() - lastSvgPointerTimeRef.current < 50) return;
+                if (draggingVertexIndex !== null) {
+                  setDraggingVertexIndex(null);
+                  flushSpaceLayoutStorage();
+                }
+              }}
+              onClick={(e) => {
+                if (draggingVertexIndex !== null) return;
+                const pt = resolveEventPointCm(e);
+                handlePlanePointClick(pt);
+              }}
+            >
             {/* Grid Pattern Definition */}
             <defs>
               <pattern
@@ -1245,6 +1341,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             })}
           </svg>
         </div>
+      )}
       </div>
 
       {/* ── 3. Floating Contextual Popover for Selected Plant ── */}
@@ -1307,6 +1404,22 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             onRemoveOpening={(openingId) => {
               removeWallOpening(locationId, selectedWall.id, openingId);
             }}
+          />
+        </div>
+      )}
+
+      {/* ── 3.6. Contextual Builder Shelf for Roof Architecture ── */}
+      {builderState.activeTool === 'roof' && (
+        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
+          <SpaceRoofActionBar
+            roofConfig={layout.roofConfig}
+            showRoof={showRoof}
+            onToggleShowRoof={() => setShowRoof((v) => !v)}
+            onSelectRoofKind={(kind) => updateRoofConfig(locationId, { kind })}
+            onUpdateRoofHeight={(heightCm) => updateRoofConfig(locationId, { heightCm })}
+            onUpdateRoofMaterial={(material) => updateRoofConfig(locationId, { material })}
+            onToggleGrowLights={(hasGrowLights) => updateRoofConfig(locationId, { hasGrowLights })}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
         </div>
       )}

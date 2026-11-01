@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeCrowdedPlantIds,
   computeShadowLengthCm,
   computeSunPosition,
+  findNearestNeighbor,
   generateLinePlantPositions,
   generatePolygonFillPlantPositions,
   measurePlantNeighbors,
@@ -262,6 +264,90 @@ describe('solarAndPlantSpatial - Slice 5: Irregular Polygon Auto-Fill with Path 
     }
   });
 });
+
+describe('solarAndPlantSpatial - Slice 6: Spatial Hash Grid Performance & Equivalence (computeCrowdedPlantIds & findNearestNeighbor)', () => {
+  it('handles empty and single-plant arrays trivially', () => {
+    expect(computeCrowdedPlantIds([])).toEqual(new Set());
+    expect(
+      computeCrowdedPlantIds([
+        { id: 'p1', label: 'Plant 1', xCm: 100, yCm: 100, canopyRadiusCm: 25 },
+      ]),
+    ).toEqual(new Set());
+
+    expect(
+      findNearestNeighbor(
+        { id: 'probe', label: 'Probe', xCm: 100, yCm: 100, canopyRadiusCm: 25 },
+        [],
+      ),
+    ).toBeNull();
+  });
+
+  it('matches measurePlantNeighbors exactly for a random distribution of 500 plants', () => {
+    // Deterministic pseudo-random sequence
+    let seed = 42;
+    function pseudoRandom() {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    }
+
+    const plantCount = 500;
+    const testPlants: PlacedPlantSpatialCm[] = [];
+    for (let i = 0; i < plantCount; i++) {
+      testPlants.push({
+        id: `rnd-plant-${i}`,
+        label: `Crop ${i}`,
+        xCm: Math.round(pseudoRandom() * 2000),
+        yCm: Math.round(pseudoRandom() * 2000),
+        canopyRadiusCm: Math.round(15 + pseudoRandom() * 30),
+      });
+    }
+
+    // Benchmark & compute reference with measurePlantNeighbors
+    const expectedCrowdedIds = new Set<string>();
+    for (const plant of testPlants) {
+      const neighbors = measurePlantNeighbors(plant, testPlants);
+      if (neighbors[0]?.isCrowded) {
+        expectedCrowdedIds.add(plant.id);
+      }
+    }
+
+    // Fast O(N) Spatial Hash Grid computation
+    const actualCrowdedIds = computeCrowdedPlantIds(testPlants);
+
+    expect(actualCrowdedIds.size).toBe(expectedCrowdedIds.size);
+    expect(actualCrowdedIds).toEqual(expectedCrowdedIds);
+
+    // Verify findNearestNeighbor matches measurePlantNeighbors[0]
+    for (let i = 0; i < 20; i++) {
+      const target = testPlants[i];
+      const expectedNearest = measurePlantNeighbors(target, testPlants)[0] ?? null;
+      const actualNearest = findNearestNeighbor(target, testPlants);
+      expect(actualNearest?.neighborId).toBe(expectedNearest?.neighborId);
+      expect(actualNearest?.distanceCm).toBe(expectedNearest?.distanceCm);
+      expect(actualNearest?.isCrowded).toBe(expectedNearest?.isCrowded);
+    }
+  });
+
+  it('correctly marks all 500 plants as crowded in a dense overlapping grid', () => {
+    const densePlants: PlacedPlantSpatialCm[] = [];
+    let id = 0;
+    for (let row = 0; row < 25; row++) {
+      for (let col = 0; col < 20; col++) {
+        densePlants.push({
+          id: `dense-${id++}`,
+          label: 'Dense Tomato',
+          xCm: col * 20, // 20 cm spacing
+          yCm: row * 20,
+          canopyRadiusCm: 25, // 25 + 25 = 50 cm required, but spacing is 20 cm -> always crowded
+        });
+      }
+    }
+
+    const crowded = computeCrowdedPlantIds(densePlants);
+    expect(crowded.size).toBe(500);
+  });
+});
+
 
 
 

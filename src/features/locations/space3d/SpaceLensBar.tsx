@@ -22,6 +22,7 @@ export interface SpaceLensBarProps {
   showRoof?: boolean;
   onToggleShowRoof?: () => void;
   hasRoof?: boolean;
+  onOpenRoofBuilder?: () => void;
   activeLens: AnalyticalLensType | null;
   onSelectLens: (lens: AnalyticalLensType | null) => void;
   speciesFilter: string | null;
@@ -53,6 +54,7 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
   showRoof = true,
   onToggleShowRoof,
   hasRoof = Boolean(layout.roofConfig && layout.roofConfig.kind !== 'none'),
+  onOpenRoofBuilder,
   activeLens,
   onSelectLens,
   speciesFilter,
@@ -176,25 +178,33 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
           <span>👁️ Lentes</span>
         </button>
 
-        {/* 🏠 Techo Toggle */}
-        {hasRoof && onToggleShowRoof && (
+        {/* 🏠 Techo Toggle & Builder shortcut */}
+        {(hasRoof || onOpenRoofBuilder) && (
           <button
             type="button"
             data-testid="toggle-roof-btn"
-            onClick={onToggleShowRoof}
+            onClick={() => {
+              if (onOpenRoofBuilder && !hasRoof) {
+                onOpenRoofBuilder();
+              } else if (onToggleShowRoof) {
+                onToggleShowRoof();
+              }
+            }}
             className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
-              showRoof
+              showRoof && hasRoof
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
             title={
-              showRoof
-                ? `Ocultar ${roofKindLabel} para inspección interior`
-                : `Mostrar ${roofKindLabel}`
+              hasRoof
+                ? showRoof
+                  ? `Ocultar ${roofKindLabel} para inspección interior`
+                  : `Mostrar ${roofKindLabel}`
+                : 'Configurar Techo o Cubierta'
             }
           >
             <Home size={12} />
-            <span>🏠 Techo</span>
+            <span>🏠 {hasRoof ? 'Techo' : '+ Techo'}</span>
           </button>
         )}
       </div>

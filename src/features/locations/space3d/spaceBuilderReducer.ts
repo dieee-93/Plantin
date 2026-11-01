@@ -5,7 +5,7 @@ import {
   type Point2DCm,
 } from '@/domain/spaceGeometry';
 import {
-  measurePlantNeighbors,
+  findNearestNeighbor,
   type PlacedPlantSpatialCm,
   type PlantNeighborMeasurement,
 } from '@/domain/solarAndPlantSpatial';
@@ -13,8 +13,9 @@ import {
 export type SpaceBuilderTool =
   | 'inspect'
   | 'draw_path'
-  | 'edit_boundary'
   | 'walls'
+  | 'roof'
+  | 'edit_boundary'
   | 'plant_single'
   | 'plant_line'
   | 'plant_fill_sector';
@@ -239,11 +240,11 @@ export function computeCursorPlantPreview(
     canopyRadiusCm: state.plantTemplate.canopyRadiusCm,
   };
 
-  const neighbors = measurePlantNeighbors(probePlant, existingPlants);
+  const nearestNeighbor = findNearestNeighbor(probePlant, existingPlants);
   return {
     pointCm: state.cursorCm,
     surface,
     canPlant,
-    nearestNeighbor: neighbors[0] ?? null,
+    nearestNeighbor,
   };
 }

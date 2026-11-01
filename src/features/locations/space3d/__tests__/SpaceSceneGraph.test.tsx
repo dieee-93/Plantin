@@ -6,7 +6,7 @@ import { SpaceSceneGraph } from '../SpaceSceneGraph';
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cutaway', () => {
-  it('renders 3 cultivable-sector-mesh and 1 walkable-surface-mesh for patio_croquis along with 3 placed-plant-node groups', async () => {
+  it('renders 3 cultivable-sector-mesh, 1 walkable-surface-mesh, and GPU instanced plant & ring meshes for patio_croquis', async () => {
     const layout = SPACE_PRESETS.patio_croquis.createLayout('loc-patio-test');
 
     const renderer = await ReactThreeTestRenderer.create(
@@ -23,22 +23,21 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
     const walkableMeshes = renderer.scene.findAllByProps({
       name: 'walkable-surface-mesh',
     });
-    const plantNodes = renderer.scene.findAllByProps({
-      name: 'placed-plant-node',
+    const canopyRingMeshes = renderer.scene.findAllByProps({
+      name: 'instanced-canopy-rings-mesh',
     });
-    const canopyRings = renderer.scene.findAllByProps({
-      name: 'plant-canopy-ring',
-    });
-    const plantBillboards = renderer.scene.findAllByProps({
-      name: 'plant-billboard-mesh',
+    const plantBillboardMeshes = renderer.scene.findAllByProps({
+      name: 'instanced-plant-billboard-mesh',
     });
 
     expect(cultivableMeshes).toHaveLength(3);
     expect(walkableMeshes).toHaveLength(1);
     expect(walkableMeshes[0].props.position[1]).toBeCloseTo(0.015, 3);
-    expect(plantNodes).toHaveLength(3);
-    expect(canopyRings).toHaveLength(3);
-    expect(plantBillboards).toHaveLength(3);
+    // 1 single instanced mesh for all 3 canopy rings
+    expect(canopyRingMeshes).toHaveLength(1);
+    expect(canopyRingMeshes[0].props.args[2]).toBe(3);
+    // 3 instanced groups (one per cropCode: tomato, pepper, lettuce)
+    expect(plantBillboardMeshes).toHaveLength(3);
 
     await renderer.unmount();
   });

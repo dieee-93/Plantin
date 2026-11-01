@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { uuidv7 } from 'uuidv7';
 import {
   canInsertVertexAtEdge,
@@ -378,6 +378,89 @@ export interface SpaceLayoutStoreState {
   clearHistory: (locationId: string) => void;
   resetAll: () => void;
 }
+
+let pendingStorageFlush: (() => void) | null = null;
+
+export function flushSpaceLayoutStorage(): void {
+  if (pendingStorageFlush) {
+    pendingStorageFlush();
+  }
+}
+
+function createDebouncedLocalStorage(delayMs = 400): StateStorage {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const pendingWrites = new Map<string, string>();
+
+  const flush = (key?: string) => {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    if (key) {
+      const val = pendingWrites.get(key);
+      if (val !== undefined) {
+        try {
+          window.localStorage.setItem(key, val);
+        } catch (e) {
+          console.warn('[spaceLayoutStore] localStorage setItem error:', e);
+        }
+        pendingWrites.delete(key);
+      }
+    } else {
+      for (const [k, val] of pendingWrites.entries()) {
+        try {
+          window.localStorage.setItem(k, val);
+        } catch (e) {
+          console.warn('[spaceLayoutStore] localStorage setItem error:', e);
+        }
+      }
+      pendingWrites.clear();
+    }
+  };
+
+  pendingStorageFlush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    flush();
+  };
+
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('beforeunload', () => {
+      flush();
+    });
+  }
+
+  return {
+    getItem: (key: string): string | null => {
+      if (pendingWrites.has(key)) {
+        return pendingWrites.get(key)!;
+      }
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+      return null;
+    },
+    setItem: (key: string, value: string): void => {
+      pendingWrites.set(key, value);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        flush(key);
+        timer = null;
+      }, delayMs);
+    },
+    removeItem: (key: string): void => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      pendingWrites.delete(key);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    },
+  };
+}
+
+const debouncedLocalStorageInstance = createDebouncedLocalStorage(400);
 
 export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
   persist(
@@ -972,6 +1055,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
     {
       name: 'plantin-space-layout-v1',
       version: 1,
+      storage: createJSONStorage(() => debouncedLocalStorageInstance),
       partialize: (state) => ({
         layouts: state.layouts,
       }),
