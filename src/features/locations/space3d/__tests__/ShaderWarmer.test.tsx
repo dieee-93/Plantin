@@ -1,15 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
-import * as THREE from 'three';
 import { ShaderWarmer } from '../ShaderWarmer';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe('ShaderWarmer', () => {
-  it('calls gl.compile on mount to warm up shaders', async () => {
-    let compileCalled = false;
-    let compileTargetScene: THREE.Scene | null = null;
-
+  it('mounts inside a Three.js fiber tree and executes shader pre-compilation safely', async () => {
     const TestScene = () => {
       return (
         <>
@@ -23,29 +19,17 @@ describe('ShaderWarmer', () => {
     };
 
     const renderer = await ReactThreeTestRenderer.create(<TestScene />);
-    const gl = renderer.gl;
-
-    // Simulate gl.compile
-    if (gl) {
-      gl.compile = vi.fn((scene, _camera) => {
-        compileCalled = true;
-        compileTargetScene = scene;
-      });
-    }
-
-    // Unmount and remount with mocked gl.compile
+    expect(renderer.scene).toBeDefined();
     await renderer.unmount();
-
-    const renderer2 = await ReactThreeTestRenderer.create(<TestScene />);
-    // Even without explicit gl mock, ShaderWarmer mounts safely without throwing
-    expect(renderer2.scene).toBeDefined();
-
-    await renderer2.unmount();
   });
 
-  it('handles async compilation without unhandled rejection', async () => {
+  it('handles compilation safely when scene has multiple objects', async () => {
     const TestScene = () => (
       <>
+        <mesh position={[1, 0, 1]}>
+          <sphereGeometry />
+          <meshBasicMaterial color="green" />
+        </mesh>
         <ShaderWarmer />
       </>
     );

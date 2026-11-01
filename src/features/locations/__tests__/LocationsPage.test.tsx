@@ -255,8 +255,7 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
   it('brinda feedback visual inmediato (0 ms) con estado de carga y barra de transición al hacer clic para entrar a una sala', async () => {
     const user = userEvent.setup()
 
-    useLocationStore.getState().add({
-      id: 'loc-dos-asad',
+    const loc = useLocationStore.getState().add({
       name: 'dos asad',
       type: 'greenhouse',
       capacity: 5000,
@@ -264,7 +263,7 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
 
     for (let i = 0; i < 50; i++) {
       useIndividualStore.getState().add({
-        locationId: 'loc-dos-asad',
+        locationId: loc.id,
         accessionId: 'acc-1',
         label: `Planta #${i + 1}`,
         status: 'active',

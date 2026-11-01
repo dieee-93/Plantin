@@ -1009,7 +1009,7 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                     color: isEntering ? 'var(--accent)' : 'white',
                     fontSize: 11.5,
                     fontWeight: 600,
-                    cursor: isEntering ? 'wait' : Boolean(enteringRoomId) ? 'not-allowed' : 'pointer',
+                    cursor: isEntering ? 'wait' : enteringRoomId ? 'not-allowed' : 'pointer',
                     transition: 'all 0.15s ease',
                   }}
                 >
