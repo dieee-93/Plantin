@@ -475,11 +475,83 @@ export function generateLinePlantPositions(
   return points;
 }
 
+export type PlantCoordinateLike =
+  | PlacedPlantSpatialCm
+  | Point2DCm
+  | { x?: number; y?: number; xCm?: number; yCm?: number };
+
+export function extractPoint2DCm(item: PlantCoordinateLike): Point2DCm | null {
+  const x =
+    'xCm' in item && typeof item.xCm === 'number'
+      ? item.xCm
+      : 'x' in item && typeof item.x === 'number'
+        ? item.x
+        : undefined;
+  const y =
+    'yCm' in item && typeof item.yCm === 'number'
+      ? item.yCm
+      : 'y' in item && typeof item.y === 'number'
+        ? item.y
+        : undefined;
+  if (x !== undefined && y !== undefined && !Number.isNaN(x) && !Number.isNaN(y)) {
+    return { x, y };
+  }
+  return null;
+}
+
+/**
+ * Fast 2D Spatial Hash Grid for clearance checking and collision avoidance
+ * with O(1) average lookup time.
+ */
+export class PlantSpatialHashGrid2D {
+  private cellSize: number;
+  private grid: Map<string, Array<{ x: number; y: number }>> = new Map();
+
+  constructor(cellSize: number) {
+    this.cellSize = Math.max(1, cellSize);
+  }
+
+  public insert(x: number, y: number): void {
+    const key = `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+    let cell = this.grid.get(key);
+    if (!cell) {
+      cell = [];
+      this.grid.set(key, cell);
+    }
+    cell.push({ x, y });
+  }
+
+  public isOccupied(x: number, y: number, minDistanceCm: number): boolean {
+    if (minDistanceCm <= 0) return false;
+    const minDistSq = minDistanceCm * minDistanceCm;
+    const cx = Math.floor(x / this.cellSize);
+    const cy = Math.floor(y / this.cellSize);
+    const cellRadius = Math.ceil(minDistanceCm / this.cellSize);
+
+    for (let dx = -cellRadius; dx <= cellRadius; dx++) {
+      for (let dy = -cellRadius; dy <= cellRadius; dy++) {
+        const cell = this.grid.get(`${cx + dx},${cy + dy}`);
+        if (!cell) continue;
+        for (let i = 0; i < cell.length; i++) {
+          const pt = cell[i];
+          const distSq = (pt.x - x) ** 2 + (pt.y - y) ** 2;
+          if (distSq < minDistSq) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+}
+
 export interface PolygonFillOptions {
   plantSpacingCm: number;
   rowSpacingCm: number;
   marginCm?: number;
   angleDeg?: number;
+  existingPlants?: PlantCoordinateLike[];
+  minSeparationCm?: number;
 }
 
 export function generatePolygonFillPlantPositions(
@@ -491,6 +563,8 @@ export function generatePolygonFillPlantPositions(
     rowSpacingCm,
     marginCm = 20,
     angleDeg = 0,
+    existingPlants,
+    minSeparationCm: customMinSeparation,
   } = options;
 
   if (
@@ -499,6 +573,24 @@ export function generatePolygonFillPlantPositions(
     rowSpacingCm <= 0
   ) {
     return [];
+  }
+
+  const minSeparationCm =
+    customMinSeparation !== undefined
+      ? customMinSeparation
+      : Math.max(10, Math.min(plantSpacingCm, rowSpacingCm) * 0.7);
+
+  let spatialGrid: PlantSpatialHashGrid2D | null = null;
+  if (minSeparationCm > 0) {
+    spatialGrid = new PlantSpatialHashGrid2D(Math.max(10, minSeparationCm));
+    if (existingPlants && existingPlants.length > 0) {
+      for (let i = 0; i < existingPlants.length; i++) {
+        const pt = extractPoint2DCm(existingPlants[i]);
+        if (pt) {
+          spatialGrid.insert(pt.x, pt.y);
+        }
+      }
+    }
   }
 
   let path64: Path64 = cultivablePolygon.map((pt) => ({
@@ -559,7 +651,13 @@ export function generatePolygonFillPlantPositions(
           isPointInPolygonCm(candidate, poly) &&
           isPointInPolygonCm(candidate, cultivablePolygon)
         ) {
+          if (spatialGrid && spatialGrid.isOccupied(candidate.x, candidate.y, minSeparationCm)) {
+            continue;
+          }
           results.push(candidate);
+          if (spatialGrid) {
+            spatialGrid.insert(candidate.x, candidate.y);
+          }
         }
       }
     }

@@ -1111,7 +1111,16 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const targetPolygon = regions.cultivablePolygons[sectorIndex];
         if (!targetPolygon) return 0;
 
-        const positions = generatePolygonFillPlantPositions(targetPolygon, options);
+        const minSeparationCm =
+          options.minSeparationCm !== undefined
+            ? options.minSeparationCm
+            : Math.max(10, Math.min(options.plantSpacingCm, options.rowSpacingCm) * 0.7);
+
+        const positions = generatePolygonFillPlantPositions(targetPolygon, {
+          ...options,
+          existingPlants: options.existingPlants ?? current.placedPlants,
+          minSeparationCm,
+        });
         if (positions.length === 0) return 0;
 
         const addedPlants: PlacedPlantSpatialCm[] = positions.map((pt, idx) => ({

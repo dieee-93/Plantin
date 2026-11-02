@@ -841,6 +841,118 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
         expect(redoDurationMs).toBeLessThan(5.0);
         expect(removeDurationMs).toBeLessThan(5.0);
       });
+
+      describe('fillCultivableSector - Physical Limit & Infinite Stacking Prevention', () => {
+        it('fills an empty sector, prevents duplicate stacking on repeated fills, and fills only gaps when plants are removed', () => {
+          const store = useSpaceLayoutStore.getState();
+          const locId = 'loc-fill-prevention';
+          store.getOrCreateSpaceLayout(locId, 'outdoor', 'empty_lot_1to1');
+          store.clearHistory(locId);
+
+          // 1. Fill empty sector 0
+          const firstFillCount = store.fillCultivableSector(
+            locId,
+            0,
+            { plantSpacingCm: 80, rowSpacingCm: 80, marginCm: 20 },
+            { label: 'Lechuga', cropCode: 'lettuce', canopyRadiusCm: 15 },
+          );
+          expect(firstFillCount).toBeGreaterThan(0);
+
+          let layout = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locId);
+          expect(layout.placedPlants).toHaveLength(firstFillCount);
+
+          const historyAfterFirst = useSpaceLayoutStore.getState().history[locId];
+          const historyLengthAfterFirst = historyAfterFirst.past.length;
+          expect(historyLengthAfterFirst).toBe(1);
+
+          // 2. Refill the EXACT SAME sector with identical spacing -> 0 added plants (prevents infinite stacking)
+          const duplicateFillCount = store.fillCultivableSector(
+            locId,
+            0,
+            { plantSpacingCm: 80, rowSpacingCm: 80, marginCm: 20 },
+            { label: 'Lechuga', cropCode: 'lettuce', canopyRadiusCm: 15 },
+          );
+          expect(duplicateFillCount).toBe(0);
+
+          layout = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locId);
+          expect(layout.placedPlants).toHaveLength(firstFillCount);
+
+          // Undo history is NOT polluted with a 0-plant batch entry
+          const historyAfterSecond = useSpaceLayoutStore.getState().history[locId];
+          expect(historyAfterSecond.past.length).toBe(historyLengthAfterFirst);
+
+          // 3. Delete 3 plants from the sector
+          const removedIds = [
+            layout.placedPlants[0].id,
+            layout.placedPlants[1].id,
+            layout.placedPlants[2].id,
+          ];
+          for (const id of removedIds) {
+            store.removePlant(locId, id);
+          }
+          layout = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locId);
+          expect(layout.placedPlants).toHaveLength(firstFillCount - 3);
+
+          // 4. Refill again -> fills ONLY the 3 empty gaps
+          const gapFillCount = store.fillCultivableSector(
+            locId,
+            0,
+            { plantSpacingCm: 80, rowSpacingCm: 80, marginCm: 20 },
+            { label: 'Lechuga', cropCode: 'lettuce', canopyRadiusCm: 15 },
+          );
+          expect(gapFillCount).toBe(3);
+
+          layout = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locId);
+          expect(layout.placedPlants).toHaveLength(firstFillCount);
+
+          // Repeating fill now that all gaps are filled returns 0 again
+          expect(
+            store.fillCultivableSector(
+              locId,
+              0,
+              { plantSpacingCm: 80, rowSpacingCm: 80, marginCm: 20 },
+              { label: 'Lechuga', cropCode: 'lettuce', canopyRadiusCm: 15 },
+            ),
+          ).toBe(0);
+        });
+
+        it('prevents stacking and finishes in < 25ms even when sector already has 5,000 dense plants', () => {
+          const store = useSpaceLayoutStore.getState();
+          const locId = 'loc-fill-scale-benchmark';
+          store.getOrCreateSpaceLayout(locId, 'indoor', 'empty_lot_1to1');
+
+          // Create boundary for a large commercial greenhouse: 50m x 40m = 5000cm x 4000cm
+          store.setBaseBoundary(locId, [
+            { x: 0, y: 0 },
+            { x: 5000, y: 0 },
+            { x: 5000, y: 4000 },
+            { x: 0, y: 4000 },
+          ]);
+
+          // Initial fill of 5,000+ plants
+          const initialFilled = store.fillCultivableSector(
+            locId,
+            0,
+            { plantSpacingCm: 48, rowSpacingCm: 78, marginCm: 50 },
+            { label: 'Macro Plant', cropCode: 'tomato', canopyRadiusCm: 20 },
+          );
+          expect(initialFilled).toBeGreaterThan(5000);
+
+          // Now attempt to fill sector again with identical spacing -> 0 plants added
+          const tStart = performance.now();
+          const added = store.fillCultivableSector(
+            locId,
+            0,
+            { plantSpacingCm: 48, rowSpacingCm: 78, marginCm: 50 },
+            { label: 'Macro Plant', cropCode: 'tomato', canopyRadiusCm: 20 },
+          );
+          const durationMs = performance.now() - tStart;
+
+          // Since all coordinates are occupied within minSeparationCm, 0 are added
+          expect(added).toBe(0);
+          expect(durationMs).toBeLessThan(25.0);
+        });
+      });
     });
   });
 });

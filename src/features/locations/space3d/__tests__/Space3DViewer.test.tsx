@@ -75,6 +75,22 @@ describe('Space3DViewer - Interactive 1:1 Space Builder & Viewer', () => {
     expect(screen.getByTestId('total-plants-counter')).toHaveTextContent(
       `${updatedLayout.placedPlants.length} plantas`,
     );
+
+    // Toast indicates success with plant count
+    const fillToast = screen.getByTestId('fill-sector-toast');
+    expect(fillToast).toBeInTheDocument();
+    expect(fillToast).toHaveTextContent(/Se agregaron \d+ plantas al sector cultivable 1/i);
+
+    // Click "Rellenar Sector 1" again -> 0 plants added, info toast shown preventing stacking
+    const countBefore = updatedLayout.placedPlants.length;
+    fireEvent.click(screen.getByRole('button', { name: /Rellenar Sector 1/i }));
+
+    const countAfter =
+      useSpaceLayoutStore.getState().layouts['loc-patio-builder-2'].placedPlants.length;
+    expect(countAfter).toBe(countBefore);
+    expect(screen.getByTestId('fill-sector-toast')).toHaveTextContent(
+      /El sector cultivable 1 ya está completo/i,
+    );
   });
 
   it('selects an existing plant on the 1:1 plane and displays its exact distance in cm to neighboring plants', () => {

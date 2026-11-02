@@ -7,6 +7,7 @@ import {
   generateLinePlantPositions,
   generatePolygonFillPlantPositions,
   measurePlantNeighbors,
+  PlantSpatialHashGrid2D,
   shouldCutawayWall,
   type PlacedPlantSpatialCm,
 } from '../solarAndPlantSpatial';
@@ -347,6 +348,59 @@ describe('solarAndPlantSpatial - Slice 6: Spatial Hash Grid Performance & Equiva
     expect(crowded.size).toBe(500);
   });
 });
+
+describe('solarAndPlantSpatial - Slice 7: Physical Exclusion & Infinite Stacking Prevention (generatePolygonFillPlantPositions & PlantSpatialHashGrid2D)', () => {
+  it('correctly uses PlantSpatialHashGrid2D to query occupancy within clearance radius', () => {
+    const grid = new PlantSpatialHashGrid2D(40);
+    grid.insert(100, 100);
+
+    // Exact coordinate or within 40 cm -> occupied
+    expect(grid.isOccupied(100, 100, 30)).toBe(true);
+    expect(grid.isOccupied(120, 100, 30)).toBe(true); // distance 20 < 30
+    expect(grid.isOccupied(125, 100, 20)).toBe(false); // distance 25 >= 20
+    expect(grid.isOccupied(200, 200, 30)).toBe(false); // far away
+  });
+
+  it('populates plants on empty polygon, avoids duplicating when existingPlants are provided, and fills only empty gaps', () => {
+    const rectPoly: Polygon2DCm = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 },
+    ];
+
+    // 1. Initial fill on empty polygon (margin 20cm, plantSpacing 80cm, rowSpacing 80cm)
+    const initialPositions = generatePolygonFillPlantPositions(rectPoly, {
+      plantSpacingCm: 80,
+      rowSpacingCm: 80,
+      marginCm: 20,
+    });
+    expect(initialPositions.length).toBeGreaterThan(0);
+    const initialCount = initialPositions.length;
+
+    // 2. Refill providing the exact same existing plants -> 0 new plants (no duplicate stacking)
+    const duplicateFill = generatePolygonFillPlantPositions(rectPoly, {
+      plantSpacingCm: 80,
+      rowSpacingCm: 80,
+      marginCm: 20,
+      existingPlants: initialPositions,
+    });
+    expect(duplicateFill).toHaveLength(0);
+
+    // 3. Remove 2 plants from existing and refill -> exactly 2 plants are generated to fill the gaps
+    const existingWithGaps = initialPositions.slice(2);
+    const gapFill = generatePolygonFillPlantPositions(rectPoly, {
+      plantSpacingCm: 80,
+      rowSpacingCm: 80,
+      marginCm: 20,
+      existingPlants: existingWithGaps,
+    });
+    expect(gapFill).toHaveLength(2);
+    // Total occupied spots is restored to full initial count
+    expect(existingWithGaps.length + gapFill.length).toBe(initialCount);
+  });
+});
+
 
 
 

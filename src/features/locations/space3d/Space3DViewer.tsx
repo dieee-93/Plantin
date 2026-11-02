@@ -217,10 +217,21 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const [undoToast, setUndoToast] = useState<PlantUndoToastState | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Sector Fill Notification Toast state
+  interface SectorFillNotificationState {
+    type: 'success' | 'info';
+    message: string;
+  }
+  const [fillToast, setFillToast] = useState<SectorFillNotificationState | null>(null);
+  const fillToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
+      }
+      if (fillToastTimerRef.current) {
+        clearTimeout(fillToastTimerRef.current);
       }
     };
   }, []);
@@ -786,7 +797,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   };
 
   const handleFillSector = (sectorIndex: number) => {
-    fillCultivableSector(
+    const addedCount = fillCultivableSector(
       locationId,
       sectorIndex,
       {
@@ -800,6 +811,34 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
       },
     );
+
+    if (fillToastTimerRef.current) {
+      clearTimeout(fillToastTimerRef.current);
+    }
+
+    if (addedCount > 0) {
+      console.info(
+        `[Space3DViewer] Se poblaron ${addedCount} plantas en el sector cultivable ${sectorIndex + 1}.`,
+      );
+      setFillToast({
+        type: 'success',
+        message: `Se agregaron ${addedCount} plantas al sector cultivable ${sectorIndex + 1}.`,
+      });
+      fillToastTimerRef.current = setTimeout(() => {
+        setFillToast(null);
+      }, 4000);
+    } else {
+      console.warn(
+        `[Space3DViewer] El sector cultivable ${sectorIndex + 1} ya está completo; no hay espacio libre disponible con la densidad actual.`,
+      );
+      setFillToast({
+        type: 'info',
+        message: `El sector cultivable ${sectorIndex + 1} ya está completo. No hay espacio libre disponible con la densidad actual.`,
+      });
+      fillToastTimerRef.current = setTimeout(() => {
+        setFillToast(null);
+      }, 4000);
+    }
   };
 
   const handleApplyDimensions = () => {
@@ -1522,6 +1561,40 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 setUndoToast(null);
               }}
               className="ml-1 cursor-pointer text-slate-400 hover:text-slate-600"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 4.6. Floating Glassmorphism Notification Toast for Sector Fill ── */}
+      {fillToast && (
+        <div className="absolute bottom-20 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
+          <div
+            data-testid="fill-sector-toast"
+            role="status"
+            aria-live="polite"
+            className={`pointer-events-auto flex items-center gap-3 rounded-2xl border px-4 py-2.5 text-xs shadow-2xl backdrop-blur-md ${
+              fillToast.type === 'success'
+                ? 'border-emerald-300 bg-white/95 text-emerald-950 font-medium'
+                : 'border-amber-300 bg-white/95 text-amber-950 font-medium'
+            }`}
+          >
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${
+                fillToast.type === 'success' ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}
+            />
+            <span>{fillToast.message}</span>
+            <button
+              type="button"
+              aria-label="Cerrar notificación"
+              onClick={() => {
+                if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+                setFillToast(null);
+              }}
+              className="ml-1 cursor-pointer text-slate-400 hover:text-slate-600 font-bold"
             >
               ×
             </button>
