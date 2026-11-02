@@ -2,11 +2,10 @@ import React from 'react';
 import {
   Check,
   Compass,
-  Grid3X3,
-  Layers,
   Maximize2,
   Minimize2,
   Plus,
+  Sprout,
   Trash2,
   Wand2,
   X,
@@ -27,6 +26,8 @@ export interface SpaceTerrainBuilderShelfProps {
   onInsertVertex?: () => void;
   onRemoveSelectedVertex?: () => void;
   onSanitizeBoundary?: () => void;
+  cultivableSectorCount?: number;
+  onFillSector?: (sectorIndex: number) => void;
   onClose?: () => void;
 }
 
@@ -36,57 +37,50 @@ interface FloorMaterialCard {
   badge: string;
   iconText: string;
   previewBg: string;
-  borderActive: string;
 }
 
 const FLOOR_MATERIALS: FloorMaterialCard[] = [
   {
     value: 'soil',
     title: 'Tierra de Cultivo',
-    badge: 'Sustrato Fértil · Siembra Directa',
+    badge: 'Sustrato Fértil',
     iconText: '🤎',
     previewBg: 'bg-amber-950/80 text-amber-100',
-    borderActive: 'border-amber-700 ring-amber-600/40',
   },
   {
     value: 'grass',
     title: 'Césped / Pasto',
-    badge: 'Cubierta Viva · Patios & Quintas',
+    badge: 'Cubierta Viva',
     iconText: '🌿',
     previewBg: 'bg-emerald-900/80 text-emerald-100',
-    borderActive: 'border-emerald-600 ring-emerald-500/40',
   },
   {
     value: 'gravel',
     title: 'Grava Drenante',
-    badge: 'Árido Permeable · Pasillos & Caminos',
+    badge: 'Árido Permeable',
     iconText: '🪨',
     previewBg: 'bg-slate-700 text-slate-100',
-    borderActive: 'border-slate-500 ring-slate-400/40',
   },
   {
     value: 'concrete',
     title: 'Hormigón Alisado',
-    badge: 'Base Firme · Indoor & Galpones',
+    badge: 'Base Firme',
     iconText: '🏗️',
     previewBg: 'bg-zinc-600 text-zinc-100',
-    borderActive: 'border-zinc-500 ring-zinc-400/40',
   },
   {
     value: 'tile',
     title: 'Baldosas Rústicas',
-    badge: 'Adoquín Cerámico · Terrazas Urbanas',
+    badge: 'Adoquín Cerámico',
     iconText: '🧱',
     previewBg: 'bg-orange-900/80 text-orange-100',
-    borderActive: 'border-orange-600 ring-orange-500/40',
   },
   {
     value: 'wood',
     title: 'Deck de Madera',
-    badge: 'Tablas Tratadas · Pérgolas & Relax',
+    badge: 'Tablas Tratadas',
     iconText: '🪵',
     previewBg: 'bg-amber-800 text-amber-50',
-    borderActive: 'border-amber-600 ring-amber-500/40',
   },
 ];
 
@@ -111,211 +105,49 @@ export const SpaceTerrainBuilderShelf: React.FC<SpaceTerrainBuilderShelfProps> =
   onInsertVertex,
   onRemoveSelectedVertex,
   onSanitizeBoundary,
+  cultivableSectorCount = 1,
+  onFillSector,
   onClose,
 }) => {
   return (
     <div
       data-testid="space-terrain-builder-shelf"
-      className="pointer-events-auto flex w-full max-w-2xl flex-col gap-3 rounded-3xl border border-slate-200/90 bg-white/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200"
+      className="pointer-events-auto flex w-full max-w-2xl flex-col gap-2 rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
     >
-      {/* ── Top Header ── */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+      {/* ── Top Header Strip (Planet Zoo / CS2 inspired) ── */}
+      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-            <Compass size={18} />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+            <Compass size={14} />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <span>Terreno & Pavimentos</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                Suelo 1:1
-              </span>
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Sustrato agronómico base, proporciones de parcela y edición geométrica
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-[11px] font-bold text-slate-700">
+          <span className="text-xs font-bold text-slate-800">Terreno & Pavimentos</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600">
             {vertexCount} vértices
           </span>
-          {onClose && (
+        </div>
+
+        {/* Quick CAD Actions & Restored Fill Space Button */}
+        <div className="flex items-center gap-1.5">
+          {onFillSector && (
             <button
               type="button"
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-              aria-label="Cerrar panel de terreno"
+              onClick={() => onFillSector(0)}
+              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition shadow-xs"
+              title="Poblar sector cultivable con plantas de prueba"
             >
-              <X size={16} />
+              <Sprout size={12} />
+              <span>Rellenar Espacio {cultivableSectorCount > 1 ? `(${cultivableSectorCount})` : ''}</span>
             </button>
           )}
-        </div>
-      </div>
 
-      {/* ── 6 Visual PBR Material Cards (Grid) ── */}
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-          <Layers size={12} className="text-amber-600" />
-          <span>Sustrato Agronómico / Material de Suelo:</span>
-        </span>
-
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {FLOOR_MATERIALS.map((card) => {
-            const isActive = currentMaterial === card.value;
-            return (
-              <button
-                key={card.value}
-                type="button"
-                onClick={() => onChangeMaterial(card.value)}
-                className={`relative flex items-center gap-2.5 rounded-2xl border p-2 text-left transition-all duration-200 ${
-                  isActive
-                    ? `border-emerald-500 bg-emerald-50/60 shadow-md ring-2 ring-emerald-400/40`
-                    : 'border-slate-200/80 bg-slate-50/70 hover:border-slate-300 hover:bg-slate-100/70'
-                }`}
-              >
-                {/* Circular Texture Preview */}
-                <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-inner ${card.previewBg}`}
-                >
-                  <span className="text-base select-none">{card.iconText}</span>
-                </div>
-
-                <div className="flex flex-col overflow-hidden">
-                  <span className="text-xs font-bold text-slate-800 truncate">
-                    {card.title}
-                  </span>
-                  <span className="text-[10px] text-slate-500 truncate">
-                    {card.badge}
-                  </span>
-                </div>
-
-                {isActive && (
-                  <div className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs">
-                    <Check size={10} strokeWidth={3} />
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Dimension Presets & Metric Scalers ── */}
-      <div className="flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="font-semibold text-slate-700 flex items-center gap-1">
-            <Grid3X3 size={13} className="text-emerald-600" />
-            <span>Dimensiones de la Parcela:</span>
-          </span>
-
-          <div className="flex items-center gap-1.5">
-            {onScaleParcel && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onScaleParcel(0.9)}
-                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-                  title="Reducir 10% el tamaño de la parcela"
-                >
-                  <Minimize2 size={11} />
-                  <span>-10%</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onScaleParcel(1.1)}
-                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-                  title="Aumentar 10% el tamaño de la parcela"
-                >
-                  <Maximize2 size={11} />
-                  <span>+10%</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Presets */}
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-          {PARCEL_PRESETS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => {
-                setCustomWidthM(p.w);
-                setCustomDepthM(p.d);
-                onApplyDimensions();
-              }}
-              className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white py-1.5 px-2 hover:border-emerald-400 hover:bg-emerald-50/40 transition shadow-xs"
-            >
-              <span className="font-mono text-xs font-bold text-slate-800">{p.label}</span>
-              <span className="text-[9px] text-slate-500">{p.desc}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Custom Width & Depth Form */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60 mt-0.5">
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 font-medium text-slate-700 text-[11px]">
-              <span>Ancho:</span>
-              <div className="flex items-center">
-                <input
-                  type="number"
-                  aria-label="Ancho Terreno (m)"
-                  step="0.5"
-                  min="1"
-                  value={customWidthM}
-                  onChange={(e) => setCustomWidthM(e.target.value)}
-                  className="w-16 rounded-l-lg border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-900 focus:border-emerald-500 focus:outline-hidden"
-                />
-                <span className="rounded-r-lg border border-l-0 border-slate-300 bg-slate-100 px-1.5 py-1 text-[11px] text-slate-600">
-                  m
-                </span>
-              </div>
-            </label>
-
-            <label className="flex items-center gap-1.5 font-medium text-slate-700 text-[11px]">
-              <span>Largo:</span>
-              <div className="flex items-center">
-                <input
-                  type="number"
-                  aria-label="Largo Terreno (m)"
-                  step="0.5"
-                  min="1"
-                  value={customDepthM}
-                  onChange={(e) => setCustomDepthM(e.target.value)}
-                  className="w-16 rounded-l-lg border border-slate-300 bg-white px-2 py-1 font-mono text-xs text-slate-900 focus:border-emerald-500 focus:outline-hidden"
-                />
-                <span className="rounded-r-lg border border-l-0 border-slate-300 bg-slate-100 px-1.5 py-1 text-[11px] text-slate-600">
-                  m
-                </span>
-              </div>
-            </label>
-          </div>
-
-          <button
-            type="button"
-            onClick={onApplyDimensions}
-            className="rounded-xl bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-700 transition shadow-xs text-[11px]"
-          >
-            Aplicar Cotas
-          </button>
-        </div>
-      </div>
-
-      {/* ── CAD Vertex Controls Bar ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
-        <div className="flex items-center gap-1.5">
           {onInsertVertex && (
             <button
               type="button"
               onClick={onInsertVertex}
-              className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-              title="Añadir nueva esquina al contorno del terreno"
+              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+              title="Añadir nueva esquina al contorno"
             >
-              <Plus size={12} className="text-emerald-600" />
+              <Plus size={11} className="text-emerald-600" />
               <span>+ Vértice</span>
             </button>
           )}
@@ -324,10 +156,10 @@ export const SpaceTerrainBuilderShelf: React.FC<SpaceTerrainBuilderShelfProps> =
             <button
               type="button"
               onClick={onRemoveSelectedVertex}
-              className="flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100 transition shadow-xs"
+              className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 transition shadow-xs"
               title="Eliminar esquina seleccionada"
             >
-              <Trash2 size={12} />
+              <Trash2 size={11} />
               <span>Eliminar Vértice #{selectedVertexIndex + 1}</span>
             </button>
           )}
@@ -336,18 +168,151 @@ export const SpaceTerrainBuilderShelf: React.FC<SpaceTerrainBuilderShelfProps> =
             <button
               type="button"
               onClick={onSanitizeBoundary}
-              className="flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition shadow-xs"
-              title="Fusiona vértices amontonados a menos de 40 cm y limpia puntos colineales redundantes"
+              className="flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition shadow-xs"
+              title="Limpiar vértices redundantes"
             >
-              <Wand2 size={12} />
+              <Wand2 size={11} />
               <span>Sanear Vértices</span>
             </button>
           )}
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              aria-label="Cerrar panel de terreno"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Personalización: Materiales de Suelo PBR (Planet Zoo Compact Swatches) ── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 pr-1">
+          Suelo:
+        </span>
+        {FLOOR_MATERIALS.map((card) => {
+          const isActive = currentMaterial === card.value;
+          return (
+            <button
+              key={card.value}
+              type="button"
+              onClick={() => onChangeMaterial(card.value)}
+              className={`group relative flex items-center gap-1.5 rounded-xl border px-2 py-1 transition-all duration-150 shrink-0 ${
+                isActive
+                  ? 'border-emerald-500 bg-emerald-50/70 shadow-xs ring-2 ring-emerald-400/40'
+                  : 'border-slate-200/80 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
+              }`}
+              title={`${card.title} (${card.badge})`}
+            >
+              <div
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg shadow-inner ${card.previewBg}`}
+              >
+                <span className="text-xs select-none">{card.iconText}</span>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-800">
+                {card.title}
+              </span>
+              {isActive && (
+                <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs ml-0.5">
+                  <Check size={9} strokeWidth={3} />
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Configuración: Cotas & Presets de Parcela (Planet Zoo Sliders / Pills) ── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-2.5 py-1.5 text-xs">
+        {/* Presets & Scaling */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            Presets:
+          </span>
+          <div className="flex items-center gap-1">
+            {PARCEL_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => {
+                  setCustomWidthM(p.w);
+                  setCustomDepthM(p.d);
+                  onApplyDimensions();
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-slate-800 hover:border-emerald-400 hover:bg-emerald-50/50 transition shadow-xs"
+                title={`${p.label} - ${p.desc}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {onScaleParcel && (
+            <div className="flex items-center gap-1 pl-1.5 border-l border-slate-200">
+              <button
+                type="button"
+                onClick={() => onScaleParcel(0.9)}
+                className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+                title="Reducir 10% la superficie"
+              >
+                <Minimize2 size={10} />
+                <span>-10%</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onScaleParcel(1.1)}
+                className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+                title="Aumentar 10% la superficie"
+              >
+                <Maximize2 size={10} />
+                <span>+10%</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        <span className="text-[11px] text-slate-500 italic">
-          💡 Arrastra los círculos azules en 3D para modelar formas libres en L, T o irregulares
-        </span>
+        {/* Manual Dimensions Form */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 text-[11px] font-medium text-slate-700">
+            <span>Ancho:</span>
+            <input
+              type="number"
+              aria-label="Ancho Terreno (m)"
+              step="0.5"
+              min="1"
+              value={customWidthM}
+              onChange={(e) => setCustomWidthM(e.target.value)}
+              className="w-12 rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-900 focus:border-emerald-500 focus:outline-hidden"
+            />
+            <span className="text-slate-500 text-[10px]">m</span>
+          </div>
+
+          <div className="flex items-center gap-1 text-[11px] font-medium text-slate-700">
+            <span>Largo:</span>
+            <input
+              type="number"
+              aria-label="Largo Terreno (m)"
+              step="0.5"
+              min="1"
+              value={customDepthM}
+              onChange={(e) => setCustomDepthM(e.target.value)}
+              className="w-12 rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-900 focus:border-emerald-500 focus:outline-hidden"
+            />
+            <span className="text-slate-500 text-[10px]">m</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onApplyDimensions}
+            className="rounded-lg bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-700 transition shadow-xs"
+          >
+            Aplicar Cotas
+          </button>
+        </div>
       </div>
     </div>
   );

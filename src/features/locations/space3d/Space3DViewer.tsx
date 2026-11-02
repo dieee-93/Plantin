@@ -1429,113 +1429,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         </div>
       )}
 
-      {/* ── 3.5b. Contextual Builder Shelf for Perimeter Enclosures ── */}
-      {builderState.activeTool === 'walls' && !selectedWall && (
-        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
-          <SpaceWallBuilderShelf
-            currentHeightCm={layout.walls[0]?.heightCm ?? 200}
-            currentMaterial={layout.walls[0]?.material ?? 'brick'}
-            onApplyPerimeter={(heightCm: number, material: WallMaterialType) => {
-              setAllWallsHeight(locationId, heightCm);
-              setAllWallsMaterial(locationId, material);
-            }}
-            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
-          />
-        </div>
-      )}
-
-      {/* ── 3.6. Contextual Builder Shelf for Roof Architecture ── */}
-      {builderState.activeTool === 'roof' && (
-        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
-          <SpaceRoofActionBar
-            roofConfig={layout.roofConfig}
-            showRoof={showRoof}
-            onToggleShowRoof={() => setShowRoof((v) => !v)}
-            onSelectRoofKind={(kind) => updateRoofConfig(locationId, { kind })}
-            onUpdateRoofHeight={(heightCm) => updateRoofConfig(locationId, { heightCm })}
-            onUpdateRoofMaterial={(material) => updateRoofConfig(locationId, { material })}
-            onToggleGrowLights={(hasGrowLights) => updateRoofConfig(locationId, { hasGrowLights })}
-            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
-          />
-        </div>
-      )}
-
-      {/* ── 3.7. Contextual Builder Shelf for Terrain & Boundaries ── */}
-      {builderState.activeTool === 'edit_boundary' && (
-        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
-          <SpaceTerrainBuilderShelf
-            currentMaterial={layout.baseMaterial ?? 'soil'}
-            onChangeMaterial={(mat) => setBaseMaterial(locationId, mat)}
-            customWidthM={customWidthM}
-            setCustomWidthM={setCustomWidthM}
-            customDepthM={customDepthM}
-            setCustomDepthM={setCustomDepthM}
-            onApplyDimensions={handleApplyDimensions}
-            onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
-            vertexCount={layout.baseBoundary.length}
-            selectedVertexIndex={builderState.selectedVertexIndex}
-            onInsertVertex={handleInsertVertex}
-            onRemoveSelectedVertex={() => {
-              if (builderState.selectedVertexIndex !== null) {
-                removeBoundaryVertex(locationId, builderState.selectedVertexIndex);
-                dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
-              }
-            }}
-            onSanitizeBoundary={() => sanitizeBoundary(locationId)}
-            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
-          />
-        </div>
-      )}
-
-      {/* ── 3.8. Contextual Builder Shelf for Paths & Walkways ── */}
-      {builderState.activeTool === 'draw_path' && (
-        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
-          <SpacePathBuilderShelf
-            pathWidthCm={builderState.pathWidthCm}
-            onChangePathWidth={(widthCm) =>
-              dispatch({ type: 'SET_PATH_WIDTH', widthCm })
-            }
-            pathMaterial={builderState.pathMaterial}
-            onChangePathMaterial={(mat) =>
-              dispatch({ type: 'SET_PATH_MATERIAL', material: mat })
-            }
-            paths={layout.paths}
-            onRemovePath={(pathId) => removePathStroke(locationId, pathId)}
-            draftStartCm={builderState.draftStartCm}
-            onCancelDraft={() =>
-              dispatch({ type: 'SET_DRAFT_START', pointCm: null })
-            }
-            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
-          />
-        </div>
-      )}
-
-            {/* ── 3.9. Contextual Builder Shelf for Planting & Sowing ── */}
-      {(builderState.activeTool === 'plant_single' ||
-        builderState.activeTool === 'plant_line' ||
-        builderState.activeTool === 'plant_fill_sector') && (
-        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
-          <SpacePlantBuilderShelf
-            activeTool={builderState.activeTool}
-            plantCropCode={builderState.plantTemplate.cropCode}
-            onChangePlantCropCode={(c) =>
-              dispatch({
-                type: 'SET_PLANT_PRESET',
-                presetKey: c as PlantPresetKey,
-              })
-            }
-            plantSpacingCm={builderState.plantTemplate.plantSpacingCm}
-            onChangePlantSpacing={(s) =>
-              dispatch({ type: 'SET_PLANT_SPACING', plantSpacingCm: s })
-            }
-            cultivableSectorCount={regions.cultivablePolygons.length}
-            onFillSector={handleFillSector}
-            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
-          />
-        </div>
-      )}
-
-{/* ── 4. Bottom Tray Drawer for Seeds and Plants ── */}
+      {/* ── 4. Bottom Tray Drawer for Seeds and Plants ── */}
       {isTrayOpen && (
         <div className="absolute bottom-20 inset-x-0 z-40 flex justify-center px-4">
           <SpaceBottomDock
@@ -1597,6 +1491,112 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       <div className="pointer-events-none absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-3">
         {/* Invisible spacer to center the command dock */}
         <div className="w-48 hidden md:block" />
+
+        {/* Bottom-Center Command Dock with Integrated Builder Shelf (Cities: Skylines 2 / Planet Zoo Style) */}
+        <div className="pointer-events-auto flex flex-col items-center gap-1.5 max-w-2xl w-full z-40">
+{/* ── 3.5b. Contextual Builder Shelf for Perimeter Enclosures ── */}
+      {builderState.activeTool === 'walls' && !selectedWall && (
+        
+          <SpaceWallBuilderShelf
+            currentHeightCm={layout.walls[0]?.heightCm ?? 200}
+            currentMaterial={layout.walls[0]?.material ?? 'brick'}
+            onApplyPerimeter={(heightCm: number, material: WallMaterialType) => {
+              setAllWallsHeight(locationId, heightCm);
+              setAllWallsMaterial(locationId, material);
+            }}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+      )}
+
+      {/* ── 3.6. Contextual Builder Shelf for Roof Architecture ── */}
+      {builderState.activeTool === 'roof' && (
+        
+          <SpaceRoofActionBar
+            roofConfig={layout.roofConfig}
+            showRoof={showRoof}
+            onToggleShowRoof={() => setShowRoof((v) => !v)}
+            onSelectRoofKind={(kind) => updateRoofConfig(locationId, { kind })}
+            onUpdateRoofHeight={(heightCm) => updateRoofConfig(locationId, { heightCm })}
+            onUpdateRoofMaterial={(material) => updateRoofConfig(locationId, { material })}
+            onToggleGrowLights={(hasGrowLights) => updateRoofConfig(locationId, { hasGrowLights })}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+      )}
+
+      {/* ── 3.7. Contextual Builder Shelf for Terrain & Boundaries ── */}
+      {builderState.activeTool === 'edit_boundary' && (
+        
+          <SpaceTerrainBuilderShelf
+            currentMaterial={layout.baseMaterial ?? 'soil'}
+            onChangeMaterial={(mat) => setBaseMaterial(locationId, mat)}
+            customWidthM={customWidthM}
+            setCustomWidthM={setCustomWidthM}
+            customDepthM={customDepthM}
+            setCustomDepthM={setCustomDepthM}
+            onApplyDimensions={handleApplyDimensions}
+            onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
+            vertexCount={layout.baseBoundary.length}
+            selectedVertexIndex={builderState.selectedVertexIndex}
+            onInsertVertex={handleInsertVertex}
+            onRemoveSelectedVertex={() => {
+              if (builderState.selectedVertexIndex !== null) {
+                removeBoundaryVertex(locationId, builderState.selectedVertexIndex);
+                dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+              }
+            }}
+            onSanitizeBoundary={() => sanitizeBoundary(locationId)}
+            cultivableSectorCount={regions.cultivablePolygons.length}
+            onFillSector={handleFillSector}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+      )}
+
+      {/* ── 3.8. Contextual Builder Shelf for Paths & Walkways ── */}
+      {builderState.activeTool === 'draw_path' && (
+        
+          <SpacePathBuilderShelf
+            pathWidthCm={builderState.pathWidthCm}
+            onChangePathWidth={(widthCm) =>
+              dispatch({ type: 'SET_PATH_WIDTH', widthCm })
+            }
+            pathMaterial={builderState.pathMaterial}
+            onChangePathMaterial={(mat) =>
+              dispatch({ type: 'SET_PATH_MATERIAL', material: mat })
+            }
+            paths={layout.paths}
+            onRemovePath={(pathId) => removePathStroke(locationId, pathId)}
+            draftStartCm={builderState.draftStartCm}
+            onCancelDraft={() =>
+              dispatch({ type: 'SET_DRAFT_START', pointCm: null })
+            }
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+      )}
+
+            {/* ── 3.9. Contextual Builder Shelf for Planting & Sowing ── */}
+      {(builderState.activeTool === 'plant_single' ||
+        builderState.activeTool === 'plant_line' ||
+        builderState.activeTool === 'plant_fill_sector') && (
+        
+          <SpacePlantBuilderShelf
+            activeTool={builderState.activeTool}
+            plantCropCode={builderState.plantTemplate.cropCode}
+            onChangePlantCropCode={(c) =>
+              dispatch({
+                type: 'SET_PLANT_PRESET',
+                presetKey: c as PlantPresetKey,
+              })
+            }
+            plantSpacingCm={builderState.plantTemplate.plantSpacingCm}
+            onChangePlantSpacing={(s) =>
+              dispatch({ type: 'SET_PLANT_SPACING', plantSpacingCm: s })
+            }
+            cultivableSectorCount={regions.cultivablePolygons.length}
+            onFillSector={handleFillSector}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+      )}
+
 
         {/* Bottom-Center Command Dock */}
         <SpaceCommandDock
@@ -1660,6 +1660,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           onUndo={() => undo(locationId)}
           onRedo={() => redo(locationId)}
         />
+        </div>
 
         {/* Bottom-Right Camera Widget */}
         <SpaceCameraWidget

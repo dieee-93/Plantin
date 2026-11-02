@@ -124,4 +124,27 @@ describe('SpaceTerrainBuilderShelf - Visual Terrain & Flooring Builder Shelf', (
     fireEvent.click(screen.getByLabelText('Cerrar panel de terreno'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('renders restored Rellenar Espacio button and triggers onFillSector(0)', () => {
+    const onFillSector = vi.fn();
+    render(
+      <SpaceTerrainBuilderShelf
+        currentMaterial="soil"
+        onChangeMaterial={vi.fn()}
+        customWidthM="6.0"
+        setCustomWidthM={vi.fn()}
+        customDepthM="10.0"
+        setCustomDepthM={vi.fn()}
+        onApplyDimensions={vi.fn()}
+        vertexCount={4}
+        cultivableSectorCount={2}
+        onFillSector={onFillSector}
+      />,
+    );
+
+    const fillBtn = screen.getByRole('button', { name: /Rellenar Espacio/i });
+    expect(fillBtn).toBeInTheDocument();
+    fireEvent.click(fillBtn);
+    expect(onFillSector).toHaveBeenCalledWith(0);
+  });
 });
