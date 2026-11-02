@@ -2,7 +2,6 @@
 
 > Fuente única de verdad estilística, geométrica y cromática para la generación de assets ilustrados (Nano Banana / Gemini Imagen) en Plantin.
 > Diseñada para que cualquier generador (humano o modelo de lenguaje) mantenga 100 % de coherencia visual y compatibilidad técnica con el motor dimétrico 2:1.
-> Complementa `docs/specs/assets-pipeline.md` y `docs/isometric-art-guide.md`.
 
 ---
 

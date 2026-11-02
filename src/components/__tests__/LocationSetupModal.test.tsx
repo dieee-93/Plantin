@@ -140,7 +140,7 @@ describe('LocationSetupModal', () => {
     expect(stateTaxons.some((t) => t.genus === 'Citrus' && t.species === 'sinensis')).toBe(true)
 
     // Finalizar en el botón primario
-    const finishBtn = screen.getByRole('button', { name: /Comenzar en el Mapa Isométrico/i })
+    const finishBtn = screen.getByRole('button', { name: /Comenzar en el Mapa de Espacios/i })
     await user.click(finishBtn)
 
     // El wizard debe cerrarse

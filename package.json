@@ -11,12 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "sprites:sheet": "tsx --tsconfig tsconfig.app.json scripts/render-sprite-sheet.tsx",
-    "assets:guides": "tsx scripts/assets/make-guides.ts",
-    "assets:prompts": "tsx scripts/assets/make-prompts.ts",
-    "assets:process": "tsx scripts/assets/process.ts",
-    "assets:manifest": "tsx scripts/assets/build-manifest.ts",
-    "assets": "npm run assets:process && npm run assets:manifest"
+    "assets:prompts": "tsx scripts/assets/make-prompts.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

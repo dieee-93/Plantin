@@ -34,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/',
     step: '01',
-    label: 'Mapa Isométrico',
+    label: 'Mapa de Espacios',
     sub: 'Mis espacios y cultivo',
     icon: Map,
     matchPaths: ['/', '/locations'],

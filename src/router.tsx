@@ -15,7 +15,7 @@ const LocationsPage = lazy(() =>
 
 const PageFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320, color: 'var(--text-tertiary)' }}>
-    <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>Cargando vista isométrica...</span>
+    <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>Cargando vista de espacios...</span>
   </div>
 )
 

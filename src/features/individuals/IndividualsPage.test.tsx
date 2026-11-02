@@ -8,6 +8,8 @@ import { useAccessionStore } from '@/store/accessionStore'
 import { useTaxonStore } from '@/store/taxonStore'
 import { useSeedLotStore } from '@/store/seedLotStore'
 import { useObservationStore } from '@/store/observationStore'
+import { useLocationStore } from '@/store/locationStore'
+import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
 
 describe('IndividualsPage', () => {
   beforeEach(() => {
@@ -16,6 +18,8 @@ describe('IndividualsPage', () => {
     useAccessionStore.setState({ accessions: [] })
     useSeedLotStore.setState({ seedLots: [] })
     useObservationStore.setState({ observations: [] })
+    useLocationStore.setState({ locations: [] })
+    useSpaceLayoutStore.setState({ layouts: {} })
     useTaxonStore.setState({ 
       taxons: [
         { id: 'tax-1', family: 'Solanaceae', genus: 'Solanum', species: 'lycopersicum', cropCode: 'TOM', commonName: 'Tomate' }
@@ -203,5 +207,100 @@ describe('IndividualsPage', () => {
     expect(observations[0].bbchAtObservation).toBe(72)
 
     expect(screen.getByText(/185 g/i)).toBeInTheDocument()
+  })
+
+  it('assigns free 3D layout slots when cloning a plant in a room', async () => {
+    const user = userEvent.setup()
+    const accession = useAccessionStore.getState().accessions[0]
+
+    const loc = useLocationStore.getState().add({
+      name: 'Invernadero 1',
+      type: 'greenhouse',
+    })
+
+    useSpaceLayoutStore.getState().getOrCreateSpaceLayout(loc.id, 'greenhouse')
+    useSpaceLayoutStore.setState(state => ({
+      layouts: {
+        ...state.layouts,
+        [loc.id]: {
+          ...state.layouts[loc.id],
+          placedPlants: [
+            { id: 'slot-1', label: 'Bancal 1 · Puesto 01', xCm: 50, yCm: 50, canopyRadiusCm: 25 },
+            { id: 'slot-2', label: 'Bancal 1 · Puesto 02', xCm: 100, yCm: 50, canopyRadiusCm: 25 },
+          ],
+        },
+      },
+    }))
+
+    const parent = useIndividualStore.getState().add({
+      accessionId: accession.id,
+      label: 'TOM-2024-001 #01',
+      locationId: loc.id,
+      slotId: 'slot-1',
+      location: 'Bancal 1 · Puesto 01',
+      currentBBCH: 45,
+      status: 'active',
+    })
+
+    render(<MemoryRouter initialEntries={[`/individuals?selectedId=${parent.id}`]}><IndividualsPage /></MemoryRouter>)
+
+    // Open cloning panel
+    const cloneBtn = screen.getByRole('button', { name: /Esqueje/i })
+    await user.click(cloneBtn)
+
+    // Submit 1 clone
+    const submitBtn = screen.getByRole('button', { name: /Confirmar/i })
+    await user.click(submitBtn)
+
+    const individuals = useIndividualStore.getState().individuals
+    expect(individuals).toHaveLength(2)
+    const clone = individuals.find(i => i.id !== parent.id)
+    expect(clone).toBeDefined()
+    expect(clone?.slotId).toBe('slot-2')
+    expect(clone?.location).toBe('Bancal 1 · Puesto 02')
+  })
+
+  it('creates clone without slotId (Sin ubicar) when no 3D layout slots are available', async () => {
+    const user = userEvent.setup()
+    const accession = useAccessionStore.getState().accessions[0]
+
+    const loc = useLocationStore.getState().add({
+      name: 'Invernadero Lleno',
+      type: 'greenhouse',
+    })
+
+    useSpaceLayoutStore.getState().getOrCreateSpaceLayout(loc.id, 'greenhouse')
+    useSpaceLayoutStore.setState(state => ({
+      layouts: {
+        ...state.layouts,
+        [loc.id]: {
+          ...state.layouts[loc.id],
+          placedPlants: [], // No slots available
+        },
+      },
+    }))
+
+    const parent = useIndividualStore.getState().add({
+      accessionId: accession.id,
+      label: 'TOM-2024-001 #01',
+      locationId: loc.id,
+      currentBBCH: 45,
+      status: 'active',
+    })
+
+    render(<MemoryRouter initialEntries={[`/individuals?selectedId=${parent.id}`]}><IndividualsPage /></MemoryRouter>)
+
+    const cloneBtn = screen.getByRole('button', { name: /Esqueje/i })
+    await user.click(cloneBtn)
+
+    const submitBtn = screen.getByRole('button', { name: /Confirmar/i })
+    await user.click(submitBtn)
+
+    const individuals = useIndividualStore.getState().individuals
+    expect(individuals).toHaveLength(2)
+    const clone = individuals.find(i => i.id !== parent.id)
+    expect(clone).toBeDefined()
+    expect(clone?.slotId).toBeUndefined()
+    expect(clone?.location).toBe('Sin ubicar')
   })
 })

@@ -23,8 +23,6 @@ export type FruitShape =
   | 'resin_cola'
   | 'gourd'
 
-export type IsometricLensMode = 'species' | 'bbch' | 'genetics' | 'climate'
-
 export interface BotanicalVisualProfile {
   archetype: BotanicalArchetypeId
   archetypeLabel: string

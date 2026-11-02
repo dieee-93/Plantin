@@ -410,7 +410,7 @@ function SpeciesStepContent({ onBackToLocation, onFinish }: SpeciesStepContentPr
           }}
         >
           <CheckCircle2 size={15} />
-          Comenzar en el Mapa Isométrico
+          Comenzar en el Mapa de Espacios
         </button>
       </div>
     </div>

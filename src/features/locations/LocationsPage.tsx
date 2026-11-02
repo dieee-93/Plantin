@@ -9,10 +9,7 @@ import { useTaxonStore } from '@/store/taxonStore'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
 import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
 import { createRectPolygon } from '@/domain/spaceGeometry'
-import {
-  getAllGridPositions,
-  getLocationGridDimensions,
-} from '@/domain/location'
+import type { PlacedPlantSpatialCm } from '@/domain/solarAndPlantSpatial'
 import type { LocationType } from '@/domain/location'
 import { LocationClimateCard } from '@/components/LocationClimateCard'
 import { IndividualDetail } from '@/features/individuals/IndividualsPage'
@@ -393,7 +390,7 @@ export function LocationsPage() {
   const [sowAccessionId, setSowAccessionId] = useState('')
   const [sowSeedLotId, setSowSeedLotId] = useState('')
   const [sowCount, setSowCount] = useState('1')
-  const [sowPosition, setSowPosition] = useState('A-01')
+  const [sowPosition, setSowPosition] = useState('')
   const [sowBbch, setSowBbch] = useState('0')
   const [sowGeneration, setSowGeneration] = useState('')
   const [sowNotes, setSowNotes] = useState('')
@@ -488,25 +485,26 @@ export function LocationsPage() {
     )
   }, [seedLots, sowAccessionId])
 
-  // Celdas libres en una sala determinada
-  const getFreeSlotsForRoom = (roomId: string, preferredStart?: string): string[] => {
-    const room = locations.find(l => l.id === roomId)
-    if (!room) return ['A-01']
+  // Puestos libres en una sala determinada leyendo el layout 3D
+  const getFreeSlotsForRoom = (roomId: string, preferredSlotLabelOrId?: string): PlacedPlantSpatialCm[] => {
+    const store = useSpaceLayoutStore.getState()
+    const layout = store.layouts[roomId] ?? store.getOrCreateSpaceLayout(roomId)
+    if (!layout || !layout.placedPlants) return []
     const roomPlants = individuals.filter(i => i.locationId === roomId)
-    const { rows, cols } = getLocationGridDimensions(room, roomPlants.length + 10)
-    const allSlots = getAllGridPositions(rows, cols)
-    const occupied = new Set(
-      roomPlants.map(p => (p.position || p.location || '').trim().toUpperCase())
+    const occupiedSlotIds = new Set(
+      roomPlants.map(p => p.slotId).filter((id): id is string => Boolean(id))
     )
-    const free = allSlots.filter(s => !occupied.has(s))
-
-    if (preferredStart && free.includes(preferredStart)) {
-      const startIndex = allSlots.indexOf(preferredStart)
-      const afterStart = allSlots.slice(startIndex).filter(s => !occupied.has(s))
-      const beforeStart = allSlots.slice(0, startIndex).filter(s => !occupied.has(s))
-      return [...afterStart, ...beforeStart]
+    const free = layout.placedPlants.filter(s => !occupiedSlotIds.has(s.id))
+    if (preferredSlotLabelOrId && preferredSlotLabelOrId.trim()) {
+      const target = preferredSlotLabelOrId.trim().toLowerCase()
+      const matchIndex = free.findIndex(
+        s => s.id.toLowerCase() === target || s.label.toLowerCase() === target
+      )
+      if (matchIndex > 0) {
+        return [...free.slice(matchIndex), ...free.slice(0, matchIndex)]
+      }
     }
-    return free.length > 0 ? free : ['A-01']
+    return free
   }
 
   // ── Handlers de Creación de Sala ──
@@ -584,7 +582,7 @@ export function LocationsPage() {
     setNewMaterialTaxonId(taxon.id)
   }
 
-  // ── Handler de Siembra Contextual en la Grilla Isométrica (Desde Inventario) ──
+  // ── Handler de Siembra Contextual en el Espacio 3D (Desde Inventario) ──
   const handleSowSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRoom || !sowAccessionId) return
@@ -592,13 +590,15 @@ export function LocationsPage() {
     const acc = accessions.find(a => a.id === sowAccessionId)
     const existingForAcc = individuals.filter(ind => ind.accessionId === sowAccessionId).length
     const countToSow = Math.max(1, Math.min(100, parseInt(sowCount, 10) || 1))
-    const targetSlots = getFreeSlotsForRoom(selectedRoom.id, sowPosition.trim().toUpperCase())
+    const freeSlots = getFreeSlotsForRoom(selectedRoom.id, sowPosition)
 
     let firstCreatedId: string | null = null
     for (let i = 0; i < countToSow; i++) {
       const seqNum = String(existingForAcc + i + 1).padStart(2, '0')
       const autoLabel = `${acc?.accessionNumber ?? 'PLT'} #${seqNum}`
-      const assignedSlot = targetSlots[i] ?? `${sowPosition}-${i + 1}`
+      const freeSlot = freeSlots[i]
+      const slotId = freeSlot?.id
+      const assignedSlot = sowPosition.trim() || freeSlot?.label || (slotId ? freeSlot?.label : 'Sin ubicar')
 
       const created = addIndividual({
         accessionId: sowAccessionId,
@@ -607,6 +607,7 @@ export function LocationsPage() {
         locationId: selectedRoom.id,
         location: assignedSlot,
         position: assignedSlot,
+        slotId,
         plantingDate: new Date().toISOString().slice(0, 10),
         currentBBCH: sowBbch !== '' ? Number(sowBbch) : 0,
         status: 'active',
@@ -625,8 +626,8 @@ export function LocationsPage() {
       setDrawerMode('inspect')
     }
 
-    const nextFree = getFreeSlotsForRoom(selectedRoom.id)[0] ?? 'A-01'
-    setSowPosition(nextFree)
+    const nextFree = getFreeSlotsForRoom(selectedRoom.id)[0]
+    setSowPosition(nextFree ? nextFree.label : '')
     setSowCount('1')
     setSowNotes('')
   }
@@ -679,7 +680,10 @@ export function LocationsPage() {
 
         if (newMaterialSeedAction === 'plant_and_save') {
           consumeSeeds(lot.id, 1)
-          const targetPos = (sowPosition || 'A-01').trim().toUpperCase()
+          const freeSlots = getFreeSlotsForRoom(selectedRoom.id, sowPosition)
+          const freeSlot = freeSlots[0]
+          const slotId = freeSlot?.id
+          const targetPos = sowPosition.trim() || freeSlot?.label || 'Sin ubicar'
 
           const ind = addIndividual({
             accessionId: targetAccId,
@@ -688,6 +692,7 @@ export function LocationsPage() {
             locationId: selectedRoom.id,
             location: targetPos,
             position: targetPos,
+            slotId,
             plantingDate: new Date().toISOString().slice(0, 10),
             currentBBCH: 0,
             status: 'active',
@@ -701,7 +706,9 @@ export function LocationsPage() {
       } else {
         // seedling, cutting, bulb_tuber, offset_division, mature_grafted
         const existingForAcc = individuals.filter(ind => ind.accessionId === targetAccId).length
-        const targetSlots = getFreeSlotsForRoom(selectedRoom.id, (sowPosition || 'A-01').trim().toUpperCase())
+        const freeSlots = newMaterialPlacementMode === 'auto_cells'
+          ? getFreeSlotsForRoom(selectedRoom.id, sowPosition)
+          : []
 
         let firstCreatedId: string | null = null
 
@@ -710,9 +717,16 @@ export function LocationsPage() {
           const autoLabel = `${targetAccNumber} #${seqNum}`
 
           let assignedSlot = 'Sin ubicar'
+          let slotId: string | undefined = undefined
 
           if (newMaterialPlacementMode === 'auto_cells') {
-            assignedSlot = targetSlots[i] ?? `${sowPosition || 'A-01'}-${i + 1}`
+            const freeSlot = freeSlots[i]
+            if (freeSlot) {
+              slotId = freeSlot.id
+              assignedSlot = sowPosition.trim() || freeSlot.label || 'Sin ubicar'
+            } else if (sowPosition.trim()) {
+              assignedSlot = sowPosition.trim()
+            }
           }
 
           const ind = addIndividual({
@@ -722,6 +736,7 @@ export function LocationsPage() {
             locationId: selectedRoom.id,
             location: assignedSlot,
             position: assignedSlot,
+            slotId,
             plantingDate: new Date().toISOString().slice(0, 10),
             currentBBCH: initialBBCH,
             status: 'active',
@@ -1106,7 +1121,11 @@ export function LocationsPage() {
                 </h2>
                 {selectedRoom ? (
                   <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                    Celda seleccionada: <strong>{sowPosition || 'A-01'}</strong>
+                    {sowPosition ? (
+                      <>Puesto asignado: <strong>{sowPosition}</strong></>
+                    ) : (
+                      <>Puesto asignado: <em>Automático según puestos 3D libres</em></>
+                    )}
                   </p>
                 ) : (
                   <p style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
@@ -1236,10 +1255,11 @@ export function LocationsPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <div>
-                    <label htmlFor="sow-room-position" style={LABEL_STYLE}>Celda / Coordenada</label>
+                    <label htmlFor="sow-room-position" style={LABEL_STYLE}>Puesto / Ubicación (opcional)</label>
                     <input
                       id="sow-room-position"
-                      aria-label="Celda en la grilla"
+                      aria-label="Puesto o ubicación"
+                      placeholder="Ej: Puesto 1 o libre"
                       type="text"
                       style={{ ...INPUT_STYLE, fontFamily: 'var(--font-mono)' }}
                       value={sowPosition}
@@ -1313,7 +1333,7 @@ export function LocationsPage() {
                   }}
                 >
                   <Sprout size={14} />
-                  Plantar en {sowPosition}
+                  {sowPosition ? `Plantar en ${sowPosition}` : 'Plantar en sala'}
                 </button>
               </form>
             )}
@@ -1604,13 +1624,14 @@ export function LocationsPage() {
 
                     {selectedRoom && (
                       <div>
-                        <label htmlFor="new-material-position" style={LABEL_STYLE}>Celda / Coordenada destino</label>
+                        <label htmlFor="new-material-position" style={LABEL_STYLE}>Puesto / Ubicación destino (opcional)</label>
                         <input
                           id="new-material-position"
-                          aria-label="Celda en la grilla"
+                          aria-label="Puesto o ubicación destino"
+                          placeholder="Ej: Puesto 1 o libre"
                           type="text"
                           style={{ ...INPUT_STYLE, fontFamily: 'var(--font-mono)' }}
-                          value={sowPosition || 'A-01'}
+                          value={sowPosition}
                           onChange={e => {
                             setSowPosition(e.target.value)
                           }}
@@ -1643,7 +1664,7 @@ export function LocationsPage() {
                           checked={newMaterialSeedAction === 'plant_and_save'}
                           onChange={() => setNewMaterialSeedAction('plant_and_save')}
                         />
-                        <span>Plantar ahora en <strong>{sowPosition || 'A-01'}</strong> y guardar resto en bandeja</span>
+                        <span>Plantar ahora en la sala {sowPosition ? <strong>({sowPosition})</strong> : ''} y guardar resto en bandeja</span>
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, cursor: 'pointer' }}>
                         <input
@@ -1682,7 +1703,7 @@ export function LocationsPage() {
                           checked={newMaterialPlacementMode === 'auto_cells'}
                           onChange={() => setNewMaterialPlacementMode('auto_cells')}
                         />
-                        <span>Plantar automáticamente en celdas libres (desde {sowPosition || 'A-01'})</span>
+                        <span>Plantar automáticamente en puestos libres del espacio 3D</span>
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, cursor: 'pointer' }}>
                         <input
@@ -1710,8 +1731,8 @@ export function LocationsPage() {
                           : `Dejar ${currentSpec.shortLabel} en Bandeja`
                       } else {
                         submitLabel = parsedCount > 1
-                          ? `Plantar ${parsedCount} ${getFormPluralNoun(currentSpec.id)} desde ${sowPosition || 'A-01'}`
-                          : `Plantar ${currentSpec.shortLabel} en ${sowPosition || 'A-01'}`
+                          ? `Plantar ${parsedCount} ${getFormPluralNoun(currentSpec.id)} en sala`
+                          : `Plantar ${currentSpec.shortLabel} en sala`
                       }
                     }
 
@@ -1810,7 +1831,7 @@ export function LocationsPage() {
       </div>
       )}
 
-      {/* ── Área Principal: Mapa Isométrico 2.5D de Salas (Nivel 1) o Interior Isométrico (Nivel 2) ── */}
+      {/* ── Área Principal: Mapa de Espacios (Nivel 1) o Interior 3D (Nivel 2) ── */}
       <main
         style={{
           flex: 1,
@@ -1855,7 +1876,7 @@ export function LocationsPage() {
                     color: 'var(--accent)',
                   }}
                 >
-                  PASO 01 · VISTA ISOMÉTRICA 2.5D
+                  PASO 01 · VISTA DE ESPACIOS
                 </span>
                 <h1
                   style={{
@@ -1932,7 +1953,7 @@ export function LocationsPage() {
                   }}
                 >
                   <Layers size={13} color="var(--accent)" />
-                  Haz clic en una sala para abrir su grilla isométrica
+                  Haz clic en una sala para abrir su espacio 3D
                 </span>
               </div>
             </div>

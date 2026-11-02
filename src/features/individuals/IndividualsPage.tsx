@@ -12,7 +12,7 @@ import type { TraitDefinition } from '@/domain/ontology/types'
 import { getIndividualDisplayName } from '@/domain/individual'
 import type { Individual, IndividualStatus, CrossType } from '@/domain/individual'
 import { getVegetativeCloneCapability } from '@/domain/propagationForm'
-import { getAllGridPositions, getLocationGridDimensions } from '@/domain/location'
+import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
 import { ActiveCropTabs } from '@/components/ActiveCropTabs'
 import {
   Sprout, Plus, Search, Trash2, Info, MapPin, GitBranch,
@@ -386,19 +386,19 @@ export function IndividualDetail({
     const parsedCount = Math.max(1, Math.min(50, parseInt(cloneCount, 10) || 1))
     const existingForAcc = individuals.filter(ind => ind.accessionId === individual.accessionId).length
 
-    let targetSlots: string[] = []
-    let roomSlots: Array<{ id: string; label: string }> = []
+    let freeSlots: Array<{ id: string; label: string }> = []
 
     if (individual.locationId && clonePlacementMode === 'auto_cells') {
-      const room = locations.find(l => l.id === individual.locationId)
-      if (room) {
-        const roomPlants = individuals.filter(i => i.locationId === room.id)
-        const { rows, cols } = getLocationGridDimensions(room, roomPlants.length + parsedCount + 10)
-        const allSlots = getAllGridPositions(rows, cols)
-        const occupied = new Set(roomPlants.map(p => (p.position || p.location || '').trim().toUpperCase()))
-        targetSlots = allSlots.filter(s => !occupied.has(s))
-        roomSlots = []
-      }
+      const store = useSpaceLayoutStore.getState()
+      const layout = store.layouts[individual.locationId] ?? store.getOrCreateSpaceLayout(individual.locationId)
+      const occupiedSlotIds = new Set(
+        individuals
+          .filter(i => i.locationId === individual.locationId && i.slotId)
+          .map(i => i.slotId!)
+      )
+      freeSlots = (layout?.placedPlants ?? [])
+        .filter(slot => !occupiedSlotIds.has(slot.id))
+        .map(slot => ({ id: slot.id, label: slot.label }))
     }
 
     const todayStr = new Date().toISOString().slice(0, 10)
@@ -409,10 +409,10 @@ export function IndividualDetail({
       let pos = 'Sin ubicar'
       let slotId: string | undefined = undefined
 
-      if (individual.locationId && clonePlacementMode === 'auto_cells') {
-        const assignedSlot = targetSlots[i] ?? `CLON-${i + 1}`
-        pos = assignedSlot
-        slotId = roomSlots.find(s => s.label === assignedSlot)?.id
+      if (individual.locationId && clonePlacementMode === 'auto_cells' && i < freeSlots.length) {
+        const slot = freeSlots[i]
+        slotId = slot.id
+        pos = slot.label || 'Sin ubicar'
       }
 
       addIndividual({
@@ -767,7 +767,7 @@ export function IndividualDetail({
                       checked={clonePlacementMode === 'auto_cells'}
                       onChange={() => setClonePlacementMode('auto_cells')}
                     />
-                    <span>Plantar automáticamente en celdas libres de esta sala</span>
+                    <span>Plantar automáticamente en puestos libres de esta sala</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, cursor: 'pointer' }}>
                     <input
