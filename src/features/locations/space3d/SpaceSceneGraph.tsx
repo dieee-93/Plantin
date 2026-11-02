@@ -194,6 +194,8 @@ export interface PlantsLayerProps {
 export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
   ({ placedPlants, selectedPlantId, crowdedPlantIds, centerCm, onSelectPlant }) => {
     // 1. Prepare canopy ring items for instanced rendering (preallocated array for O(N) linear speed)
+    // NOTE: selectedPlantId is intentionally excluded from dependencies so selecting a plant does NOT
+    // reallocate 7,762 objects or re-run matrix layout buffers.
     const ringItems = useMemo<CanopyRingItem[]>(() => {
       const len = placedPlants.length;
       const items: CanopyRingItem[] = new Array(len);
@@ -205,13 +207,13 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
           zM: (p.yCm - centerCm.y) * CM_TO_M,
           radiusM: Math.max(0.08, p.canopyRadiusCm * CM_TO_M),
           isCrowded: crowdedPlantIds.has(p.id),
-          isSelected: selectedPlantId === p.id,
         };
       }
       return items;
-    }, [placedPlants, centerCm, crowdedPlantIds, selectedPlantId]);
+    }, [placedPlants, centerCm, crowdedPlantIds]);
 
     // 2. Group plants by cropCode for instanced billboard rendering (1 draw call per cropCode)
+    // NOTE: selectedPlantId is intentionally excluded so plantGroups is reference-stable on selection.
     const plantGroups = useMemo(() => {
       const groups = new Map<string, { cropCode: string; plants: InstancedPlantItem[] }>();
       const len = placedPlants.length;
@@ -232,11 +234,10 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
           radiusM,
           bodyHeightM: Math.max(0.25, radiusM * 1.6),
           isCrowded: crowdedPlantIds.has(p.id),
-          isSelected: selectedPlantId === p.id,
         });
       }
       return Array.from(groups.values());
-    }, [placedPlants, centerCm, crowdedPlantIds, selectedPlantId]);
+    }, [placedPlants, centerCm, crowdedPlantIds]);
 
     const selectedPlant = useMemo(
       () => placedPlants.find((p) => p.id === selectedPlantId),
@@ -246,7 +247,11 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
     return (
       <group name="plants-layer">
         {/* GPU Instanced Canopy Rings (1 draw call for all rings) */}
-        <CanopyRingsInstanced rings={ringItems} onSelectPlant={onSelectPlant} />
+        <CanopyRingsInstanced
+          rings={ringItems}
+          selectedPlantId={selectedPlantId}
+          onSelectPlant={onSelectPlant}
+        />
 
         {/* GPU Instanced Plant Billboards (1 draw call per cropCode) */}
         {plantGroups.map((group) => (
@@ -254,6 +259,7 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
             key={group.cropCode}
             cropCode={group.cropCode}
             plants={group.plants}
+            selectedPlantId={selectedPlantId}
             onSelectPlant={onSelectPlant}
           />
         ))}

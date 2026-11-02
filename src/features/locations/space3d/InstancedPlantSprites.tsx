@@ -4,6 +4,7 @@ import { useTexture } from '@react-three/drei';
 import { resolvePlantSpriteUrl } from './SpacePlantSprite';
 import { calculatePlantDimensions, PLANT_GROUND_ELEVATION_M } from './plantMetrics';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
+import { interactionProfiler } from './telemetry/interactionProfiler';
 
 export interface InstancedPlantItem {
   id: string;
@@ -20,6 +21,7 @@ export interface InstancedPlantGroupProps {
   cropCode: string;
   phase?: 'germination' | 'leaf' | 'structure' | 'flowering' | 'fruiting';
   plants: InstancedPlantItem[];
+  selectedPlantId?: string | null;
   onSelectPlant?: (plantId: string) => void;
 }
 
@@ -29,6 +31,7 @@ export interface InnerInstancedMeshProps {
   count: number;
   plants: InstancedPlantItem[];
   baseGeometry: THREE.BufferGeometry;
+  selectedPlantId?: string | null;
   onSelectPlant?: (plantId: string) => void;
 }
 
@@ -144,9 +147,19 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
   count,
   plants,
   baseGeometry,
+  selectedPlantId,
   onSelectPlant,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const prevSelectedIdRef = useRef<string | null>(null);
+
+  const plantIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < plants.length; i++) {
+      map.set(plants[i].id, i);
+    }
+    return map;
+  }, [plants]);
 
   // Precompute calibrated botanical dimensions for all plants in this group
   // Guarantees true image aspect ratio (widthM / heightM === metric.aspectRatio) with 0% distortion
@@ -188,9 +201,16 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
   }, [texture]);
 
   useEffect(() => {
+    const mesh = meshRef.current;
     return () => {
       material.dispose();
       customDepthMaterial.dispose();
+      if (mesh) {
+        mesh.geometry?.dispose();
+        mesh.instanceMatrix?.dispose();
+        mesh.instanceColor?.dispose();
+        mesh.dispose();
+      }
     };
   }, [material, customDepthMaterial]);
 
@@ -240,7 +260,8 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
       matrixArray[mOffset + 15] = 1;
 
       const cOffset = i * 3;
-      const col = p.isSelected
+      const isSelected = Boolean(p.isSelected);
+      const col = isSelected
         ? SELECTED_COLOR
         : p.isCrowded
         ? CROWDED_COLOR
@@ -253,9 +274,66 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
+    prevSelectedIdRef.current = null;
 
-    roomLoadProfiler.markGpuBuffers('sprites', count, performance.now() - tStart);
+    const elapsed = performance.now() - tStart;
+    roomLoadProfiler.markGpuBuffers('sprites', count, elapsed);
+    interactionProfiler.recordBufferUpdate({
+      layer: 'sprites',
+      count,
+      durationMs: elapsed,
+      reason: 'layout',
+    });
   }, [plants, count, plantDims]);
+
+  // High-speed selective color update when selectedPlantId changes
+  // Updates only the 3 floats for the previously selected and newly selected sprite.
+  // ZERO matrix modifications, ZERO dimension recalculations, ZERO bounding sphere recalculations.
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !mesh.instanceColor || count === 0) return;
+
+    const prevId = prevSelectedIdRef.current;
+    if (prevId === selectedPlantId) return;
+
+    const tStart = performance.now();
+    const colorArray = mesh.instanceColor.array as Float32Array;
+
+    // Restore previous plant's color
+    if (prevId !== null) {
+      const prevIdx = plantIndexMap.get(prevId);
+      if (prevIdx !== undefined && plants[prevIdx]) {
+        const p = plants[prevIdx];
+        const baseCol = p.isCrowded ? CROWDED_COLOR : NORMAL_COLOR;
+        const cOffset = prevIdx * 3;
+        colorArray[cOffset] = baseCol.r;
+        colorArray[cOffset + 1] = baseCol.g;
+        colorArray[cOffset + 2] = baseCol.b;
+      }
+    }
+
+    // Set new selected plant's color
+    if (selectedPlantId) {
+      const newIdx = plantIndexMap.get(selectedPlantId);
+      if (newIdx !== undefined && plants[newIdx]) {
+        const cOffset = newIdx * 3;
+        colorArray[cOffset] = SELECTED_COLOR.r;
+        colorArray[cOffset + 1] = SELECTED_COLOR.g;
+        colorArray[cOffset + 2] = SELECTED_COLOR.b;
+      }
+    }
+
+    mesh.instanceColor.needsUpdate = true;
+    prevSelectedIdRef.current = selectedPlantId ?? null;
+
+    const elapsed = performance.now() - tStart;
+    interactionProfiler.recordBufferUpdate({
+      layer: 'sprites',
+      count: 2,
+      durationMs: elapsed,
+      reason: 'selection',
+    });
+  }, [selectedPlantId, plantIndexMap, plants, count]);
 
   return (
     <instancedMesh
@@ -283,6 +361,7 @@ export const InstancedPlantGroup: React.FC<InstancedPlantGroupProps> = ({
   cropCode,
   phase = 'fruiting',
   plants,
+  selectedPlantId,
   onSelectPlant,
 }) => {
   const spriteUrl = resolvePlantSpriteUrl(cropCode, undefined, phase);
@@ -331,6 +410,7 @@ export const InstancedPlantGroup: React.FC<InstancedPlantGroupProps> = ({
         count={count}
         plants={plants}
         baseGeometry={baseGeometry}
+        selectedPlantId={selectedPlantId}
         onSelectPlant={onSelectPlant}
       />
     </React.Suspense>

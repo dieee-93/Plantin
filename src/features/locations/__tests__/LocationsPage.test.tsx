@@ -114,7 +114,7 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
     render(<LocationsPage />)
 
     // Entrar al espacio
-    await user.click(screen.getByRole('button', { name: /Entrar a vista isométrica de Patio Experimental/i }))
+    await user.click(screen.getByRole('button', { name: /Entrar al espacio de Patio Experimental/i }))
 
     // Verifica que Space3DViewer está montado directamente sin vista clásica
     expect(screen.getByTestId('space-3d-viewer')).toBeInTheDocument()
@@ -282,5 +282,103 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
       expect(screen.getByTestId('space-3d-viewer')).toBeInTheDocument()
       expect(screen.getByText(/Espacio 1:1 · dos asad/i)).toBeInTheDocument()
     })
+  })
+
+  it('asigna puestos reales del layout 3D al sembrar en una sala desde el inventario', async () => {
+    const user = userEvent.setup()
+
+    const loc = useLocationStore.getState().add({
+      name: 'Invernadero 3D',
+      type: 'greenhouse',
+      capacity: 10,
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-001',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'cultivated',
+    })
+
+    // Layout con 2 puestos
+    useSpaceLayoutStore.getState().getOrCreateSpaceLayout(loc.id, 'greenhouse')
+    useSpaceLayoutStore.setState(state => ({
+      layouts: {
+        ...state.layouts,
+        [loc.id]: {
+          ...state.layouts[loc.id],
+          placedPlants: [
+            { id: 'slot-alpha', label: 'Bancal A1', xCm: 50, yCm: 50, canopyRadiusCm: 20 },
+            { id: 'slot-beta', label: 'Bancal A2', xCm: 100, yCm: 50, canopyRadiusCm: 20 },
+          ],
+        },
+      },
+    }))
+
+    render(<LocationsPage />)
+
+    // Entrar al espacio
+    await user.click(screen.getByRole('button', { name: /Entrar al espacio de Invernadero 3D/i }))
+
+    // Abrir drawer de siembra
+    await user.click(screen.getByRole('button', { name: /\+ Sembrar/i }))
+
+    // Seleccionar accesión
+    const accSelect = screen.getByLabelText(/Variedad \(Accesión\)/i)
+    await user.selectOptions(accSelect, acc.id)
+
+    // Plantar 1 planta
+    const plantBtn = screen.getByRole('button', { name: /Plantar en/i })
+    await user.click(plantBtn)
+
+    const individuals = useIndividualStore.getState().individuals
+    expect(individuals).toHaveLength(1)
+    expect(individuals[0].slotId).toBe('slot-alpha')
+    expect(individuals[0].location).toBe('Bancal A1')
+    expect(individuals[0].position).toBe('Bancal A1')
+  })
+
+  it('crea el individuo sin slotId (Sin ubicar) si la sala no tiene puestos libres en el layout 3D', async () => {
+    const user = userEvent.setup()
+
+    const loc = useLocationStore.getState().add({
+      name: 'Sala Sin Puestos',
+      type: 'growth_chamber',
+      capacity: 10,
+    })
+
+    const acc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-2026-002',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'cultivated',
+    })
+
+    // Layout sin puestos (placedPlants vacío)
+    useSpaceLayoutStore.getState().getOrCreateSpaceLayout(loc.id, 'growth_chamber')
+    useSpaceLayoutStore.setState(state => ({
+      layouts: {
+        ...state.layouts,
+        [loc.id]: {
+          ...state.layouts[loc.id],
+          placedPlants: [],
+        },
+      },
+    }))
+
+    render(<LocationsPage />)
+
+    await user.click(screen.getByRole('button', { name: /Entrar al espacio de Sala Sin Puestos/i }))
+    await user.click(screen.getByRole('button', { name: /\+ Sembrar/i }))
+
+    const accSelect = screen.getByLabelText(/Variedad \(Accesión\)/i)
+    await user.selectOptions(accSelect, acc.id)
+
+    const plantBtn = screen.getByRole('button', { name: /Plantar en sala/i })
+    await user.click(plantBtn)
+
+    const individuals = useIndividualStore.getState().individuals
+    expect(individuals).toHaveLength(1)
+    expect(individuals[0].slotId).toBeUndefined()
+    expect(individuals[0].location).toBe('Sin ubicar')
+    expect(individuals[0].position).toBe('Sin ubicar')
   })
 })

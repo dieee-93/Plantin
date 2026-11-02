@@ -152,7 +152,50 @@ export function shouldCutawayWall(
 export function measurePlantNeighbors(
   target: PlacedPlantSpatialCm,
   others: PlacedPlantSpatialCm[],
+  limit?: number,
 ): PlantNeighborMeasurement[] {
+  // If limit is specified and collection is larger, use high-speed bounded Top-K candidate search.
+  // Avoids allocating thousands of objects and running O(N log N) full Array.prototype.sort in V8.
+  if (limit !== undefined && limit > 0 && others.length > limit) {
+    const candidates: PlantNeighborMeasurement[] = [];
+    let maxDistSqInCandidates = Infinity;
+
+    for (let i = 0; i < others.length; i++) {
+      const other = others[i];
+      if (other.id === target.id) continue;
+      const dx = other.xCm - target.xCm;
+      const dy = other.yCm - target.yCm;
+      const distSq = dx * dx + dy * dy;
+
+      if (candidates.length < limit || distSq < maxDistSqInCandidates) {
+        const distanceCm = Math.round(Math.sqrt(distSq) * 10) / 10;
+        const requiredRadiusSum = target.canopyRadiusCm + other.canopyRadiusCm;
+        const clearanceCm = Math.round((distanceCm - requiredRadiusSum) * 10) / 10;
+        const item: PlantNeighborMeasurement = {
+          neighborId: other.id,
+          neighborLabel: other.label,
+          distanceCm,
+          clearanceCm,
+          isCrowded: clearanceCm < 0,
+        };
+
+        // Insert into candidates sorted by distanceCm ascending
+        let insertIdx = 0;
+        while (insertIdx < candidates.length && candidates[insertIdx].distanceCm <= distanceCm) {
+          insertIdx++;
+        }
+        candidates.splice(insertIdx, 0, item);
+        if (candidates.length > limit) {
+          candidates.pop();
+        }
+        const furthest = candidates[candidates.length - 1];
+        maxDistSqInCandidates = furthest.distanceCm * furthest.distanceCm;
+      }
+    }
+    return candidates;
+  }
+
+  // Standard full sort when limit is omitted (preserves 100% backward compatibility)
   return others
     .filter((other) => other.id !== target.id)
     .map((other) => {
@@ -176,36 +219,78 @@ function findNearestNeighborLinear(
   target: PlacedPlantSpatialCm,
   plants: PlacedPlantSpatialCm[],
 ): PlantNeighborMeasurement | null {
-  let nearest: PlantNeighborMeasurement | null = null;
-  let minDistance = Infinity;
+  let nearestOther: PlacedPlantSpatialCm | null = null;
+  let minDistanceSq = Infinity;
 
   for (let i = 0; i < plants.length; i++) {
     const other = plants[i];
     if (other.id === target.id) continue;
     const dx = other.xCm - target.xCm;
     const dy = other.yCm - target.yCm;
-    const distanceCm = Math.round(Math.hypot(dx, dy) * 10) / 10;
-    if (distanceCm < minDistance) {
-      minDistance = distanceCm;
-      const requiredRadiusSum = target.canopyRadiusCm + other.canopyRadiusCm;
-      const clearanceCm = Math.round((distanceCm - requiredRadiusSum) * 10) / 10;
-      nearest = {
-        neighborId: other.id,
-        neighborLabel: other.label,
-        distanceCm,
-        clearanceCm,
-        isCrowded: clearanceCm < 0,
-      };
+    const distSq = dx * dx + dy * dy;
+    if (distSq < minDistanceSq) {
+      minDistanceSq = distSq;
+      nearestOther = other;
     }
   }
 
-  return nearest;
+  if (nearestOther) {
+    const distanceCm = Math.round(Math.sqrt(minDistanceSq) * 10) / 10;
+    const requiredRadiusSum = target.canopyRadiusCm + nearestOther.canopyRadiusCm;
+    const clearanceCm = Math.round((distanceCm - requiredRadiusSum) * 10) / 10;
+    return {
+      neighborId: nearestOther.id,
+      neighborLabel: nearestOther.label,
+      distanceCm,
+      clearanceCm,
+      isCrowded: clearanceCm < 0,
+    };
+  }
+
+  return null;
+}
+
+interface SpatialGridIndex {
+  cellSize: number;
+  grid: Map<string, PlacedPlantSpatialCm[]>;
+}
+
+const spatialGridCache = new WeakMap<PlacedPlantSpatialCm[], SpatialGridIndex>();
+
+function getOrCreateSpatialGrid(plants: PlacedPlantSpatialCm[]): SpatialGridIndex {
+  let cached = spatialGridCache.get(plants);
+  if (cached) return cached;
+
+  let maxRadius = 15;
+  for (let i = 0; i < plants.length; i++) {
+    if (plants[i].canopyRadiusCm > maxRadius) {
+      maxRadius = plants[i].canopyRadiusCm;
+    }
+  }
+  const cellSize = Math.max(50, maxRadius * 2);
+
+  const grid = new Map<string, PlacedPlantSpatialCm[]>();
+  for (let i = 0; i < plants.length; i++) {
+    const p = plants[i];
+    const key = `${Math.floor(p.xCm / cellSize)},${Math.floor(p.yCm / cellSize)}`;
+    let cell = grid.get(key);
+    if (!cell) {
+      cell = [];
+      grid.set(key, cell);
+    }
+    cell.push(p);
+  }
+
+  cached = { cellSize, grid };
+  spatialGridCache.set(plants, cached);
+  return cached;
 }
 
 /**
  * Fast O(1) average nearest neighbor lookup using Spatial Hash Grid when plants are dense,
  * falling back to linear scan if target is isolated or plants count is small.
- * Avoids allocating neighbor arrays and O(N log N) sorting.
+ * Uses a WeakMap spatial hash cache on the plants array to eliminate rebuilding the grid
+ * on every single pointer movement frame.
  */
 export function findNearestNeighbor(
   target: PlacedPlantSpatialCm,
@@ -217,55 +302,69 @@ export function findNearestNeighbor(
     return findNearestNeighborLinear(target, plants);
   }
 
-  let maxRadius = target.canopyRadiusCm;
-  for (let i = 0; i < plants.length; i++) {
-    if (plants[i].canopyRadiusCm > maxRadius) {
-      maxRadius = plants[i].canopyRadiusCm;
-    }
-  }
-  const cellSize = Math.max(50, maxRadius * 2);
-
-  const grid = new Map<string, PlacedPlantSpatialCm[]>();
-  for (let i = 0; i < plants.length; i++) {
-    const p = plants[i];
-    if (p.id === target.id) continue;
-    const key = `${Math.floor(p.xCm / cellSize)},${Math.floor(p.yCm / cellSize)}`;
-    let cell = grid.get(key);
-    if (!cell) {
-      cell = [];
-      grid.set(key, cell);
-    }
-    cell.push(p);
-  }
-
+  const { cellSize, grid } = getOrCreateSpatialGrid(plants);
   const cx = Math.floor(target.xCm / cellSize);
   const cy = Math.floor(target.yCm / cellSize);
 
   let nearestOther: PlacedPlantSpatialCm | null = null;
-  let minDistanceCm = Infinity;
+  let minDistanceSq = Infinity;
 
+  // Search 1-ring neighborhood (3x3 = 9 cells)
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       const cell = grid.get(`${cx + dx},${cy + dy}`);
       if (!cell) continue;
       for (let j = 0; j < cell.length; j++) {
         const other = cell[j];
-        const dist = Math.round(Math.hypot(other.xCm - target.xCm, other.yCm - target.yCm) * 10) / 10;
-        if (dist < minDistanceCm) {
-          minDistanceCm = dist;
+        if (other.id === target.id) continue;
+        const distSq = (other.xCm - target.xCm) ** 2 + (other.yCm - target.yCm) ** 2;
+        if (distSq < minDistanceSq) {
+          minDistanceSq = distSq;
           nearestOther = other;
         }
       }
     }
   }
 
-  if (nearestOther && minDistanceCm < cellSize) {
+  if (nearestOther && minDistanceSq < (cellSize * cellSize)) {
+    const distanceCm = Math.round(Math.sqrt(minDistanceSq) * 10) / 10;
     const requiredRadiusSum = target.canopyRadiusCm + nearestOther.canopyRadiusCm;
-    const clearanceCm = Math.round((minDistanceCm - requiredRadiusSum) * 10) / 10;
+    const clearanceCm = Math.round((distanceCm - requiredRadiusSum) * 10) / 10;
     return {
       neighborId: nearestOther.id,
       neighborLabel: nearestOther.label,
-      distanceCm: minDistanceCm,
+      distanceCm,
+      clearanceCm,
+      isCrowded: clearanceCm < 0,
+    };
+  }
+
+  // Expanded 2-ring neighborhood (5x5 = 25 cells) for moderately distant neighbors
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -2; dy <= 2; dy++) {
+      if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) continue; // Already searched
+      const cell = grid.get(`${cx + dx},${cy + dy}`);
+      if (!cell) continue;
+      for (let j = 0; j < cell.length; j++) {
+        const other = cell[j];
+        if (other.id === target.id) continue;
+        const distSq = (other.xCm - target.xCm) ** 2 + (other.yCm - target.yCm) ** 2;
+        if (distSq < minDistanceSq) {
+          minDistanceSq = distSq;
+          nearestOther = other;
+        }
+      }
+    }
+  }
+
+  if (nearestOther && minDistanceSq < ((cellSize * 2) ** 2)) {
+    const distanceCm = Math.round(Math.sqrt(minDistanceSq) * 10) / 10;
+    const requiredRadiusSum = target.canopyRadiusCm + nearestOther.canopyRadiusCm;
+    const clearanceCm = Math.round((distanceCm - requiredRadiusSum) * 10) / 10;
+    return {
+      neighborId: nearestOther.id,
+      neighborLabel: nearestOther.label,
+      distanceCm,
       clearanceCm,
       isCrowded: clearanceCm < 0,
     };

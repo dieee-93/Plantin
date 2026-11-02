@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
+import { interactionProfiler } from './telemetry/interactionProfiler';
 
 export interface CanopyRingItem {
   id: string;
@@ -13,6 +14,7 @@ export interface CanopyRingItem {
 
 export interface CanopyRingsInstancedProps {
   rings: CanopyRingItem[];
+  selectedPlantId?: string | null;
   onSelectPlant?: (plantId: string) => void;
 }
 
@@ -26,10 +28,20 @@ const NORMAL_COLOR = new THREE.Color('#22c55e');
  */
 export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.memo(({
   rings,
+  selectedPlantId,
   onSelectPlant,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const count = rings.length;
+  const prevSelectedIdRef = useRef<string | null>(null);
+
+  const plantIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < rings.length; i++) {
+      map.set(rings[i].id, i);
+    }
+    return map;
+  }, [rings]);
 
   const baseGeometry = useMemo(() => {
     // Unit ring: inner radius 0.82, outer radius 1.0, 24 segments
@@ -51,20 +63,31 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
     [],
   );
 
+  // Clean disposal of Three.js GPU resources on unmount
   useEffect(() => {
+    const mesh = meshRef.current;
     return () => {
       baseGeometry.dispose();
       material.dispose();
+      if (mesh) {
+        mesh.geometry?.dispose();
+        mesh.instanceMatrix?.dispose();
+        mesh.instanceColor?.dispose();
+        mesh.dispose();
+      }
     };
   }, [baseGeometry, material]);
 
+  // 1. Initial matrix layout and base instance color assignment.
+  // ONLY runs when plant layout changes (sowing, moving, removing plants).
+  // Selection does NOT re-run this effect, eliminating 124,000 matrix float rewrites.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
 
     const tStart = performance.now();
 
-    // Direct TypedArray assignment (Float32Array): 10-50x faster than dummy.updateMatrix() for 5,000 instances
+    // Direct TypedArray assignment (Float32Array)
     const matrixArray = mesh.instanceMatrix.array as Float32Array;
 
     if (!mesh.instanceColor) {
@@ -97,7 +120,8 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
       matrixArray[mOffset + 15] = 1;
 
       const cOffset = i * 3;
-      const col = ring.isSelected
+      const isSelected = Boolean(ring.isSelected);
+      const col = isSelected
         ? SELECTED_COLOR
         : ring.isCrowded
         ? CROWDED_COLOR
@@ -110,9 +134,66 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
+    prevSelectedIdRef.current = null;
 
-    roomLoadProfiler.markGpuBuffers('canopy', count, performance.now() - tStart);
+    const elapsed = performance.now() - tStart;
+    roomLoadProfiler.markGpuBuffers('canopy', count, elapsed);
+    interactionProfiler.recordBufferUpdate({
+      layer: 'canopy',
+      count,
+      durationMs: elapsed,
+      reason: 'layout',
+    });
   }, [rings, count]);
+
+  // 2. High-speed selective color update when selectedPlantId changes.
+  // Updates only the 3 floats for the previously selected and newly selected instance.
+  // ZERO matrix modifications, ZERO bounding sphere recalculations.
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !mesh.instanceColor || count === 0) return;
+
+    const prevId = prevSelectedIdRef.current;
+    if (prevId === selectedPlantId) return;
+
+    const tStart = performance.now();
+    const colorArray = mesh.instanceColor.array as Float32Array;
+
+    // Restore previous plant's color
+    if (prevId !== null) {
+      const prevIdx = plantIndexMap.get(prevId);
+      if (prevIdx !== undefined && rings[prevIdx]) {
+        const ring = rings[prevIdx];
+        const baseCol = ring.isCrowded ? CROWDED_COLOR : NORMAL_COLOR;
+        const cOffset = prevIdx * 3;
+        colorArray[cOffset] = baseCol.r;
+        colorArray[cOffset + 1] = baseCol.g;
+        colorArray[cOffset + 2] = baseCol.b;
+      }
+    }
+
+    // Set new selected plant's color
+    if (selectedPlantId) {
+      const newIdx = plantIndexMap.get(selectedPlantId);
+      if (newIdx !== undefined && rings[newIdx]) {
+        const cOffset = newIdx * 3;
+        colorArray[cOffset] = SELECTED_COLOR.r;
+        colorArray[cOffset + 1] = SELECTED_COLOR.g;
+        colorArray[cOffset + 2] = SELECTED_COLOR.b;
+      }
+    }
+
+    mesh.instanceColor.needsUpdate = true;
+    prevSelectedIdRef.current = selectedPlantId ?? null;
+
+    const elapsed = performance.now() - tStart;
+    interactionProfiler.recordBufferUpdate({
+      layer: 'canopy',
+      count: 2,
+      durationMs: elapsed,
+      reason: 'selection',
+    });
+  }, [selectedPlantId, plantIndexMap, rings, count]);
 
   if (count === 0) return null;
 

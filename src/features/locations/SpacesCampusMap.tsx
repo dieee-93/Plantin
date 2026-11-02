@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { motion } from 'motion/react'
 import type { FacilityLocation, LocationType } from '@/domain/location'
-import { getLocationGridDimensions } from '@/domain/location'
 import type { Individual } from '@/domain/individual'
 import type { SeedLot } from '@/domain/seedLot'
 import type { Accession } from '@/domain/accession'
@@ -12,7 +11,7 @@ import {
   Plus, Trash2, Sprout, Package, Users, Eye, Loader2
 } from 'lucide-react'
 
-export interface IsometricCampusMapProps {
+export interface SpacesCampusMapProps {
   locations: FacilityLocation[]
   individuals: Individual[]
   seedLots: SeedLot[]
@@ -99,10 +98,10 @@ function renderMiniPlantGlyph(preview: MiniPlantPreview | undefined, isEmptySlot
 }
 
 /**
- * Diorama arquitectónico 2.5D Isométrico con espesor 3D real, gradientes de luz
+ * Diorama arquitectónico 2.5D con espesor 3D real, gradientes de luz
  * y equipamiento específico según el tipo de instalación.
  */
-function IsometricBuildingGraphic({
+function BuildingGraphic({
   type,
   activeCount,
   miniPreviews = [],
@@ -115,7 +114,7 @@ function IsometricBuildingGraphic({
 }) {
   const uid = React.useId().replace(/:/g, '')
 
-  // 6 posiciones isométricas internas para mostrar macetas vacías o plantas activas
+  // 6 posiciones internas para mostrar macetas vacías o plantas activas
   const slotCoords = [
     { x: -18, y: -12 },
     { x: 2, y: -2 },
@@ -432,7 +431,7 @@ function IsometricBuildingGraphic({
   )
 }
 
-export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
+export const SpacesCampusMap: React.FC<SpacesCampusMapProps> = ({
   locations,
   individuals,
   seedLots,
@@ -510,13 +509,13 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
         }}
       >
         <div style={{ maxWidth: 240, margin: '0 auto 12px' }}>
-          <IsometricBuildingGraphic type="greenhouse" activeCount={3} />
+          <BuildingGraphic type="greenhouse" activeCount={3} />
         </div>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
           No hay ubicaciones
         </h3>
         <p style={{ fontSize: 13, color: 'var(--text-tertiary)', maxWidth: 460, margin: '0 auto 16px' }}>
-          Crea tu primera sala, invernadero o parcela experimental en el panel lateral para visualizar tu mapa isométrico 2.5D y sembrar tus plantas.
+          Crea tu primera sala, invernadero o parcela experimental en el panel lateral para visualizar tu mapa de espacios y sembrar tus plantas.
         </p>
         <button
           type="button"
@@ -554,7 +553,6 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
         const locIndividuals = individualsByLocation.get(loc.id) ?? []
         const activeLocIndividuals = locIndividuals.filter(ind => ind.status === 'active')
         const locSeedLots = seedLotsByLocation.get(loc.id) ?? []
-        const { rows, cols } = getLocationGridDimensions(loc, locIndividuals.length)
         const isEntering = enteringRoomId === loc.id
 
         // Previews botánicos por especie para el edificio 2.5D
@@ -613,7 +611,7 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
             }}
           >
             <div>
-              {/* Cabecera con título, grilla y acción de borrado */}
+              {/* Cabecera con título y acción de borrado */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -628,18 +626,6 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                       }}
                     >
                       {TYPE_LABELS[loc.type]}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontFamily: 'var(--font-mono)',
-                        padding: '1px 6px',
-                        borderRadius: 4,
-                        background: 'var(--surface-subtle)',
-                        color: 'var(--text-tertiary)',
-                      }}
-                    >
-                      Grilla {rows}×{cols}
                     </span>
                   </div>
                   <h3 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
@@ -708,11 +694,11 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                 </p>
               )}
 
-              {/* Escena Isométrica Clickeable (Drill-down al interior de la sala) */}
+              {/* Escena Clickeable (Drill-down al interior de la sala) */}
               <div
                 role="button"
                 tabIndex={0}
-                aria-label={`Entrar a vista isométrica de ${loc.name}`}
+                aria-label={`Entrar al espacio de ${loc.name}`}
                 onClick={() => {
                   if (!enteringRoomId) onSelectRoom(loc.id)
                 }}
@@ -759,7 +745,7 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                   </div>
                 )}
 
-                <IsometricBuildingGraphic
+                <BuildingGraphic
                   type={loc.type}
                   activeCount={activeLocIndividuals.length}
                   miniPreviews={miniPreviews}
@@ -787,7 +773,7 @@ export const SpacesCampusMap: React.FC<IsometricCampusMapProps> = ({
                     ) : (
                       <>
                         <Eye size={12} />
-                        Abrir plano isométrico interior
+                        Abrir plano de espacio interior
                       </>
                     )}
                   </span>

@@ -36,6 +36,7 @@ import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
 import { SpacePlantBuilderShelf } from './SpacePlantBuilderShelf';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
+import { interactionProfiler } from './telemetry/interactionProfiler';
 import {
   computeCursorPlantPreview,
   computeDraftPathMetrics,
@@ -199,6 +200,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     cameraAzimuthDegRef.current = cameraAzimuthDeg;
   }, [cameraAzimuthDeg]);
   const orbitControlsRef = useRef<any>(null);
+  const isOrbitingRef = useRef<boolean>(false);
   const [zoomPercent, setZoomPercent] = useState<number>(75);
   const [showLabels, setShowLabels] = useState<boolean>(true);
   const [showRoof, setShowRoof] = useState<boolean>(true);
@@ -259,6 +261,18 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     createInitialBuilderState,
   );
 
+  const prevActiveToolRef = useRef(builderState.activeTool);
+  useEffect(() => {
+    if (prevActiveToolRef.current !== builderState.activeTool) {
+      interactionProfiler.recordToolChange({
+        fromTool: prevActiveToolRef.current,
+        toTool: builderState.activeTool,
+        durationMs: 0,
+      });
+      prevActiveToolRef.current = builderState.activeTool;
+    }
+  }, [builderState.activeTool]);
+
   const bbox = useMemo(
     () => computeBoundingBoxCm(layout.baseBoundary),
     [layout.baseBoundary],
@@ -301,11 +315,19 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     [builderState],
   );
 
-  const cursorPreview = useMemo(
-    () =>
-      computeCursorPlantPreview(builderState, regions, layout.placedPlants),
-    [builderState, regions, layout.placedPlants],
-  );
+  const cursorPreview = useMemo(() => {
+    if (!CURSOR_TOOLS.includes(builderState.activeTool) || !builderState.cursorCm) {
+      return null;
+    }
+    const tStart = performance.now();
+    const preview = computeCursorPlantPreview(builderState, regions, layout.placedPlants);
+    const elapsed = performance.now() - tStart;
+    interactionProfiler.recordCursorPreview({
+      durationMs: elapsed,
+      totalPlants: layout.placedPlants.length,
+    });
+    return preview;
+  }, [builderState, regions, layout.placedPlants]);
 
   const selectedPlant = useMemo(
     () =>
@@ -483,7 +505,16 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
   const selectedPlantNeighbors = useMemo(() => {
     if (!selectedPlant) return [];
-    return measurePlantNeighbors(selectedPlant, layout.placedPlants);
+    const tStart = performance.now();
+    const neighbors = measurePlantNeighbors(selectedPlant, layout.placedPlants, 5);
+    const elapsed = performance.now() - tStart;
+    interactionProfiler.recordPlantSelection({
+      plantId: selectedPlant.id,
+      durationMs: elapsed,
+      neighborCount: neighbors.length,
+      totalPlants: layout.placedPlants.length,
+    });
+    return neighbors;
   }, [selectedPlant, layout.placedPlants]);
 
   const cameraGroundPosCm = useMemo<Point2DCm>(() => {
@@ -516,7 +547,12 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   };
 
   useEffect(() => {
-    if (viewMode === '3d' && orbitControlsRef.current && cameraAzimuthDeg !== 0) {
+    if (
+      viewMode === '3d' &&
+      orbitControlsRef.current &&
+      cameraAzimuthDeg !== 0 &&
+      !isOrbitingRef.current
+    ) {
       orbitControlsRef.current.setAzimuthalAngle((cameraAzimuthDeg * Math.PI) / 180);
       orbitControlsRef.current.update();
     }
@@ -896,6 +932,12 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 target={[0, 0, 0]}
                 maxPolarAngle={Math.PI / 2 - 0.05}
                 minPolarAngle={0.05}
+                onStart={() => {
+                  isOrbitingRef.current = true;
+                }}
+                onEnd={() => {
+                  isOrbitingRef.current = false;
+                }}
                 onChange={(e) => {
                   const controls = e?.target;
                   if (controls?.object) {
