@@ -25,10 +25,8 @@ describe('Space3DViewer - Interactive 1:1 Space Builder & Viewer', () => {
     fireEvent.click(screen.getByRole('button', { name: /Trazar Camino/i }));
 
     // Select 100 cm width and Grava material
-    fireEvent.click(screen.getByRole('button', { name: '100 cm' }));
-    fireEvent.change(screen.getByLabelText(/Material de Camino/i), {
-      target: { value: 'gravel' },
-    });
+    fireEvent.click(screen.getAllByRole('button', { name: '100 cm' })[0]);
+    fireEvent.click(screen.getByText('Grava Drenante'));
 
     // Click two points on the interactive 1:1 plane or use the 1:1 path coordinates action:
     // Start at (100, 520) and End at (600, 520) across the lower cultivable sector

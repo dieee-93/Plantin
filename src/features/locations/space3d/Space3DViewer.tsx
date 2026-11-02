@@ -32,6 +32,7 @@ import { SpaceWallActionBar } from './SpaceWallActionBar';
 import { SpaceWallBuilderShelf } from './SpaceWallBuilderShelf';
 import { SpaceRoofActionBar } from './SpaceRoofActionBar';
 import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
+import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import {
   computeCursorPlantPreview,
@@ -1472,6 +1473,29 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               }
             }}
             onSanitizeBoundary={() => sanitizeBoundary(locationId)}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+        </div>
+      )}
+
+      {/* ── 3.8. Contextual Builder Shelf for Paths & Walkways ── */}
+      {builderState.activeTool === 'draw_path' && (
+        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
+          <SpacePathBuilderShelf
+            pathWidthCm={builderState.pathWidthCm}
+            onChangePathWidth={(widthCm) =>
+              dispatch({ type: 'SET_PATH_WIDTH', widthCm })
+            }
+            pathMaterial={builderState.pathMaterial}
+            onChangePathMaterial={(mat) =>
+              dispatch({ type: 'SET_PATH_MATERIAL', material: mat })
+            }
+            paths={layout.paths}
+            onRemovePath={(pathId) => removePathStroke(locationId, pathId)}
+            draftStartCm={builderState.draftStartCm}
+            onCancelDraft={() =>
+              dispatch({ type: 'SET_DRAFT_START', pointCm: null })
+            }
             onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
         </div>

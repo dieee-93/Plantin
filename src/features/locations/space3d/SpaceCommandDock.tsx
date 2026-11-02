@@ -59,13 +59,6 @@ const TOOL_BUTTONS: Array<{ tool: SpaceBuilderTool; label: string }> = [
 
 const PATH_WIDTH_OPTIONS_CM = [60, 80, 100, 120];
 
-const PATH_MATERIAL_OPTIONS: Array<{ value: FloorMaterialType; label: string }> = [
-  { value: 'concrete', label: 'Cemento' },
-  { value: 'gravel', label: 'Grava' },
-  { value: 'tile', label: 'Ladrillo' },
-  { value: 'wood', label: 'Madera' },
-];
-
 export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   mode,
   onChangeMode,
@@ -76,10 +69,10 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   onChangeTool,
   pathWidthCm,
   onChangePathWidth,
-  pathMaterial,
-  onChangePathMaterial,
+  pathMaterial: _pathMaterial,
+  onChangePathMaterial: _onChangePathMaterial,
   paths,
-  onRemovePath,
+  onRemovePath: _onRemovePath,
   plantCropCode,
   onChangePlantCropCode,
   plantSpacingCm,
@@ -168,63 +161,31 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
 
           {/* Contextual Options for Path Tool */}
           {activeTool === 'draw_path' && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-1.5 text-xs">
-              <span className="font-medium text-slate-600">Ancho:</span>
-              <div className="flex items-center gap-1">
-                {PATH_WIDTH_OPTIONS_CM.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => onChangePathWidth(w)}
-                    className={`rounded-full px-2.5 py-0.5 font-mono font-semibold ${
-                      pathWidthCm === w
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {w} cm
-                  </button>
-                ))}
-              </div>
-
-              <label className="flex items-center gap-1 font-medium text-slate-600">
-                <span>Material de Camino</span>
-                <select
-                  aria-label="Material de Camino"
-                  value={pathMaterial}
-                  onChange={(e) =>
-                    onChangePathMaterial(e.target.value as FloorMaterialType)
-                  }
-                  className="rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-800"
-                >
-                  {PATH_MATERIAL_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {paths.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1">
-                  {paths.map((p) => (
-                    <span
-                      key={p.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-[10px] text-slate-700"
+            <div className="flex flex-col gap-1.5 border-t border-slate-100 pt-1.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <span>🛣️ Trazar Caminos & Senderos</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    ({paths.length} tramos · Selección visual en el panel superior)
+                  </span>
+                </span>
+                <div className="flex items-center gap-1">
+                  {PATH_WIDTH_OPTIONS_CM.map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => onChangePathWidth(w)}
+                      className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold transition ${
+                        pathWidthCm === w
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
                     >
-                      {p.label ?? p.id} ({p.widthCm} cm)
-                      <button
-                        type="button"
-                        aria-label={`Eliminar ${p.label ?? p.id}`}
-                        onClick={() => onRemovePath(p.id)}
-                        className="ml-0.5 font-bold text-red-600 hover:text-red-800"
-                      >
-                        ×
-                      </button>
-                    </span>
+                      {w} cm
+                    </button>
                   ))}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
