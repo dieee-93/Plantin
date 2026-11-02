@@ -146,4 +146,37 @@ describe('SpaceLensBar - Top-Right Glassmorphism Quick Pills & Floating Analytic
 
     expect(screen.queryByTestId('toggle-roof-btn')).not.toBeInTheDocument();
   });
+
+  it('limits plant neighbor list to 30 items and shows count indicator when layout has > 30 plants', () => {
+    const manyPlantsLayout = {
+      ...layout,
+      placedPlants: Array.from({ length: 45 }, (_, i) => ({
+        id: `plant-${i}`,
+        xCm: i * 20,
+        yCm: 100,
+        canopyRadiusCm: 15,
+        label: `Planta ${i}`,
+        cropCode: 'tomato',
+      })),
+    };
+
+    render(
+      <SpaceLensBar
+        layout={manyPlantsLayout}
+        showLabels={true}
+        onToggleShowLabels={vi.fn()}
+        activeLens={null}
+        onSelectLens={vi.fn()}
+        speciesFilter={null}
+        onSelectSpeciesFilter={vi.fn()}
+        onUpdateSolar={vi.fn()}
+        onApplyPreset={vi.fn()}
+        defaultSolarOpen={true}
+      />,
+    );
+
+    expect(screen.getByText(/Mostrando 30 de 45 plantas/i)).toBeInTheDocument();
+    // Verify first plant and nearest neighbor distance
+    expect(screen.getByText(/Planta 0 ↔ Planta 1: 20 cm/i)).toBeInTheDocument();
+  });
 });

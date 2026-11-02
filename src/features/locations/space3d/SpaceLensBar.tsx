@@ -4,7 +4,7 @@ import { computeSpaceRegions } from '@/domain/spaceGeometry';
 import {
   computeShadowLengthCm,
   computeSunPosition,
-  measurePlantNeighbors,
+  findNearestNeighbor,
   type SolarSeason,
 } from '@/domain/solarAndPlantSpatial';
 import {
@@ -89,12 +89,13 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
   );
 
   const plantRows = useMemo(() => {
-    return layout.placedPlants.map((plant) => {
-      const neighbors = measurePlantNeighbors(plant, layout.placedPlants);
-      const nearest = neighbors[0] ?? null;
+    if (!isSolarOpen) return [];
+    const sample = layout.placedPlants.slice(0, 30);
+    return sample.map((plant) => {
+      const nearest = findNearestNeighbor(plant, layout.placedPlants);
       return { plant, nearest };
     });
-  }, [layout.placedPlants]);
+  }, [isSolarOpen, layout.placedPlants]);
 
   // Derive unique species from placed plants if availableSpecies is empty
   const computedSpecies = useMemo(() => {
@@ -449,27 +450,34 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
               {plantRows.length === 0 ? (
                 <li className="text-slate-400 italic">No hay plantas sembradas en este espacio</li>
               ) : (
-                plantRows.map(({ plant, nearest }) => (
-                  <li
-                    key={plant.id}
-                    className={`flex items-center justify-between rounded px-2 py-0.5 font-mono ${
-                      nearest?.isCrowded
-                        ? 'bg-red-50 text-red-800'
-                        : 'bg-emerald-50/70 text-emerald-900'
-                    }`}
-                  >
-                    {nearest ? (
-                      <span>
-                        {plant.label} ↔ {nearest.neighborLabel}: {nearest.distanceCm} cm
-                        {nearest.isCrowded
-                          ? ` (Solapamiento ${nearest.clearanceCm} cm)`
-                          : ` (Holgura +${nearest.clearanceCm} cm)`}
-                      </span>
-                    ) : (
-                      <span>{plant.label}: Sin vecinos cercanos</span>
-                    )}
-                  </li>
-                ))
+                <>
+                  {plantRows.map(({ plant, nearest }) => (
+                    <li
+                      key={plant.id}
+                      className={`flex items-center justify-between rounded px-2 py-0.5 font-mono ${
+                        nearest?.isCrowded
+                          ? 'bg-red-50 text-red-800'
+                          : 'bg-emerald-50/70 text-emerald-900'
+                      }`}
+                    >
+                      {nearest ? (
+                        <span>
+                          {plant.label} ↔ {nearest.neighborLabel}: {nearest.distanceCm} cm
+                          {nearest.isCrowded
+                            ? ` (Solapamiento ${nearest.clearanceCm} cm)`
+                            : ` (Holgura +${nearest.clearanceCm} cm)`}
+                        </span>
+                      ) : (
+                        <span>{plant.label}: Sin vecinos cercanos</span>
+                      )}
+                    </li>
+                  ))}
+                  {layout.placedPlants.length > 30 && (
+                    <li className="py-1 text-center text-[10px] text-slate-500 italic">
+                      Mostrando 30 de {layout.placedPlants.length} plantas
+                    </li>
+                  )}
+                </>
               )}
             </ul>
           </div>
