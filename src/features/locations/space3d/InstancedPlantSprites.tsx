@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useTexture } from '@react-three/drei';
 import { resolvePlantSpriteUrl } from './SpacePlantSprite';
 import { calculatePlantDimensions, PLANT_GROUND_ELEVATION_M } from './plantMetrics';
+import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 
 export interface InstancedPlantItem {
   id: string;
@@ -201,6 +202,8 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
 
+    const tStart = performance.now();
+
     // Direct TypedArray assignment (Float32Array): eliminates 5,000 matrix compositions on CPU
     const matrixArray = mesh.instanceMatrix.array as Float32Array;
 
@@ -250,6 +253,8 @@ export const InnerInstancedMesh: React.FC<InnerInstancedMeshProps> = ({
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
+
+    roomLoadProfiler.markGpuBuffers('sprites', count, performance.now() - tStart);
   }, [plants, count, plantDims]);
 
   return (

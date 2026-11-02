@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import {
   computeSpaceRegions,
@@ -24,6 +24,8 @@ import {
 import { SpacePlantSprite } from './SpacePlantSprite';
 import { CanopyRingsInstanced, type CanopyRingItem } from './CanopyRingsInstanced';
 import { InstancedPlantGroup, type InstancedPlantItem } from './InstancedPlantSprites';
+import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
+import { PerfFrameTracker } from './telemetry/PerfFrameTracker';
 
 const CM_TO_M = 0.01;
 const CUTAWAY_WALL_HEIGHT_M = 0.15;
@@ -1051,11 +1053,42 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   );
   const walkableConfig = useMemo(() => getFloorMaterialConfig('concrete'), []);
 
+  // Progressive Plant Population:
+  // For massive rooms (>1000 plants like "dos asad" with 5000), defer plant mounting to the next tick / RAF.
+  // This allows the 3D infrastructure (floor, walls, roof, lights, camera, controls) to mount in 0 ms real-time.
+  const plantCount = layout.placedPlants.length;
+  const isMassive = plantCount > 1000;
+  const [isPlantsReady, setIsPlantsReady] = useState(() => !isMassive);
+
+  useEffect(() => {
+    if (!isMassive) {
+      setIsPlantsReady(true);
+      return;
+    }
+    let rafId: number;
+    if (typeof requestAnimationFrame !== 'undefined') {
+      rafId = requestAnimationFrame(() => {
+        setIsPlantsReady(true);
+      });
+    } else {
+      const timer = setTimeout(() => setIsPlantsReady(true), 0);
+      return () => clearTimeout(timer);
+    }
+    return () => {
+      if (typeof cancelAnimationFrame !== 'undefined' && rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [isMassive, layout.locationId]);
+
   // Precomputed crowded plant IDs using Spatial Hash Grid in O(N)
-  const crowdedPlantIds = useMemo(
-    () => computeCrowdedPlantIds(layout.placedPlants),
-    [layout.placedPlants],
-  );
+  const crowdedPlantIds = useMemo(() => {
+    if (!isPlantsReady) return new Set<string>();
+    roomLoadProfiler.markGeometryStart();
+    const result = computeCrowdedPlantIds(layout.placedPlants);
+    roomLoadProfiler.markGeometryEnd(layout.placedPlants.length);
+    return result;
+  }, [isPlantsReady, layout.placedPlants]);
 
   const isIndoorClosed = layout.roofConfig?.kind === 'flat_ceiling';
   const maxDimensionM = Math.max(bbox.widthCm, bbox.depthCm) * CM_TO_M;
@@ -1160,14 +1193,21 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
         onInsertVertexAtEdge={onInsertVertexAtEdge}
       />
 
-      {/* 1:1 Placed plants layer */}
-      <PlantsLayer
-        placedPlants={layout.placedPlants}
-        selectedPlantId={selectedPlantId}
-        crowdedPlantIds={crowdedPlantIds}
-        centerCm={centerCm}
-        onSelectPlant={onSelectPlant}
-      />
+      {/* 1:1 Placed plants layer (deferred/progressive for massive rooms > 1000 plants) */}
+      {isPlantsReady && (
+        <React.Suspense fallback={null}>
+          <PlantsLayer
+            placedPlants={layout.placedPlants}
+            selectedPlantId={selectedPlantId}
+            crowdedPlantIds={crowdedPlantIds}
+            centerCm={centerCm}
+            onSelectPlant={onSelectPlant}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Frame Tracker for T4 WebGL paint profiling */}
+      <PerfFrameTracker plantCount={plantCount} isReady={isPlantsReady} />
 
       {/* 3D Architectural Roof layer */}
       <RoofLayer

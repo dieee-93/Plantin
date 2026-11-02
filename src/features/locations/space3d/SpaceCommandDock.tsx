@@ -1,10 +1,7 @@
 import React from 'react';
 import { ChevronUp, Plus, Redo2, Sprout, Undo2, Wrench } from 'lucide-react';
 import type { FloorMaterialType } from '@/domain/spaceGeometry';
-import {
-  PLANT_BUILDER_PRESETS,
-  type SpaceBuilderTool,
-} from './spaceBuilderReducer';
+import type { SpaceBuilderTool } from './spaceBuilderReducer';
 
 export interface SpaceCommandDockProps {
   mode: 'crop' | 'design';
@@ -74,11 +71,11 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   paths,
   onRemovePath: _onRemovePath,
   plantCropCode,
-  onChangePlantCropCode,
+  onChangePlantCropCode: _onChangePlantCropCode,
   plantSpacingCm,
-  onChangePlantSpacing,
-  cultivableSectorCount,
-  onFillSector,
+  onChangePlantSpacing: _onChangePlantSpacing,
+  cultivableSectorCount: _cultivableSectorCount,
+  onFillSector: _onFillSector,
   customWidthM: _customWidthM,
   setCustomWidthM: _setCustomWidthM,
   customDepthM: _customDepthM,
@@ -259,48 +256,17 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
           {(activeTool === 'plant_single' ||
             activeTool === 'plant_line' ||
             activeTool === 'plant_fill_sector') && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-1.5 text-xs">
-              <label className="flex items-center gap-1.5 font-medium text-slate-600">
-                <span>Cultivo a sembrar</span>
-                <select
-                  aria-label="Cultivo a sembrar"
-                  value={plantCropCode}
-                  onChange={(e) => onChangePlantCropCode(e.target.value)}
-                  className="rounded border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-800"
-                >
-                  {Object.entries(PLANT_BUILDER_PRESETS).map(([key, tpl]) => (
-                    <option key={key} value={key}>
-                      {tpl.label} (Ø {tpl.canopyRadiusCm * 2} cm)
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex items-center gap-1 font-medium text-slate-600">
-                <span>Espaciado (cm)</span>
-                <input
-                  type="number"
-                  aria-label="Espaciado entre plantas (cm)"
-                  min={10}
-                  max={200}
-                  step={5}
-                  value={plantSpacingCm}
-                  onChange={(e) => onChangePlantSpacing(Number(e.target.value) || 30)}
-                  className="w-16 rounded border border-slate-200 px-1.5 py-0.5 font-mono"
-                />
-              </label>
-
-              <div className="flex flex-wrap items-center gap-1">
-                {Array.from({ length: cultivableSectorCount }).map((_, idx) => (
-                  <button
-                    key={`fill-sector-btn-${idx}`}
-                    type="button"
-                    onClick={() => onFillSector(idx)}
-                    className="rounded-lg bg-emerald-600 px-2.5 py-0.5 font-semibold text-white hover:bg-emerald-700"
-                  >
-                    Rellenar Sector {idx + 1}
-                  </button>
-                ))}
+            <div className="flex flex-col gap-1.5 border-t border-slate-100 pt-1.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <span>🌱 Siembra & Cultivo</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    ({plantCropCode} · Marco {plantSpacingCm} cm)
+                  </span>
+                </span>
+                <span className="text-[11px] text-emerald-600 font-medium italic">
+                  💡 Ajusta especies botánicas y marco de plantación en la bandeja superior
+                </span>
               </div>
             </div>
           )}

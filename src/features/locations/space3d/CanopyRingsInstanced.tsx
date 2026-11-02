@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 
 export interface CanopyRingItem {
   id: string;
@@ -61,6 +62,8 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
     const mesh = meshRef.current;
     if (!mesh || count === 0) return;
 
+    const tStart = performance.now();
+
     // Direct TypedArray assignment (Float32Array): 10-50x faster than dummy.updateMatrix() for 5,000 instances
     const matrixArray = mesh.instanceMatrix.array as Float32Array;
 
@@ -107,6 +110,8 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
+
+    roomLoadProfiler.markGpuBuffers('canopy', count, performance.now() - tStart);
   }, [rings, count]);
 
   if (count === 0) return null;

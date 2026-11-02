@@ -112,6 +112,39 @@ const PlantBillboardPlane: React.FC<PlantBillboardPlaneProps> = ({
   );
 };
 
+export const KEY_BOTANICAL_TEXTURES = [
+  '/textures/plants/TOM/fruiting.webp',
+  '/textures/plants/LETTUCE/fruiting.webp',
+  '/textures/plants/CARROT/fruiting.webp',
+  '/textures/plants/PEPPER_SWEET/fruiting.webp',
+  '/textures/plants/SQUASH/fruiting.webp',
+  '/textures/plants/CITRUS_ORANGE/fruiting.webp',
+  '/textures/plants/HEMP/fruiting.webp',
+  '/textures/plants/ONION/fruiting.webp',
+];
+
+/**
+ * Preloads essential botanical textures via Drei's useTexture.preload.
+ * Decodes WebP sprites into GPU texture cache so billboards mount instantly without suspending.
+ */
+export function preloadBotanicalTextures(): void {
+  if (typeof window === 'undefined') return;
+  if (typeof (useTexture as any)?.preload === 'function') {
+    for (const url of KEY_BOTANICAL_TEXTURES) {
+      try {
+        (useTexture as any).preload(url);
+      } catch {
+        // Safe catch for headless / test environments
+      }
+    }
+  }
+}
+
+// Automatically preload in browser environment
+if (typeof window !== 'undefined') {
+  preloadBotanicalTextures();
+}
+
 export const SpacePlantSprite: React.FC<SpacePlantSpriteProps> = ({
   cropCode,
   label,

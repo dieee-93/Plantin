@@ -33,7 +33,9 @@ import { SpaceWallBuilderShelf } from './SpaceWallBuilderShelf';
 import { SpaceRoofActionBar } from './SpaceRoofActionBar';
 import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
 import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
+import { SpacePlantBuilderShelf } from './SpacePlantBuilderShelf';
 import { SpaceBottomDock } from './SpaceBottomDock';
+import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import {
   computeCursorPlantPreview,
   computeDraftPathMetrics,
@@ -131,6 +133,13 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   onTakeCutting,
   onRemovePlantIndividual,
 }) => {
+  // ── Millimetric Telemetry: T1 Space3DViewer Mount ──
+  roomLoadProfiler.markViewerMount(locationId);
+
+  useEffect(() => {
+    roomLoadProfiler.markViewerMount(locationId);
+  }, [locationId]);
+
   const layout = useSpaceLayoutStore((state) =>
     state.getOrCreateSpaceLayout(locationId, locationType),
   );
@@ -1501,7 +1510,32 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         </div>
       )}
 
-      {/* ── 4. Bottom Tray Drawer for Seeds and Plants ── */}
+            {/* ── 3.9. Contextual Builder Shelf for Planting & Sowing ── */}
+      {(builderState.activeTool === 'plant_single' ||
+        builderState.activeTool === 'plant_line' ||
+        builderState.activeTool === 'plant_fill_sector') && (
+        <div className="absolute bottom-20 z-40 flex justify-center inset-x-0 px-4 pointer-events-none">
+          <SpacePlantBuilderShelf
+            activeTool={builderState.activeTool}
+            plantCropCode={builderState.plantTemplate.cropCode}
+            onChangePlantCropCode={(c) =>
+              dispatch({
+                type: 'SET_PLANT_PRESET',
+                presetKey: c as PlantPresetKey,
+              })
+            }
+            plantSpacingCm={builderState.plantTemplate.plantSpacingCm}
+            onChangePlantSpacing={(s) =>
+              dispatch({ type: 'SET_PLANT_SPACING', plantSpacingCm: s })
+            }
+            cultivableSectorCount={regions.cultivablePolygons.length}
+            onFillSector={handleFillSector}
+            onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+          />
+        </div>
+      )}
+
+{/* ── 4. Bottom Tray Drawer for Seeds and Plants ── */}
       {isTrayOpen && (
         <div className="absolute bottom-20 inset-x-0 z-40 flex justify-center px-4">
           <SpaceBottomDock

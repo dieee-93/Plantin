@@ -28,7 +28,7 @@ export interface PlantBuilderTemplate {
   rowSpacingCm: number;
 }
 
-export type PlantPresetKey = 'tomato' | 'pepper' | 'lettuce' | 'corn';
+export type PlantPresetKey = 'tomato' | 'pepper' | 'lettuce' | 'corn' | 'basil' | 'carrot';
 
 export const PLANT_BUILDER_PRESETS: Record<PlantPresetKey, PlantBuilderTemplate> = {
   tomato: {
@@ -58,6 +58,20 @@ export const PLANT_BUILDER_PRESETS: Record<PlantPresetKey, PlantBuilderTemplate>
     canopyRadiusCm: 25,
     plantSpacingCm: 35,
     rowSpacingCm: 60,
+  },
+  basil: {
+    label: 'Albahaca',
+    cropCode: 'basil',
+    canopyRadiusCm: 15,
+    plantSpacingCm: 30,
+    rowSpacingCm: 30,
+  },
+  carrot: {
+    label: 'Zanahoria',
+    cropCode: 'carrot',
+    canopyRadiusCm: 12,
+    plantSpacingCm: 20,
+    rowSpacingCm: 25,
   },
 };
 
