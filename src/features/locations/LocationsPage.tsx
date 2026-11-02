@@ -18,6 +18,8 @@ import { LocationClimateCard } from '@/components/LocationClimateCard'
 import { IndividualDetail } from '@/features/individuals/IndividualsPage'
 import { SpacesCampusMap } from './SpacesCampusMap'
 import { Space3DViewer } from './space3d/Space3DViewer'
+import { roomLoadProfiler } from './space3d/telemetry/roomLoadProfiler'
+import { preloadBotanicalTextures } from './space3d/SpacePlantSprite'
 import {
   Plus, Building2, Sprout, Layers, Sparkles, X
 } from 'lucide-react'
@@ -417,6 +419,11 @@ export function LocationsPage() {
     [individuals, selectedIndividualId]
   )
 
+  // Pre-cargar texturas botánicas clave para que el visor 3D nunca suspenda
+  useEffect(() => {
+    preloadBotanicalTextures()
+  }, [])
+
   // Especie seleccionada para el flujo de Nuevo Cultivo / Material
   const selectedNewTaxon = useMemo(() => {
     if (newMaterialTaxonId) {
@@ -549,6 +556,15 @@ export function LocationsPage() {
 
   // ── Handlers de Navegación ──
   const handleEnterRoom = (locationId: string) => {
+    // 0. Telemetría Milimétrica T0: Click en la sala
+    const targetRoom = locations.find(l => l.id === locationId)
+    const plantCount = individuals.filter(i => i.locationId === locationId).length
+    roomLoadProfiler.start({
+      roomId: locationId,
+      roomName: targetRoom?.name ?? locationId,
+      plantCount,
+    })
+
     // 1. Feedback visual inmediato en 0 ms
     setEnteringRoomId(locationId)
     setSowPosition('')
@@ -1975,6 +1991,13 @@ export function LocationsPage() {
             onDeleteRoom={(locId: string) => removeLocation(locId)}
             onOpenNewRoomDrawer={() => setDrawerMode('new-location')}
             onSelectIndividual={(locId: string, indId: string) => {
+              const targetRoom = locations.find(l => l.id === locId)
+              const plantCount = individuals.filter(i => i.locationId === locId).length
+              roomLoadProfiler.start({
+                roomId: locId,
+                roomName: targetRoom?.name ?? locId,
+                plantCount,
+              })
               setEnteringRoomId(locId)
               startTransition(() => {
                 setSelectedRoomId(locId)

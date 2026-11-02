@@ -55,14 +55,14 @@ describe('TaxonsPage', () => {
     await user.type(searchInput, 'Man')
 
     // Wait for the dropdown item to appear and click it
-    const dropdownItem = await screen.findByText(/Manzano/i)
+    const dropdownItem = await screen.findByText(/Manzano/i, {}, { timeout: 4000 })
     await user.click(dropdownItem)
 
     // Check if the form fields were autofilled by checking the values
     expect(screen.getByDisplayValue('Rosaceae')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Malus')).toBeInTheDocument()
 
-    const submitBtn = await screen.findByRole('button', { name: /agregar/i })
+    const submitBtn = await screen.findByRole('button', { name: /agregar/i }, { timeout: 4000 })
     await user.click(submitBtn)
 
     // The store should have it

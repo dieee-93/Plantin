@@ -382,4 +382,60 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
 
     await renderer.unmount();
   });
+
+  it('mounts 3D infrastructure immediately in 0ms and defers massive plants (>1000) to next tick', async () => {
+    const baseLayout = SPACE_PRESETS.patio_croquis.createLayout('loc-massive-test');
+    // Generate 1200 plants to trigger progressive plant population threshold (>1000)
+    const massivePlants = Array.from({ length: 1200 }, (_, i) => ({
+      id: `massive-p-${i}`,
+      label: `Planta #${i + 1}`,
+      xCm: 100 + (i % 30) * 20,
+      yCm: 100 + Math.floor(i / 30) * 20,
+      canopyRadiusCm: 15,
+      cropCode: 'TOM',
+    }));
+
+    const massiveLayout = {
+      ...baseLayout,
+      placedPlants: massivePlants,
+    };
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={massiveLayout}
+        viewMode="3d"
+        cameraGroundPosCm={{ x: 500, y: 950 }}
+      />,
+    );
+
+    // 1. Frame 0: Infrastructure (cultivable sectors, walkable surfaces, walls) mounts immediately
+    const cultivableMeshes = renderer.scene.findAllByProps({
+      name: 'cultivable-sector-mesh',
+    });
+    expect(cultivableMeshes.length).toBeGreaterThan(0);
+
+    // 2. Plants layer is initially deferred so frame 0 renders with 0ms freeze
+    const initialPlantsLayer = renderer.scene.findAllByProps({
+      name: 'plants-layer',
+    });
+    expect(initialPlantsLayer).toHaveLength(0);
+
+    // 3. Next tick: Progressive population mounts the 1200 plants seamlessly
+    await ReactThreeTestRenderer.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const populatedPlantsLayer = renderer.scene.findAllByProps({
+      name: 'plants-layer',
+    });
+    expect(populatedPlantsLayer).toHaveLength(1);
+
+    const canopyRingMeshes = renderer.scene.findAllByProps({
+      name: 'instanced-canopy-rings-mesh',
+    });
+    expect(canopyRingMeshes).toHaveLength(1);
+    expect(canopyRingMeshes[0].props.args[2]).toBe(1200);
+
+    await renderer.unmount();
+  });
 });

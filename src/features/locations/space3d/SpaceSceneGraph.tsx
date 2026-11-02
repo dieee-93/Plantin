@@ -1070,14 +1070,16 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
       rafId = requestAnimationFrame(() => {
         setIsPlantsReady(true);
       });
-    } else {
-      const timer = setTimeout(() => setIsPlantsReady(true), 0);
-      return () => clearTimeout(timer);
     }
+    const timerId = setTimeout(() => {
+      setIsPlantsReady(true);
+    }, 16);
+
     return () => {
       if (typeof cancelAnimationFrame !== 'undefined' && rafId) {
         cancelAnimationFrame(rafId);
       }
+      clearTimeout(timerId);
     };
   }, [isMassive, layout.locationId]);
 
