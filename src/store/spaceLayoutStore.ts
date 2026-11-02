@@ -1108,8 +1108,10 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           current.hardscapeZones,
           current.paths,
         );
-        const targetPolygon = regions.cultivablePolygons[sectorIndex];
+        const targetSector = regions.cultivableSectors?.[sectorIndex];
+        const targetPolygon = targetSector?.outer ?? regions.cultivablePolygons[sectorIndex];
         if (!targetPolygon) return 0;
+        const holes = targetSector?.holes ?? [];
 
         const minSeparationCm =
           options.minSeparationCm !== undefined
@@ -1118,6 +1120,7 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
 
         const positions = generatePolygonFillPlantPositions(targetPolygon, {
           ...options,
+          holes,
           existingPlants: options.existingPlants ?? current.placedPlants,
           minSeparationCm,
         });

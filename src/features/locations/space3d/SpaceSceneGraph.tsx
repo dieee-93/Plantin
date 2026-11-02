@@ -120,6 +120,43 @@ function buildShapeFromPolygonCm(
   return shape;
 }
 
+function buildPathFromPolygonCm(
+  polygon: Polygon2DCm,
+  centerCm: Point2DCm,
+): THREE.Path | null {
+  if (polygon.length < 3) return null;
+  const path = new THREE.Path();
+  polygon.forEach((pt, idx) => {
+    const xM = (pt.x - centerCm.x) * CM_TO_M;
+    const yM = -(pt.y - centerCm.y) * CM_TO_M;
+    if (idx === 0) {
+      path.moveTo(xM, yM);
+    } else {
+      path.lineTo(xM, yM);
+    }
+  });
+  path.closePath();
+  return path;
+}
+
+function buildShapeWithHolesFromPolygonCm(
+  outer: Polygon2DCm,
+  holes: Polygon2DCm[] | undefined,
+  centerCm: Point2DCm,
+): THREE.Shape | null {
+  const shape = buildShapeFromPolygonCm(outer, centerCm);
+  if (!shape) return null;
+  if (holes && holes.length > 0) {
+    for (const hole of holes) {
+      const holePath = buildPathFromPolygonCm(hole, centerCm);
+      if (holePath) {
+        shape.holes.push(holePath);
+      }
+    }
+  }
+  return shape;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Subcomponents memoizados con React.memo
 // ─────────────────────────────────────────────────────────────
@@ -1025,14 +1062,24 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   );
 
   const cultivableShapes = useMemo(
-    () =>
-      regions.cultivablePolygons
+    () => {
+      const sectors = regions.cultivableSectors ?? [];
+      if (sectors.length > 0) {
+        return sectors
+          .map((sector, index) => ({
+            id: sector.id || `cultivable-${index}`,
+            shape: buildShapeWithHolesFromPolygonCm(sector.outer, sector.holes, centerCm),
+          }))
+          .filter((item): item is { id: string; shape: THREE.Shape } => item.shape !== null);
+      }
+      return regions.cultivablePolygons
         .map((poly, index) => ({
           id: `cultivable-${index}`,
           shape: buildShapeFromPolygonCm(poly, centerCm),
         }))
-        .filter((item): item is { id: string; shape: THREE.Shape } => item.shape !== null),
-    [regions.cultivablePolygons, centerCm],
+        .filter((item): item is { id: string; shape: THREE.Shape } => item.shape !== null);
+    },
+    [regions.cultivableSectors, regions.cultivablePolygons, centerCm],
   );
 
   const walkableShapes = useMemo(

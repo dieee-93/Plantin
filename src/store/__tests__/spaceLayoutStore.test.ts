@@ -952,6 +952,53 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
           expect(added).toBe(0);
           expect(durationMs).toBeLessThan(25.0);
         });
+
+        it('fills a sector with an interior path hole without placing any plants in the hole', () => {
+          const store = useSpaceLayoutStore.getState();
+          const locId = 'loc-floating-path-test';
+          store.getOrCreateSpaceLayout(locId, 'indoor', 'empty_lot_1to1');
+
+          // 1000x1000 cm parcel
+          store.setBaseBoundary(locId, [
+            { x: 0, y: 0 },
+            { x: 1000, y: 0 },
+            { x: 1000, y: 1000 },
+            { x: 0, y: 1000 },
+          ]);
+
+          // Interior floating path from (500, 300) to (500, 700) with width 200 cm
+          store.addPathStroke(locId, {
+            points: [
+              { x: 500, y: 300 },
+              { x: 500, y: 700 },
+            ],
+            widthCm: 200,
+            material: 'concrete',
+          });
+
+          const fillCount = store.fillCultivableSector(
+            locId,
+            0,
+            { plantSpacingCm: 50, rowSpacingCm: 50, marginCm: 20 },
+            { label: 'Tomato', cropCode: 'tomato', canopyRadiusCm: 20 },
+          );
+
+          expect(fillCount).toBeGreaterThan(0);
+
+          const layout = store.getOrCreateSpaceLayout(locId);
+          expect(layout.placedPlants).toHaveLength(fillCount);
+
+          // Path bounds: X in [400, 600], Y in [300, 700]
+          // Verify no plant falls inside the path or its margin
+          for (const plant of layout.placedPlants) {
+            const insidePath =
+              plant.xCm >= 400 &&
+              plant.xCm <= 600 &&
+              plant.yCm >= 300 &&
+              plant.yCm <= 700;
+            expect(insidePath).toBe(false);
+          }
+        });
       });
     });
   });

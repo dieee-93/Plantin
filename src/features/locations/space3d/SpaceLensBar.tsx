@@ -418,7 +418,7 @@ export const SpaceLensBar: React.FC<SpaceLensBarProps> = ({
                 data-testid="metric-cultivable-area"
                 className="font-mono font-bold text-emerald-700"
               >
-                {regions.cultivableAreaM2.toFixed(1)} m² · {regions.cultivablePolygons.length} sectores
+                {regions.cultivableAreaM2.toFixed(1)} m² · {regions.cultivableSectors?.length ?? regions.cultivablePolygons.length} sectores
               </div>
             </div>
             <div>

@@ -401,6 +401,53 @@ describe('solarAndPlantSpatial - Slice 7: Physical Exclusion & Infinite Stacking
   });
 });
 
+describe('solarAndPlantSpatial - Polygon Auto-Fill with Holes Exclusion', () => {
+  it('strictly excludes plants from interior hole/path geometry and adheres to margins', () => {
+    // 1000x1000 cm bed
+    const outer: Polygon2DCm = [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 1000 },
+      { x: 0, y: 1000 },
+    ];
+
+    // 400x400 cm central hole from (300, 300) to (700, 700)
+    const hole: Polygon2DCm = [
+      { x: 300, y: 300 },
+      { x: 700, y: 300 },
+      { x: 700, y: 700 },
+      { x: 300, y: 700 },
+    ];
+
+    const positionsWithoutHoles = generatePolygonFillPlantPositions(outer, {
+      plantSpacingCm: 50,
+      rowSpacingCm: 50,
+      marginCm: 20,
+    });
+
+    const positionsWithHole = generatePolygonFillPlantPositions(outer, {
+      plantSpacingCm: 50,
+      rowSpacingCm: 50,
+      marginCm: 20,
+      holes: [hole],
+    });
+
+    expect(positionsWithHole.length).toBeGreaterThan(0);
+    expect(positionsWithHole.length).toBeLessThan(positionsWithoutHoles.length);
+
+    // Verify absolutely ZERO plants fall inside the hole or within marginCm of the hole
+    for (const pt of positionsWithHole) {
+      expect(isPointInPolygonCm(pt, outer)).toBe(true);
+      expect(isPointInPolygonCm(pt, hole)).toBe(false);
+
+      // With 20cm margin, no plant should be in (300 - 20 = 280) .. (700 + 20 = 720) in both X and Y
+      const insideMarginEnvelope =
+        pt.x >= 280 && pt.x <= 720 && pt.y >= 280 && pt.y <= 720;
+      expect(insideMarginEnvelope).toBe(false);
+    }
+  });
+});
+
 
 
 

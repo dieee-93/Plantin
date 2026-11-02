@@ -1157,10 +1157,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             />
 
             {/* Cultivable sectors */}
-            {regions.cultivablePolygons.map((poly, idx) => (
+            {(regions.cultivableSectors ?? []).map((sector, idx) => (
               <polygon
-                key={`svg-cultivable-${idx}`}
-                points={polygonToSvgPoints(poly)}
+                key={`svg-cultivable-${sector.id || idx}`}
+                points={polygonToSvgPoints(sector.outer)}
                 fill="#ecfdf5"
                 stroke="#16a34a"
                 strokeWidth={3}
@@ -1660,7 +1660,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               }
             }}
             onSanitizeBoundary={() => sanitizeBoundary(locationId)}
-            cultivableSectorCount={regions.cultivablePolygons.length}
+            cultivableSectorCount={regions.cultivableSectors?.length ?? regions.cultivablePolygons.length}
             onFillSector={handleFillSector}
             onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
@@ -1706,7 +1706,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             onChangePlantSpacing={(s) =>
               dispatch({ type: 'SET_PLANT_SPACING', plantSpacingCm: s })
             }
-            cultivableSectorCount={regions.cultivablePolygons.length}
+            cultivableSectorCount={regions.cultivableSectors?.length ?? regions.cultivablePolygons.length}
             onFillSector={handleFillSector}
             onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
@@ -1749,7 +1749,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           onChangePlantSpacing={(s) =>
             dispatch({ type: 'SET_PLANT_SPACING', plantSpacingCm: s })
           }
-          cultivableSectorCount={regions.cultivablePolygons.length}
+          cultivableSectorCount={regions.cultivableSectors?.length ?? regions.cultivablePolygons.length}
           onFillSector={handleFillSector}
           customWidthM={customWidthM}
           setCustomWidthM={setCustomWidthM}

@@ -505,6 +505,75 @@ describe('spaceGeometry - Slice 8: Wall Openings Decomposition (Doors & Windows)
   });
 });
 
+describe('spaceGeometry - PolyTree Hierarchical Decomposition (Outer & Holes)', () => {
+  it('generates exactly 1 cultivableSector with 1 hole for an interior floating path, with net area = baseArea - pathArea', () => {
+    // 1000x1000 cm room = 100 m2
+    const baseBoundary = createRectPolygon(1000, 1000);
+    // Interior floating path: from (500, 200) to (500, 800) with width 200 cm
+    // Length = 600 cm, width = 200 cm -> Area = 120,000 cm2 = 12 m2
+    const paths = [
+      {
+        id: 'interior-floating-path',
+        material: 'concrete' as const,
+        points: [
+          { x: 500, y: 200 },
+          { x: 500, y: 800 },
+        ],
+        widthCm: 200,
+      },
+    ];
+
+    const regions = computeSpaceRegions(baseBoundary, [], paths);
+
+    expect(regions.baseAreaM2).toBe(100);
+    expect(regions.walkableAreaM2).toBeCloseTo(12, 1);
+    expect(regions.cultivableAreaM2).toBeCloseTo(88, 1);
+
+    // Exactly 1 sector with 1 hole (NOT 2 independent sectors!)
+    expect(regions.cultivableSectors).toHaveLength(1);
+    expect(regions.cultivablePolygons).toHaveLength(1);
+
+    const sector = regions.cultivableSectors[0];
+    expect(sector.outer).toHaveLength(4);
+    expect(sector.holes).toHaveLength(1);
+    expect(sector.holes[0]).toHaveLength(4);
+    expect(sector.areaM2).toBeCloseTo(88, 1);
+  });
+
+  it('generates 2 distinct cultivableSectors when a path divides the room from wall to wall', () => {
+    // 1000x1000 cm room
+    const baseBoundary = createRectPolygon(1000, 1000);
+    // Wall to wall vertical path at x=500 cutting from y=-50 to y=1050 with width 200 cm
+    const paths = [
+      {
+        id: 'wall-to-wall-path',
+        material: 'concrete' as const,
+        points: [
+          { x: 500, y: -50 },
+          { x: 500, y: 1050 },
+        ],
+        widthCm: 200,
+      },
+    ];
+
+    const regions = computeSpaceRegions(baseBoundary, [], paths);
+
+    expect(regions.baseAreaM2).toBe(100);
+    expect(regions.walkableAreaM2).toBeCloseTo(20, 1);
+    expect(regions.cultivableAreaM2).toBeCloseTo(80, 1);
+
+    // Dividing wall-to-wall creates 2 separate cultivable sectors without holes
+    expect(regions.cultivableSectors).toHaveLength(2);
+    expect(regions.cultivablePolygons).toHaveLength(2);
+
+    expect(regions.cultivableSectors[0].holes).toHaveLength(0);
+    expect(regions.cultivableSectors[1].holes).toHaveLength(0);
+    expect(
+      regions.cultivableSectors[0].areaM2 + regions.cultivableSectors[1].areaM2,
+    ).toBeCloseTo(80, 1);
+  });
+});
+
 
 
 

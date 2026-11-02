@@ -1,7 +1,8 @@
 import {
   area,
   areaPaths,
-  difference,
+  booleanOpWithPolyTree,
+  ClipType,
   EndType,
   FillRule,
   inflatePaths,
@@ -9,6 +10,8 @@ import {
   JoinType,
   pointInPolygon,
   PointInPolygonResult,
+  PolyPath64,
+  PolyTree64,
   union,
   type Path64,
   type Paths64,
@@ -73,11 +76,19 @@ export interface WallSegmentCm {
   openings?: WallOpeningCm[];
 }
 
+export interface CultivableSectorCm {
+  id: string;
+  outer: Polygon2DCm;
+  holes: Polygon2DCm[];
+  areaM2: number;
+}
+
 export interface ComputedSpaceRegions {
   baseAreaM2: number;
   walkablePolygons: Polygon2DCm[];
   walkableAreaM2: number;
   cultivablePolygons: Polygon2DCm[];
+  cultivableSectors: CultivableSectorCm[];
   cultivableAreaM2: number;
 }
 
@@ -221,6 +232,53 @@ export function inflatePathToPolygon(
   return fromPaths64(inflated);
 }
 
+export function extractCultivableSectorsFromPolyTree(
+  root: PolyTree64,
+  prefix: string = 'cultivable',
+): CultivableSectorCm[] {
+  const sectors: CultivableSectorCm[] = [];
+
+  function traverse(node: PolyTree64 | PolyPath64) {
+    const poly = node.poly;
+    if (poly && poly.length >= 3 && !node.isHole) {
+      const outer: Polygon2DCm = poly.map((pt) => ({ x: pt.x, y: pt.y }));
+      const holes: Polygon2DCm[] = [];
+
+      for (let i = 0; i < node.count; i++) {
+        const child = node.child(i);
+        const childPoly = child.poly;
+        if (child.isHole && childPoly && childPoly.length >= 3) {
+          holes.push(childPoly.map((pt) => ({ x: pt.x, y: pt.y })));
+          for (let j = 0; j < child.count; j++) {
+            traverse(child.child(j));
+          }
+        }
+      }
+
+      const outerAreaM2 = Math.abs(area(poly)) / CM2_PER_M2;
+      const holesAreaM2 = holes.reduce(
+        (sum, h) => sum + Math.abs(area(toPath64(h))) / CM2_PER_M2,
+        0,
+      );
+      const areaM2 = Math.max(0, Math.round((outerAreaM2 - holesAreaM2) * 1000) / 1000);
+
+      sectors.push({
+        id: `${prefix}-${sectors.length}`,
+        outer,
+        holes,
+        areaM2,
+      });
+    } else {
+      for (let i = 0; i < node.count; i++) {
+        traverse(node.child(i));
+      }
+    }
+  }
+
+  traverse(root);
+  return sectors;
+}
+
 export function computeSpaceRegions(
   baseBoundary: Polygon2DCm,
   hardscapeZones: HardscapeZoneCm[],
@@ -232,6 +290,7 @@ export function computeSpaceRegions(
       walkablePolygons: [],
       walkableAreaM2: 0,
       cultivablePolygons: [],
+      cultivableSectors: [],
       cultivableAreaM2: 0,
     };
   }
@@ -266,19 +325,47 @@ export function computeSpaceRegions(
         )
       : [];
 
-  const cultivablePaths64: Paths64 =
-    walkablePaths64.length > 0
-      ? difference(basePaths64, walkablePaths64, FillRule.NonZero)
-      : basePaths64;
-
   const walkableAreaM2 = Math.abs(areaPaths(walkablePaths64)) / CM2_PER_M2;
-  const cultivableAreaM2 = Math.abs(areaPaths(cultivablePaths64)) / CM2_PER_M2;
+
+  if (walkablePaths64.length === 0) {
+    const singleSector: CultivableSectorCm = {
+      id: 'cultivable-0',
+      outer: baseBoundary,
+      holes: [],
+      areaM2: baseAreaM2,
+    };
+    return {
+      baseAreaM2,
+      walkablePolygons: [],
+      walkableAreaM2: 0,
+      cultivablePolygons: [baseBoundary],
+      cultivableSectors: [singleSector],
+      cultivableAreaM2: baseAreaM2,
+    };
+  }
+
+  const polytree = new PolyTree64();
+  booleanOpWithPolyTree(
+    ClipType.Difference,
+    basePaths64,
+    walkablePaths64,
+    polytree,
+    FillRule.NonZero,
+  );
+
+  const cultivableSectors = extractCultivableSectorsFromPolyTree(polytree);
+  const cultivablePolygons = cultivableSectors.map((s) => s.outer);
+  const cultivableAreaM2 =
+    Math.round(
+      cultivableSectors.reduce((sum, s) => sum + s.areaM2, 0) * 1000,
+    ) / 1000;
 
   return {
     baseAreaM2,
     walkablePolygons: fromPaths64(walkablePaths64),
     walkableAreaM2,
-    cultivablePolygons: fromPaths64(cultivablePaths64),
+    cultivablePolygons,
+    cultivableSectors,
     cultivableAreaM2,
   };
 }
@@ -300,7 +387,17 @@ export function classifySpacePoint(
   if (regions.walkablePolygons.some((poly) => isPointInPolygonCm(point, poly))) {
     return 'walkable';
   }
-  if (
+  if (regions.cultivableSectors && regions.cultivableSectors.length > 0) {
+    if (
+      regions.cultivableSectors.some(
+        (sec) =>
+          isPointInPolygonCm(point, sec.outer) &&
+          !sec.holes.some((h) => isPointInPolygonCm(point, h)),
+      )
+    ) {
+      return 'cultivable';
+    }
+  } else if (
     regions.cultivablePolygons.some((poly) => isPointInPolygonCm(point, poly))
   ) {
     return 'cultivable';

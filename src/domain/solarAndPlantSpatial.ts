@@ -3,11 +3,12 @@ import {
   EndType,
   inflatePaths,
   JoinType,
+  pointInPolygon,
+  PointInPolygonResult,
   type Path64,
 } from 'clipper2-ts';
 import {
   classifySpacePoint,
-  isPointInPolygonCm,
   type ComputedSpaceRegions,
   type Point2DCm,
   type Polygon2DCm,
@@ -552,6 +553,7 @@ export interface PolygonFillOptions {
   angleDeg?: number;
   existingPlants?: PlantCoordinateLike[];
   minSeparationCm?: number;
+  holes?: Polygon2DCm[];
 }
 
 export function generatePolygonFillPlantPositions(
@@ -565,6 +567,7 @@ export function generatePolygonFillPlantPositions(
     angleDeg = 0,
     existingPlants,
     minSeparationCm: customMinSeparation,
+    holes,
   } = options;
 
   if (
@@ -616,6 +619,38 @@ export function generatePolygonFillPlantPositions(
     return [];
   }
 
+  const rawHoles64: Path64[] = [];
+  const effectiveHoles64: Path64[] = [];
+  const rawHoles: Polygon2DCm[] = (holes ?? []).filter((h) => h.length >= 3);
+
+  if (rawHoles.length > 0) {
+    for (const hole of rawHoles) {
+      let h64: Path64 = hole.map((pt) => ({
+        x: Math.round(pt.x),
+        y: Math.round(pt.y),
+      }));
+      if (area(h64) < 0) {
+        h64 = [...h64].reverse();
+      }
+      rawHoles64.push(h64);
+      if (marginCm > 0) {
+        const expanded = inflatePaths(
+          [h64],
+          marginCm,
+          JoinType.Miter,
+          EndType.Polygon,
+        );
+        for (const exp of expanded) {
+          effectiveHoles64.push(exp);
+        }
+      } else {
+        effectiveHoles64.push(h64);
+      }
+    }
+  }
+
+  const hasHoles = rawHoles64.length > 0;
+
   const theta = angleDeg * DEG_TO_RAD;
   const ux = Math.cos(theta);
   const uy = Math.sin(theta);
@@ -626,6 +661,11 @@ export function generatePolygonFillPlantPositions(
 
   for (const poly of insetPolygons) {
     if (poly.length < 3) continue;
+
+    const poly64: Path64 = poly.map((pt) => ({
+      x: Math.round(pt.x),
+      y: Math.round(pt.y),
+    }));
 
     let uMin = Infinity;
     let uMax = -Infinity;
@@ -643,21 +683,31 @@ export function generatePolygonFillPlantPositions(
 
     for (let v = vMin; v <= vMax + 1e-6; v += rowSpacingCm) {
       for (let u = uMin; u <= uMax + 1e-6; u += plantSpacingCm) {
-        const candidate: Point2DCm = {
-          x: Math.round(u * ux + v * vx),
-          y: Math.round(u * uy + v * vy),
-        };
+        const candidateX = Math.round(u * ux + v * vx);
+        const candidateY = Math.round(u * uy + v * vy);
+        const candidatePt64 = { x: candidateX, y: candidateY };
+
         if (
-          isPointInPolygonCm(candidate, poly) &&
-          isPointInPolygonCm(candidate, cultivablePolygon)
+          pointInPolygon(candidatePt64, poly64) === PointInPolygonResult.IsOutside
         ) {
-          if (spatialGrid && spatialGrid.isOccupied(candidate.x, candidate.y, minSeparationCm)) {
-            continue;
-          }
-          results.push(candidate);
-          if (spatialGrid) {
-            spatialGrid.insert(candidate.x, candidate.y);
-          }
+          continue;
+        }
+
+        if (hasHoles) {
+          const inEffectiveHole = effectiveHoles64.some(
+            (eh) => pointInPolygon(candidatePt64, eh) !== PointInPolygonResult.IsOutside,
+          );
+          if (inEffectiveHole) continue;
+        }
+
+        if (spatialGrid && spatialGrid.isOccupied(candidateX, candidateY, minSeparationCm)) {
+          continue;
+        }
+
+        const candidate: Point2DCm = { x: candidateX, y: candidateY };
+        results.push(candidate);
+        if (spatialGrid) {
+          spatialGrid.insert(candidateX, candidateY);
         }
       }
     }
