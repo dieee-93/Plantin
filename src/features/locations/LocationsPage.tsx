@@ -12,13 +12,14 @@ import { createRectPolygon } from '@/domain/spaceGeometry'
 import type { PlacedPlantSpatialCm } from '@/domain/solarAndPlantSpatial'
 import type { LocationType } from '@/domain/location'
 import { LocationClimateCard } from '@/components/LocationClimateCard'
+import { HudSyncIndicator } from '@/components/hud'
 import { IndividualDetail } from '@/features/individuals/IndividualsPage'
 import { SpacesCampusMap } from './SpacesCampusMap'
 import { Space3DViewer } from './space3d/Space3DViewer'
 import { roomLoadProfiler } from './space3d/telemetry/roomLoadProfiler'
 import { preloadBotanicalTextures } from './space3d/SpacePlantSprite'
 import {
-  Plus, Building2, Sprout, Layers, Sparkles, X
+  Plus, Building2, Sprout, Sparkles, X
 } from 'lucide-react'
 import {
   type PropagationFormId,
@@ -1938,23 +1939,7 @@ export function LocationsPage() {
                   <Building2 size={13} />
                   + Nueva Ubicación
                 </button>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '5px 10px',
-                    borderRadius: 99,
-                    background: 'var(--surface-subtle)',
-                    border: '1px solid var(--border)',
-                    fontSize: 11.5,
-                    color: 'var(--text-secondary)',
-                    fontWeight: 500,
-                  }}
-                >
-                  <Layers size={13} color="var(--accent)" />
-                  Haz clic en una sala para abrir su espacio 3D
-                </span>
+                <HudSyncIndicator />
               </div>
             </div>
 
