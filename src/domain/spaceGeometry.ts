@@ -3,6 +3,7 @@ import {
   areaPaths,
   booleanOpWithPolyTree,
   ClipType,
+  difference,
   EndType,
   FillRule,
   inflatePaths,
@@ -961,4 +962,199 @@ export function createPerimeterWalls(
       openings: [],
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Slice 9: Object Footprint & Collision Validation (Clipper2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Genera el polígono 2D del Oriented Bounding Box (OBB) de un objeto en coordenadas de plano (cm),
+ * rotado por `rotationDeg` alrededor de su centro.
+ */
+export function computeObjectFootprintPolygon(
+  centerCm: Point2DCm,
+  widthCm: number,
+  depthCm: number,
+  rotationDeg: number = 0,
+): Polygon2DCm {
+  const rad = (rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const hx = widthCm / 2;
+  const hy = depthCm / 2;
+
+  // 4 esquinas locales relativas al centro
+  const localCorners = [
+    { x: -hx, y: -hy },
+    { x: hx, y: -hy },
+    { x: hx, y: hy },
+    { x: -hx, y: hy },
+  ];
+
+  return localCorners.map((c) => ({
+    x: Math.round(centerCm.x + (c.x * cos - c.y * sin)),
+    y: Math.round(centerCm.y + (c.x * sin + c.y * cos)),
+  }));
+}
+
+/**
+ * Infla el segmento de muro a un polígono 2D cerrado en cm con su espesor real.
+ */
+export function computeWallFootprintPolygon(wall: WallSegmentCm): Polygon2DCm[] {
+  const thickness = wall.thicknessCm > 0 ? wall.thicknessCm : 15;
+  const inflated = inflatePaths(
+    [toPath64([wall.start, wall.end])],
+    thickness / 2,
+    JoinType.Miter,
+    EndType.Square,
+  );
+  return fromPaths64(inflated);
+}
+
+export interface ExistingObjectSpatialSummary {
+  id: string;
+  xCm: number;
+  yCm: number;
+  widthCm?: number;
+  depthCm?: number;
+  heightCm?: number;
+  rotationDeg?: number;
+  elevationM?: number;
+  label?: string;
+}
+
+export interface ValidateObjectPlacementInput {
+  centerCm: Point2DCm;
+  widthCm: number;
+  depthCm: number;
+  rotationDeg?: number;
+  elevationM?: number;
+  heightCm?: number;
+  baseBoundary: Polygon2DCm;
+  walls?: WallSegmentCm[];
+  existingObjects?: ExistingObjectSpatialSummary[];
+  ignoreObjectId?: string;
+}
+
+export interface ObjectPlacementValidationResult {
+  isValid: boolean;
+  footprint: Polygon2DCm;
+  isOutsidePerimeter: boolean;
+  outsideAreaCm2: number;
+  collidingWallIds: string[];
+  collidingObjectIds: string[];
+  reasons: string[];
+}
+
+/**
+ * Valida con Clipper2 (diferencia e intersección booleana exacta) si la huella 2D de un objeto
+ * cabe dentro del perímetro de la sala, si colisiona con muros perimetrales o si colisiona
+ * con otros objetos colocados en el mismo nivel de elevación (permitiendo apilado vertical).
+ */
+export function validateObjectPlacement(
+  input: ValidateObjectPlacementInput,
+): ObjectPlacementValidationResult {
+  const {
+    centerCm,
+    widthCm,
+    depthCm,
+    rotationDeg = 0,
+    elevationM = 0,
+    heightCm = 100,
+    baseBoundary,
+    walls = [],
+    existingObjects = [],
+    ignoreObjectId,
+  } = input;
+
+  const footprint = computeObjectFootprintPolygon(centerCm, widthCm, depthCm, rotationDeg);
+  const footprintPath = toPath64(footprint);
+  const reasons: string[] = [];
+  let isOutsidePerimeter = false;
+  let outsideAreaCm2 = 0;
+  const collidingWallIds: string[] = [];
+  const collidingObjectIds: string[] = [];
+
+  // 1. Verificación de Perímetro con Clipper2 difference: footprint - baseBoundary
+  if (baseBoundary && baseBoundary.length >= 3) {
+    const outsidePaths = difference([footprintPath], [toPath64(baseBoundary)], FillRule.NonZero);
+    outsideAreaCm2 = Math.abs(areaPaths(outsidePaths));
+    // Tolerancia mínima de 1 cm² por discretización de enteros
+    if (outsideAreaCm2 > 1.0) {
+      isOutsidePerimeter = true;
+      reasons.push('El objeto sobresale fuera del perímetro de la sala');
+    }
+  }
+
+  // 2. Verificación de Colisión con Muros con Clipper2 intersect: footprint ∩ wallFootprint
+  for (const wall of walls) {
+    const wallPolys = computeWallFootprintPolygon(wall);
+    if (wallPolys.length === 0) continue;
+    const intersection = intersect([footprintPath], wallPolys.map(toPath64), FillRule.NonZero);
+    const wallCollisionArea = Math.abs(areaPaths(intersection));
+    if (wallCollisionArea > 1.0) {
+      collidingWallIds.push(wall.id);
+    }
+  }
+  if (collidingWallIds.length > 0) {
+    reasons.push(
+      `Colisión con muro (${collidingWallIds.length === 1 ? 'muro' : `${collidingWallIds.length} muros`})`,
+    );
+  }
+
+  // 3. Verificación de Colisión con Otros Objetos (con soporte de apilado por elevación)
+  const currentBottomM = elevationM;
+  const currentTopM = elevationM + heightCm * 0.01;
+
+  for (const other of existingObjects) {
+    if (ignoreObjectId && other.id === ignoreObjectId) continue;
+
+    const otherBottomM = other.elevationM ?? 0;
+    const otherHeightM = (other.heightCm ?? 50) * 0.01;
+    const otherTopM = otherBottomM + otherHeightM;
+
+    // Se solapan verticalmente si: currentBottom < otherTop AND currentTop > otherBottom
+    // Con 1 cm (0.01 m) de holgura para permitir apoyar un cajón sobre un palet sin falso positivo
+    const verticalOverlap =
+      currentBottomM < otherTopM - 0.01 && currentTopM > otherBottomM + 0.01;
+
+    if (!verticalOverlap) {
+      // Sin colisión vertical (apilado o a diferente altura)
+      continue;
+    }
+
+    const otherWidth = other.widthCm ?? 60;
+    const otherDepth = other.depthCm ?? 40;
+    const otherRot = other.rotationDeg ?? 0;
+    const otherFootprint = computeObjectFootprintPolygon(
+      { x: other.xCm, y: other.yCm },
+      otherWidth,
+      otherDepth,
+      otherRot,
+    );
+
+    const inter = intersect([footprintPath], [toPath64(otherFootprint)], FillRule.NonZero);
+    const interArea = Math.abs(areaPaths(inter));
+    if (interArea > 2.0) {
+      collidingObjectIds.push(other.id);
+    }
+  }
+
+  if (collidingObjectIds.length > 0) {
+    reasons.push(`Superposición con otro objeto (${collidingObjectIds.length})`);
+  }
+
+  const isValid =
+    !isOutsidePerimeter && collidingWallIds.length === 0 && collidingObjectIds.length === 0;
+
+  return {
+    isValid,
+    footprint,
+    isOutsidePerimeter,
+    outsideAreaCm2,
+    collidingWallIds,
+    collidingObjectIds,
+    reasons,
+  };
 }

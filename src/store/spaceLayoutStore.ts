@@ -59,6 +59,9 @@ export interface PlacedObjectSpatialCm {
   label: string;
   xCm: number;
   yCm: number;
+  widthCm?: number;
+  depthCm?: number;
+  heightCm?: number;
   elevationM?: number;
   rotationDeg?: number;
   category?: 'logistics' | 'cultivation_container' | 'mep' | 'botanical' | string;
@@ -188,6 +191,9 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
             label: 'Palet de Madera',
             xCm: 850,
             yCm: 100,
+            widthCm: 120,
+            depthCm: 80,
+            heightCm: 21,
             elevationM: 0,
             rotationDeg: 0,
             category: 'logistics',
@@ -198,6 +204,9 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
             label: 'Caja de Cosecha Verde (Apilada)',
             xCm: 850,
             yCm: 100,
+            widthCm: 60,
+            depthCm: 40,
+            heightCm: 25,
             elevationM: 0.209,
             rotationDeg: 0,
             category: 'logistics',
@@ -208,6 +217,9 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
             label: 'Caja de Cosecha Verde',
             xCm: 760,
             yCm: 100,
+            widthCm: 60,
+            depthCm: 40,
+            heightCm: 25,
             elevationM: 0,
             rotationDeg: 90,
             category: 'logistics',
@@ -497,6 +509,11 @@ export interface SpaceLayoutStoreState {
     locationId: string,
     objectData: Omit<PlacedObjectSpatialCm, 'id'> & { id?: string },
   ) => string;
+  updateObject: (
+    locationId: string,
+    objectId: string,
+    patch: Partial<PlacedObjectSpatialCm>,
+  ) => void;
   removeObject: (locationId: string, objectId: string) => void;
   movePlant: (locationId: string, plantId: string, xCm: number, yCm: number) => void;
   removePlant: (locationId: string, plantId: string) => void;
@@ -1176,6 +1193,26 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           },
         }));
         return id;
+      },
+
+      updateObject: (locationId, objectId, patch) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        if (!current.placedObjects) return;
+        const targetIndex = current.placedObjects.findIndex((o) => o.id === objectId);
+        if (targetIndex === -1) return;
+        const updated = { ...current.placedObjects[targetIndex], ...patch };
+        const nextList = current.placedObjects.slice();
+        nextList[targetIndex] = updated;
+        set((state) => ({
+          history: pushStructuralSnapshot(locationId, current, state.history, true),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              placedObjects: nextList,
+            },
+          },
+        }));
       },
 
       removeObject: (locationId, objectId) => {

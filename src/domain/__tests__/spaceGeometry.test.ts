@@ -4,7 +4,9 @@ import {
   calculatePolygonPerimeterM,
   canInsertVertexAtEdge,
   classifySpacePoint,
+  computeObjectFootprintPolygon,
   computeSpaceRegions,
+  computeWallFootprintPolygon,
   createDefaultDoorOpening,
   createDefaultWindowOpening,
   createLShapePolygon,
@@ -22,6 +24,7 @@ import {
   sanitizeAndWeldPolygon,
   scalePolygonFromCenter,
   syncWallsWithBoundary,
+  validateObjectPlacement,
   wouldPolygonSelfIntersect,
   type HardscapeZoneCm,
   type PathStrokeCm,
@@ -573,6 +576,141 @@ describe('spaceGeometry - PolyTree Hierarchical Decomposition (Outer & Holes)', 
     ).toBeCloseTo(80, 1);
   });
 });
+
+describe('spaceGeometry - Slice 9: Object Footprint & Collision Validation (Clipper2)', () => {
+  it('computes 2D Oriented Bounding Box (OBB) footprint polygon unrotated and rotated', () => {
+    // 120 x 80 cm pallet centered at (500, 300) unrotated
+    const footprint0 = computeObjectFootprintPolygon({ x: 500, y: 300 }, 120, 80, 0);
+    expect(footprint0).toHaveLength(4);
+    expect(footprint0[0]).toEqual({ x: 440, y: 260 });
+    expect(footprint0[1]).toEqual({ x: 560, y: 260 });
+    expect(footprint0[2]).toEqual({ x: 560, y: 340 });
+    expect(footprint0[3]).toEqual({ x: 440, y: 340 });
+
+    // Rotated 90 degrees around center
+    const footprint90 = computeObjectFootprintPolygon({ x: 500, y: 300 }, 120, 80, 90);
+    expect(footprint90).toHaveLength(4);
+    // When rotated 90 deg, corners rotate: (-60, -40) -> (40, -60), etc.
+    expect(footprint90[0]).toEqual({ x: 540, y: 240 });
+    expect(footprint90[1]).toEqual({ x: 540, y: 360 });
+    expect(footprint90[2]).toEqual({ x: 460, y: 360 });
+    expect(footprint90[3]).toEqual({ x: 460, y: 240 });
+
+    // Inflated wall footprint test
+    const wallPolys = computeWallFootprintPolygon({
+      id: 'wall-test',
+      start: { x: 0, y: 0 },
+      end: { x: 500, y: 0 },
+      thicknessCm: 20,
+      heightCm: 200,
+      material: 'brick',
+    });
+    expect(wallPolys.length).toBeGreaterThan(0);
+    expect(wallPolys[0].length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('validates clean object placement inside room away from walls', () => {
+    const baseBoundary = createRectPolygon(1000, 600);
+    const walls = createPerimeterWalls(baseBoundary, 200, 'brick');
+
+    const result = validateObjectPlacement({
+      centerCm: { x: 500, y: 300 },
+      widthCm: 120,
+      depthCm: 80,
+      rotationDeg: 0,
+      elevationM: 0,
+      heightCm: 21,
+      baseBoundary,
+      walls,
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.isOutsidePerimeter).toBe(false);
+    expect(result.collidingWallIds).toHaveLength(0);
+    expect(result.collidingObjectIds).toHaveLength(0);
+    expect(result.reasons).toHaveLength(0);
+  });
+
+  it('detects when an object extends outside the room perimeter', () => {
+    const baseBoundary = createRectPolygon(1000, 600);
+
+    // Pallet placed at x=980 cm, half width = 60 cm, extends to x=1040 cm (outside x=1000)
+    const result = validateObjectPlacement({
+      centerCm: { x: 980, y: 300 },
+      widthCm: 120,
+      depthCm: 80,
+      rotationDeg: 0,
+      baseBoundary,
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.isOutsidePerimeter).toBe(true);
+    expect(result.outsideAreaCm2).toBeGreaterThan(100);
+    expect(result.reasons).toContain('El objeto sobresale fuera del perímetro de la sala');
+  });
+
+  it('detects collision when an object intersects a perimeter wall', () => {
+    const baseBoundary = createRectPolygon(1000, 600);
+    const walls = createPerimeterWalls(baseBoundary, 200, 'brick');
+
+    // Wall-0 is along y=0 from (0,0) to (1000,0) with 15 cm thickness (y from -8 to +8 cm)
+    // Pallet placed at y=20 cm with depth 80 cm (extends from y = -20 to y = 60 cm, intersecting wall-0)
+    const result = validateObjectPlacement({
+      centerCm: { x: 500, y: 20 },
+      widthCm: 120,
+      depthCm: 80,
+      rotationDeg: 0,
+      baseBoundary,
+      walls,
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.collidingWallIds).toContain('wall-0');
+    expect(result.reasons.some((r) => r.includes('Colisión con muro'))).toBe(true);
+  });
+
+  it('detects collision with other objects on the ground but permits vertical stacking', () => {
+    const baseBoundary = createRectPolygon(1000, 600);
+    const existingPallet = {
+      id: 'pallet-1',
+      xCm: 300,
+      yCm: 300,
+      widthCm: 120,
+      depthCm: 80,
+      heightCm: 21,
+      elevationM: 0,
+    };
+
+    // 1. Placing another crate at same position and ground elevation (0m) -> collides!
+    const groundCollision = validateObjectPlacement({
+      centerCm: { x: 300, y: 300 },
+      widthCm: 60,
+      depthCm: 40,
+      heightCm: 25,
+      elevationM: 0,
+      baseBoundary,
+      existingObjects: [existingPallet],
+    });
+
+    expect(groundCollision.isValid).toBe(false);
+    expect(groundCollision.collidingObjectIds).toContain('pallet-1');
+
+    // 2. Placing the crate stacked on top of the pallet (elevation = 0.21m) -> valid stacking!
+    const stackedPlacement = validateObjectPlacement({
+      centerCm: { x: 300, y: 300 },
+      widthCm: 60,
+      depthCm: 40,
+      heightCm: 25,
+      elevationM: 0.21,
+      baseBoundary,
+      existingObjects: [existingPallet],
+    });
+
+    expect(stackedPlacement.isValid).toBe(true);
+    expect(stackedPlacement.collidingObjectIds).toHaveLength(0);
+  });
+});
+
 
 
 

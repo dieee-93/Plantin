@@ -41,6 +41,12 @@ const SUN_DISTANCE_M = 20;
 
 export type SpaceViewMode = '2d' | '3d';
 
+export interface ObjectPlacementCursorPreviewData {
+  footprint: Polygon2DCm;
+  isValid: boolean;
+  elevationM: number;
+}
+
 export interface SpaceSceneGraphProps {
   layout: SpaceLayout1to1;
   viewMode: SpaceViewMode;
@@ -54,6 +60,7 @@ export interface SpaceSceneGraphProps {
   showRoof?: boolean;
   activeLens?: AnalyticalLensType | null;
   showDistancesConflict?: boolean;
+  objectCursorPreview?: ObjectPlacementCursorPreviewData | null;
   onSelectPlant?: (plantId: string) => void;
   onSelectWall?: (wallId: string) => void;
   onSelectVertex?: (vertexIndex: number | null) => void;
@@ -1185,6 +1192,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   showRoof = true,
   activeLens,
   showDistancesConflict,
+  objectCursorPreview,
   onSelectPlant,
   onSelectWall,
   onSelectVertex,
@@ -1248,6 +1256,11 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
         .filter((item): item is { id: string; shape: THREE.Shape } => item.shape !== null),
     [regions.walkablePolygons, centerCm],
   );
+
+  const objectCursorShape = useMemo(() => {
+    if (!objectCursorPreview || objectCursorPreview.footprint.length < 3) return null;
+    return buildShapeFromPolygonCm(objectCursorPreview.footprint, centerCm);
+  }, [objectCursorPreview, centerCm]);
 
   const sunPosition: [number, number, number] = [
     sun.sceneDirection.x * SUN_DISTANCE_M,
@@ -1435,6 +1448,26 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
             centerCm={centerCm}
           />
         </React.Suspense>
+      )}
+
+      {/* Real-time 3D Object Footprint & Collision Validation Cursor */}
+      {objectCursorPreview && objectCursorShape && (
+        <group name="object-cursor-preview">
+          <mesh
+            name="object-placement-footprint-mesh"
+            position={[0, (objectCursorPreview.elevationM ?? 0) + 0.005, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <shapeGeometry args={[objectCursorShape]} />
+            <meshBasicMaterial
+              color={objectCursorPreview.isValid ? '#10b981' : '#ef4444'}
+              opacity={objectCursorPreview.isValid ? 0.35 : 0.55}
+              transparent
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        </group>
       )}
 
       {/* Frame Tracker for T4 WebGL paint profiling */}

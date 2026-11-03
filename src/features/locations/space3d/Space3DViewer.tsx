@@ -13,6 +13,8 @@ import {
   findClosestEdgeOnPolygon,
   isRectangularPolygon,
   movePolygonVertex,
+  computeObjectFootprintPolygon,
+  validateObjectPlacement,
   type Point2DCm,
   type Polygon2DCm,
   type WallMaterialType,
@@ -42,7 +44,7 @@ import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
 import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
 import { SpacePlantBuilderShelf } from './SpacePlantBuilderShelf';
 import { SpaceObjectBuilderShelf } from './SpaceObjectBuilderShelf';
-import { FACILITY_OBJECTS_CATALOG } from './objectsCatalog';
+import { FACILITY_OBJECTS_CATALOG, getObjectDimensionsCm } from './objectsCatalog';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import { interactionProfiler } from './telemetry/interactionProfiler';
@@ -350,6 +352,41 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     });
     return preview;
   }, [builderState, regions, layout.placedPlants]);
+
+  const activeObjectDimensions = useMemo(() => {
+    if (builderState.activeTool !== 'place_object') return null;
+    return getObjectDimensionsCm(builderState.selectedObjectAssetId);
+  }, [builderState.activeTool, builderState.selectedObjectAssetId]);
+
+  const objectPlacementValidation = useMemo(() => {
+    if (
+      builderState.activeTool !== 'place_object' ||
+      !builderState.cursorCm ||
+      !activeObjectDimensions
+    ) {
+      return null;
+    }
+    return validateObjectPlacement({
+      centerCm: builderState.cursorCm,
+      widthCm: activeObjectDimensions.widthCm,
+      depthCm: activeObjectDimensions.depthCm,
+      heightCm: activeObjectDimensions.heightCm,
+      rotationDeg: builderState.objectRotationDeg,
+      elevationM: builderState.objectElevationM,
+      baseBoundary: layout.baseBoundary,
+      walls: layout.walls,
+      existingObjects: layout.placedObjects,
+    });
+  }, [
+    builderState.activeTool,
+    builderState.cursorCm,
+    activeObjectDimensions,
+    builderState.objectRotationDeg,
+    builderState.objectElevationM,
+    layout.baseBoundary,
+    layout.walls,
+    layout.placedObjects,
+  ]);
 
   const selectedPlant = useMemo(
     () =>
@@ -785,6 +822,32 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           FACILITY_OBJECTS_CATALOG.find(
             (i) => i.assetId === builderState.selectedObjectAssetId,
           ) ?? FACILITY_OBJECTS_CATALOG[0];
+        const dims = getObjectDimensionsCm(item.assetId, item.category);
+
+        const validation = validateObjectPlacement({
+          centerCm: pt,
+          widthCm: dims.widthCm,
+          depthCm: dims.depthCm,
+          heightCm: dims.heightCm,
+          rotationDeg: builderState.objectRotationDeg,
+          elevationM: builderState.objectElevationM,
+          baseBoundary: layout.baseBoundary,
+          walls: layout.walls,
+          existingObjects: layout.placedObjects,
+        });
+
+        if (!validation.isValid) {
+          if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+          setFillToast({
+            type: 'info',
+            message: `No se puede colocar aquí: ${validation.reasons.join(' · ')}`,
+          });
+          fillToastTimerRef.current = setTimeout(() => {
+            setFillToast(null);
+          }, 4000);
+          return;
+        }
+
         placeObject(locationId, {
           assetId: item.assetId,
           modelUrl: item.glbUrl,
@@ -792,6 +855,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           label: item.label,
           xCm: pt.x,
           yCm: pt.y,
+          widthCm: dims.widthCm,
+          depthCm: dims.depthCm,
+          heightCm: dims.heightCm,
           elevationM: builderState.objectElevationM,
           rotationDeg: builderState.objectRotationDeg,
           category: item.category,
@@ -1157,6 +1223,15 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 }
                 fixedCenterCm={fixedCenterCm ?? undefined}
                 transientBoundary={transientBoundary ?? undefined}
+                objectCursorPreview={
+                  objectPlacementValidation
+                    ? {
+                        footprint: objectPlacementValidation.footprint,
+                        isValid: objectPlacementValidation.isValid,
+                        elevationM: builderState.objectElevationM,
+                      }
+                    : null
+                }
                 onSelectPlant={handleSelectPlant}
                 onSelectWall={handleSelectWall}
                 onSelectVertex={handleSelectVertex}
@@ -1230,12 +1305,34 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               </div>
             )}
 
-            {cursorPreview && !draftMetrics && (
+            {cursorPreview && !draftMetrics && !objectPlacementValidation && (
               <div className="absolute top-16 left-6 z-20 rounded-full border border-emerald-300 bg-emerald-50/95 px-3 py-1 font-mono text-[11px] font-bold text-emerald-800 shadow-sm backdrop-blur-sm">
                 Cursor ({cursorPreview.pointCm.x}, {cursorPreview.pointCm.y} cm) ·{' '}
                 {cursorPreview.surface === 'cultivable'
                   ? 'Tierra Cultivable'
                   : 'Vereda/Camino'}
+              </div>
+            )}
+
+            {objectPlacementValidation && activeObjectDimensions && (
+              <div
+                data-testid="object-placement-validation-badge"
+                className={`absolute top-16 left-6 z-20 flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] font-bold shadow-sm backdrop-blur-sm ${
+                  objectPlacementValidation.isValid
+                    ? 'border-emerald-300 bg-emerald-50/95 text-emerald-800'
+                    : 'border-rose-300 bg-rose-50/95 text-rose-800'
+                }`}
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    objectPlacementValidation.isValid
+                      ? 'bg-emerald-500'
+                      : 'bg-rose-500 animate-pulse'
+                  }`}
+                />
+                {objectPlacementValidation.isValid
+                  ? `Posición libre (${activeObjectDimensions.widthCm} × ${activeObjectDimensions.depthCm} cm) · Clic para colocar`
+                  : `⚠️ ${objectPlacementValidation.reasons.join(' · ')}`}
               </div>
             )}
 
@@ -1604,6 +1701,54 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 </g>
               );
             })}
+
+            {/* Placed objects in 2D CAD floor plan */}
+            {layout.placedObjects?.map((obj) => {
+              const dims = getObjectDimensionsCm(obj.assetId, obj.category);
+              const w = obj.widthCm ?? dims.widthCm;
+              const d = obj.depthCm ?? dims.depthCm;
+              const rot = obj.rotationDeg ?? 0;
+              const poly = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
+              return (
+                <g key={obj.id} data-testid={`svg-object-${obj.id}`}>
+                  <polygon
+                    points={poly.map((p) => `${p.x},${p.y}`).join(' ')}
+                    fill="rgba(56, 189, 248, 0.2)"
+                    stroke="#0284c7"
+                    strokeWidth={1.5}
+                  />
+                  <text
+                    x={obj.xCm}
+                    y={obj.yCm}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={10}
+                    fontWeight="bold"
+                    fill="#0369a1"
+                    className="pointer-events-none select-none font-sans"
+                  >
+                    {obj.label}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Real-time Object Placement Cursor & Collision Footprint in 2D */}
+            {objectPlacementValidation && (
+              <g data-testid="svg-object-placement-cursor">
+                <polygon
+                  points={objectPlacementValidation.footprint.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill={
+                    objectPlacementValidation.isValid
+                      ? 'rgba(16, 185, 129, 0.3)'
+                      : 'rgba(239, 68, 68, 0.45)'
+                  }
+                  stroke={objectPlacementValidation.isValid ? '#10b981' : '#ef4444'}
+                  strokeWidth={2}
+                  strokeDasharray={objectPlacementValidation.isValid ? undefined : '6,4'}
+                />
+              </g>
+            )}
           </svg>
         </div>
       )}

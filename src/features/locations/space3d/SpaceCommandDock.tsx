@@ -335,6 +335,13 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
           message: `${plantCropCode} · Siembra masiva por sector cultivable`,
         };
 
+      case 'place_object':
+        return {
+          icon: <Boxes size={14} className="text-sky-600" />,
+          tag: 'Equipamiento',
+          message: 'Haz clic en el suelo para colocar el objeto seleccionado',
+        };
+
       case 'inspect':
       default:
         return {

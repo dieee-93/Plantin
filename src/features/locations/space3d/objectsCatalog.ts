@@ -156,3 +156,37 @@ export const FEATURED_OBJECTS_CATALOG: FacilityCatalogItem[] = [
 
 // Fallback compatibility alias
 export const FACILITY_OBJECTS_CATALOG = SIMREADY_CATALOG;
+
+export interface ObjectDimensionsCm {
+  widthCm: number;
+  depthCm: number;
+  heightCm: number;
+}
+
+export const KNOWN_OBJECT_DIMENSIONS: Record<string, ObjectDimensionsCm> = {
+  pallet_standard_wood_a01: { widthCm: 120, depthCm: 80, heightCm: 21 },
+  crate_harvest_plastic_green_a01: { widthCm: 60, depthCm: 40, heightCm: 25 },
+  workbench_modular_table_b01: { widthCm: 62, depthCm: 92, heightCm: 202 },
+  fan_axial_floor_a01: { widthCm: 60, depthCm: 60, heightCm: 120 },
+  rack_heavyduty_metal_f01: { widthCm: 130, depthCm: 50, heightCm: 180 },
+  rack_industrial_empty_a01: { widthCm: 400, depthCm: 110, heightCm: 400 },
+  produce_bocchoy_leafy_a03: { widthCm: 30, depthCm: 30, heightCm: 25 },
+  produce_tomato_fruit_a01: { widthCm: 10, depthCm: 10, heightCm: 10 },
+};
+
+export function getObjectDimensionsCm(assetId: string, category?: string): ObjectDimensionsCm {
+  if (KNOWN_OBJECT_DIMENSIONS[assetId]) {
+    return KNOWN_OBJECT_DIMENSIONS[assetId];
+  }
+  const idLower = assetId.toLowerCase();
+  if (idLower.includes('pallet')) return { widthCm: 120, depthCm: 80, heightCm: 20 };
+  if (idLower.includes('crate') || idLower.includes('box')) return { widthCm: 60, depthCm: 40, heightCm: 30 };
+  if (idLower.includes('table') || idLower.includes('desk') || idLower.includes('bench')) return { widthCm: 150, depthCm: 80, heightCm: 90 };
+  if (idLower.includes('rack') || idLower.includes('shelf')) return { widthCm: 120, depthCm: 50, heightCm: 200 };
+  if (idLower.includes('fan') || idLower.includes('compressor')) return { widthCm: 60, depthCm: 60, heightCm: 100 };
+  if (idLower.includes('trash') || idLower.includes('bin') || idLower.includes('barrel')) return { widthCm: 50, depthCm: 50, heightCm: 80 };
+  if (category === 'harvest_produce') return { widthCm: 30, depthCm: 30, heightCm: 20 };
+  if (category === 'hand_tools') return { widthCm: 40, depthCm: 20, heightCm: 15 };
+  if (category === 'safety') return { widthCm: 40, depthCm: 40, heightCm: 60 };
+  return { widthCm: 60, depthCm: 60, heightCm: 60 };
+}
