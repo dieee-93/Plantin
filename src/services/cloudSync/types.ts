@@ -46,6 +46,12 @@ export interface SyncBufferState<T> {
   inFlight: Map<string, SyncBufferEntry<T>> | null;
 }
 
+export interface StorageQuota {
+  limitBytes?: number;
+  usageBytes?: number;
+  usageInDriveBytes?: number;
+}
+
 export interface GoogleDriveFileMeta {
   id: string;
   name: string;
@@ -61,7 +67,11 @@ export interface SyncStateDetail {
   error: string | null;
   user: GoogleAuthUser | null;
   isOnline: boolean;
+  storageQuota?: StorageQuota;
+  lastSyncSizeBytes?: number;
 }
+
+export type SyncState = SyncStateDetail;
 
 export interface CloudSyncOptions {
   clientId?: string;

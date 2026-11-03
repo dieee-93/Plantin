@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { GoogleAuthUser, SyncStateDetail, SyncStatus } from './types';
+import type { GoogleAuthUser, StorageQuota, SyncStateDetail, SyncStatus } from './types';
 import { syncCoordinator, SyncCoordinator } from './SyncCoordinator';
 import { googleAuthManager, GoogleAuthManager } from './GoogleAuthManager';
 
@@ -12,6 +12,8 @@ export interface UseSyncStatusResult {
   isOnline: boolean;
   isAuthenticated: boolean;
   isConfigured: boolean;
+  storageQuota?: StorageQuota;
+  lastSyncSizeBytes?: number;
   signIn: () => Promise<void>;
   signOut: () => void;
   flush: () => Promise<void>;
@@ -51,6 +53,8 @@ export function useSyncStatus(
     isOnline: detail.isOnline,
     isAuthenticated: auth.isAuthenticated(),
     isConfigured: auth.isConfigured(),
+    storageQuota: detail.storageQuota,
+    lastSyncSizeBytes: detail.lastSyncSizeBytes,
     signIn,
     signOut,
     flush,

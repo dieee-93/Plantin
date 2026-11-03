@@ -7,6 +7,18 @@ import { router } from './router'
 import { syncCoordinator } from '@/services/cloudSync'
 import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
 
+// Suppress upstream @react-three/fiber deprecation warning for THREE.Clock
+const originalWarn = console.warn
+console.warn = (...args: unknown[]) => {
+  if (
+    typeof args[0] === 'string' &&
+    args[0].includes('THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.')
+  ) {
+    return
+  }
+  originalWarn.apply(console, args)
+}
+
 // Auto-start reactive background cloud sync with Google Drive appDataFolder
 syncCoordinator.startListening(useSpaceLayoutStore)
 

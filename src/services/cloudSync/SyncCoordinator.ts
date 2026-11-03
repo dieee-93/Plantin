@@ -1,6 +1,7 @@
 import type {
   CloudSyncOptions,
   RoomSyncMetadata,
+  StorageQuota,
   SyncBufferEntry,
   SyncManifest,
   SyncStateDetail,
@@ -21,6 +22,9 @@ export class SyncCoordinator {
   private isOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
   private lastSyncedAt: Date | null = null;
   private lastError: string | null = null;
+  private storageQuota?: StorageQuota;
+  private lastSyncSizeBytes?: number;
+  private lastQuotaFetchTime = 0;
   private listeners = new Set<(detail: SyncStateDetail) => void>();
 
   // Doble Búfer y Monotonic Revisions
@@ -165,6 +169,14 @@ export class SyncCoordinator {
     return this.status;
   }
 
+  public getStorageQuota(): StorageQuota | undefined {
+    return this.storageQuota;
+  }
+
+  public getLastSyncSizeBytes(): number | undefined {
+    return this.lastSyncSizeBytes;
+  }
+
   public getDetail(): SyncStateDetail {
     return {
       status: this.status,
@@ -173,7 +185,24 @@ export class SyncCoordinator {
       error: this.lastError,
       user: this.authManager.getUser(),
       isOnline: this.isOnline,
+      storageQuota: this.storageQuota,
+      lastSyncSizeBytes: this.lastSyncSizeBytes,
     };
+  }
+
+  public async refreshStorageQuota(force = false): Promise<void> {
+    if (!this.canSync() || typeof this.driveClient.getStorageQuota !== 'function') return;
+    const now = Date.now();
+    if (!force && now - this.lastQuotaFetchTime < 60000) {
+      return;
+    }
+    try {
+      this.storageQuota = await this.driveClient.getStorageQuota();
+      this.lastQuotaFetchTime = now;
+      this.notifyListeners();
+    } catch (err) {
+      console.warn('[SyncCoordinator] Could not fetch storage quota:', err);
+    }
   }
 
   private setStatus(newStatus: SyncStatus, error: string | null = null): void {
@@ -309,8 +338,12 @@ export class SyncCoordinator {
       };
 
       // 2. Subir cada sala en vuelo
+      let syncBytes = 0;
       for (const [locationId, entry] of this.inFlight.entries()) {
         const fileMeta = await this.driveClient.saveRoom(locationId, entry.data);
+        if (fileMeta.size) {
+          syncBytes += Number(fileMeta.size);
+        }
 
         const roomMeta: RoomSyncMetadata = {
           locationId,
@@ -324,6 +357,10 @@ export class SyncCoordinator {
         this.syncedRevisions.set(locationId, entry.revision);
       }
 
+      if (syncBytes > 0) {
+        this.lastSyncSizeBytes = syncBytes;
+      }
+
       // 3. Subir manifiesto actualizado
       currentManifest.updatedAt = new Date().toISOString();
       await this.driveClient.saveManifest(currentManifest);
@@ -331,6 +368,9 @@ export class SyncCoordinator {
       // Sincronización exitosa
       this.inFlight = null;
       this.lastSyncedAt = new Date();
+
+      // Actualizar información de cuota en segundo plano
+      await this.refreshStorageQuota();
 
       // Si llegaron nuevos cambios mientras se ejecutaba la subida,
       // procesarlos en el siguiente tick
@@ -402,6 +442,9 @@ export class SyncCoordinator {
     this.setStatus('syncing');
 
     try {
+      // Consultar cuota de almacenamiento al inicio de la sincronización inicial
+      await this.refreshStorageQuota(true);
+
       const manifestResult = await this.driveClient.loadManifest();
       const localLayouts = store.getState().layouts || {};
 

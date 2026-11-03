@@ -11,6 +11,20 @@ export interface HudSyncIndicatorProps {
   authManager?: GoogleAuthManager;
 }
 
+export function formatBytes(bytes?: number): string {
+  if (bytes === undefined || isNaN(bytes) || bytes < 0) return '0 B';
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const unitIndex = Math.min(Math.max(0, i), units.length - 1);
+  const value = bytes / Math.pow(1024, unitIndex);
+  const formatted =
+    value >= 100 || unitIndex === 0
+      ? Math.round(value).toString()
+      : value.toFixed(1).replace(/\.0$/, '');
+  return `${formatted} ${units[unitIndex]}`;
+}
+
 export const HudSyncIndicator: React.FC<HudSyncIndicatorProps> = ({
   className = '',
   coordinator,
@@ -24,6 +38,8 @@ export const HudSyncIndicator: React.FC<HudSyncIndicatorProps> = ({
     isOnline,
     isAuthenticated,
     isConfigured,
+    storageQuota,
+    lastSyncSizeBytes,
     signIn,
     signOut,
     flush,
@@ -181,11 +197,32 @@ export const HudSyncIndicator: React.FC<HudSyncIndicatorProps> = ({
     ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : 'recién';
 
+  const sizeText =
+    lastSyncSizeBytes !== undefined
+      ? `Tamaño del guardado: ${formatBytes(lastSyncSizeBytes)}`
+      : null;
+
+  const quotaText =
+    storageQuota?.usageBytes !== undefined && storageQuota?.limitBytes !== undefined
+      ? `Espacio en Google Drive: ${formatBytes(storageQuota.usageBytes)} / ${formatBytes(storageQuota.limitBytes)}`
+      : storageQuota?.usageBytes !== undefined
+        ? `Espacio en Google Drive: ${formatBytes(storageQuota.usageBytes)} usado`
+        : null;
+
+  const tooltipDesc = [
+    `Sincronizado automáticamente a las ${formattedTime}.`,
+    sizeText,
+    quotaText,
+    'Clic para gestionar sincronización.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div className="relative pointer-events-auto">
       <HudTooltip
         title="Guardado en Google Drive"
-        description={`Sincronizado automáticamente a las ${formattedTime}. Clic para gestionar sincronización.`}
+        description={tooltipDesc}
         side="bottom"
       >
         <button
@@ -210,16 +247,26 @@ export const HudSyncIndicator: React.FC<HudSyncIndicatorProps> = ({
       {isMenuOpen && (
         <div
           data-testid="hud-sync-menu"
-          className="absolute right-0 top-full mt-1.5 z-40 w-56 rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md"
+          className="absolute right-0 top-full mt-1.5 z-40 w-64 rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md"
         >
           <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
             <span className="text-xs font-bold text-slate-800">Google Drive Sync</span>
             <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <p className="text-[11px] text-slate-600 mb-2">
+          <p className="text-[11px] text-slate-600 mb-1">
             Último respaldo: <span className="font-mono text-slate-800">{formattedTime}</span>
           </p>
-          <div className="flex flex-col gap-1.5">
+          {sizeText && (
+            <p className="text-[11px] text-slate-600 mb-1" data-testid="hud-sync-file-size">
+              {sizeText}
+            </p>
+          )}
+          {quotaText && (
+            <p className="text-[11px] text-slate-600 mb-2" data-testid="hud-sync-quota">
+              {quotaText}
+            </p>
+          )}
+          <div className="flex flex-col gap-1.5 mt-2">
             <button
               type="button"
               onClick={handleManualFlush}

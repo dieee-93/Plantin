@@ -1,8 +1,9 @@
-import type { GoogleDriveFileMeta, SyncManifest } from './types';
+import type { GoogleDriveFileMeta, StorageQuota, SyncManifest } from './types';
 import type { SpaceLayout1to1 } from '@/store/spaceLayoutStore';
 
 const DRIVE_FILES_ENDPOINT = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_ENDPOINT = 'https://www.googleapis.com/upload/drive/v3/files';
+const DRIVE_ABOUT_ENDPOINT = 'https://www.googleapis.com/drive/v3/about';
 
 export class GoogleDriveAuthError extends Error {
   constructor(message = 'Unauthorized Google Drive request (401)') {
@@ -163,6 +164,7 @@ export class GoogleDriveClient {
     mimeType = 'application/json',
   ): Promise<GoogleDriveFileMeta> {
     const jsonString = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+    const contentSizeBytes = new TextEncoder().encode(jsonString).length;
 
     let fileId = this.fileIdCache.get(filename);
     if (!fileId) {
@@ -195,6 +197,9 @@ export class GoogleDriveClient {
         body: jsonString,
       });
       const updatedMeta = (await updateRes.json()) as GoogleDriveFileMeta;
+      if (!updatedMeta.size) {
+        updatedMeta.size = String(contentSizeBytes);
+      }
       this.fileIdCache.set(filename, updatedMeta.id);
       return updatedMeta;
     }
@@ -225,8 +230,33 @@ export class GoogleDriveClient {
     });
 
     const createdMeta = (await createRes.json()) as GoogleDriveFileMeta;
+    if (!createdMeta.size) {
+      createdMeta.size = String(contentSizeBytes);
+    }
     this.fileIdCache.set(filename, createdMeta.id);
     return createdMeta;
+  }
+
+  /**
+   * Obtiene la cuota de almacenamiento del usuario en Google Drive
+   */
+  public async getStorageQuota(): Promise<StorageQuota> {
+    const url = `${DRIVE_ABOUT_ENDPOINT}?fields=storageQuota`;
+    const response = await this.fetchWithBackoff(url, { method: 'GET' });
+    const data = (await response.json()) as {
+      storageQuota?: {
+        limit?: string;
+        usage?: string;
+        usageInDrive?: string;
+      };
+    };
+
+    const sq = data.storageQuota;
+    return {
+      limitBytes: sq?.limit ? Number(sq.limit) : undefined,
+      usageBytes: sq?.usage ? Number(sq.usage) : undefined,
+      usageInDriveBytes: sq?.usageInDrive ? Number(sq.usageInDrive) : undefined,
+    };
   }
 
   /**

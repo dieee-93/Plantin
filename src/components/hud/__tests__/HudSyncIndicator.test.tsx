@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { HudSyncIndicator } from '../HudSyncIndicator';
+import { HudSyncIndicator, formatBytes } from '../HudSyncIndicator';
 import { SyncCoordinator } from '@/services/cloudSync/SyncCoordinator';
 import { GoogleAuthManager } from '@/services/cloudSync/GoogleAuthManager';
 import { GoogleDriveClient } from '@/services/cloudSync/GoogleDriveClient';
@@ -95,5 +95,45 @@ describe('HudSyncIndicator - Glassmorphism Cloud Sync Status & Quick Connect Pil
 
     // Restore online
     window.dispatchEvent(new Event('online'));
+  });
+
+  it('formats byte units cleanly', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(500)).toBe('500 B');
+    expect(formatBytes(25088)).toBe('24.5 KB');
+    expect(formatBytes(15 * 1024 * 1024 * 1024)).toBe('15 GB');
+  });
+
+  it('displays saved layout size and Google Drive storage quota in details popover', () => {
+    vi.spyOn(authManager, 'isAuthenticated').mockReturnValue(true);
+    vi.spyOn(authManager, 'getUser').mockReturnValue({
+      accessToken: 'valid-token',
+      expiresAt: Date.now() + 3600000,
+    });
+    authManager.init('configured-client-id');
+    const authCoord = new SyncCoordinator(authManager);
+
+    vi.spyOn(authCoord, 'getDetail').mockReturnValue({
+      status: 'idle',
+      pendingCount: 0,
+      lastSyncedAt: new Date(2026, 10, 3, 14, 30),
+      error: null,
+      user: { accessToken: 'valid-token', expiresAt: Date.now() + 3600000 },
+      isOnline: true,
+      lastSyncSizeBytes: 25088,
+      storageQuota: {
+        limitBytes: 15 * 1024 * 1024 * 1024,
+        usageBytes: Math.round(1.2 * 1024 * 1024 * 1024),
+      },
+    });
+
+    render(<HudSyncIndicator coordinator={authCoord} authManager={authManager} />);
+
+    // Open popover menu
+    fireEvent.click(screen.getByTestId('hud-sync-indicator-saved'));
+
+    expect(screen.getByTestId('hud-sync-menu')).toBeInTheDocument();
+    expect(screen.getByTestId('hud-sync-file-size')).toHaveTextContent('Tamaño del guardado: 24.5 KB');
+    expect(screen.getByTestId('hud-sync-quota')).toHaveTextContent('Espacio en Google Drive: 1.2 GB / 15 GB');
   });
 });

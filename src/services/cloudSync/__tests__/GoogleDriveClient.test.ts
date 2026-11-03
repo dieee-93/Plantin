@@ -207,4 +207,59 @@ describe('GoogleDriveClient - Drive REST API v3 (appDataFolder) & Exponential Ba
     const room = await client.loadRoom('alpha-file-id');
     expect(room.locationId).toBe('room-alpha');
   });
+
+  it('fetches storage quota from Google Drive about endpoint', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          storageQuota: {
+            limit: '16106127360',
+            usage: '1288490188',
+            usageInDrive: '536870912',
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const quota = await client.getStorageQuota();
+
+    expect(quota).toEqual({
+      limitBytes: 16106127360,
+      usageBytes: 1288490188,
+      usageInDriveBytes: 536870912,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [calledUrl] = mockFetch.mock.calls[0];
+    expect(calledUrl).toContain('/about?fields=storageQuota');
+  });
+
+  it('populates size attribute on created and updated file metadata', async () => {
+    // 1. Search (not found)
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ files: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    // 2. Creation response without size field from API
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'file-size-test', name: 'room_size.json' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const payload = { locationId: 'room_size', data: 'some layout content' };
+    const expectedLength = new TextEncoder().encode(JSON.stringify(payload, null, 2)).length;
+
+    const created = await client.uploadOrUpdateFile('room_size.json', payload);
+
+    expect(created.id).toBe('file-size-test');
+    expect(created.size).toBe(String(expectedLength));
+  });
 });

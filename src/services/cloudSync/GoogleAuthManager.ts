@@ -55,13 +55,16 @@ export class GoogleAuthManager {
         ? (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)
         : undefined;
 
-    this.clientId = initialClientId || envClientId || null;
+    this.clientId =
+      initialClientId !== undefined
+        ? (initialClientId.trim() ? initialClientId : null)
+        : (envClientId || null);
     this.hydrateFromSession();
   }
 
   public init(clientId?: string): void {
-    if (clientId) {
-      this.clientId = clientId;
+    if (clientId !== undefined) {
+      this.clientId = clientId.trim() ? clientId : null;
     }
     this.tokenClient = null; // Re-inicializar si cambia
   }

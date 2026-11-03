@@ -259,7 +259,7 @@ describe('SyncCoordinator - Double Buffer, Smart Debounce & Reactive Drive Sync'
       canRedo: vi.fn(),
       clearHistory: vi.fn(),
       resetAll: vi.fn(),
-    }));
+    } as unknown as SpaceLayoutStoreState));
 
     const unsubscribe = coordinator.startListening(mockStore);
 
@@ -337,7 +337,7 @@ describe('SyncCoordinator - Double Buffer, Smart Debounce & Reactive Drive Sync'
       canRedo: vi.fn(),
       clearHistory: vi.fn(),
       resetAll: vi.fn(),
-    }));
+    } as unknown as SpaceLayoutStoreState));
 
     await coordinator.initialBidirectionalSync(mockStore);
 
@@ -348,5 +348,44 @@ describe('SyncCoordinator - Double Buffer, Smart Debounce & Reactive Drive Sync'
 
     // 2. Debe haber subido 'loc-local-only' a la nube
     expect(mockDriveClient.saveRoom).toHaveBeenCalledWith('loc-local-only', expect.any(Object));
+  });
+
+  it('tracks lastSyncSizeBytes and notifies listeners upon flush', async () => {
+    (mockDriveClient.saveRoom as any).mockResolvedValueOnce({
+      id: 'room-1',
+      name: 'room_loc-size.json',
+      size: '4096',
+    });
+
+    const detailHistory: any[] = [];
+    coordinator.subscribeStatus((detail) => detailHistory.push(detail));
+
+    const layout = createMockRoomLayout('loc-size', 3);
+    coordinator.enqueueRoomChange('loc-size', layout);
+
+    await coordinator.flush();
+
+    expect(coordinator.getLastSyncSizeBytes()).toBe(4096);
+    expect(coordinator.getDetail().lastSyncSizeBytes).toBe(4096);
+    expect(detailHistory.some((d) => d.lastSyncSizeBytes === 4096)).toBe(true);
+  });
+
+  it('queries storage quota and propagates it to listeners on initial bidirectional sync', async () => {
+    const mockQuota = {
+      limitBytes: 16106127360,
+      usageBytes: 1288490188,
+      usageInDriveBytes: 536870912,
+    };
+    mockDriveClient.getStorageQuota = vi.fn().mockResolvedValue(mockQuota);
+
+    const emptyStore = createStore<SpaceLayoutStoreState>(() => ({
+      layouts: {},
+    } as any));
+
+    await coordinator.initialBidirectionalSync(emptyStore);
+
+    expect(mockDriveClient.getStorageQuota).toHaveBeenCalled();
+    expect(coordinator.getStorageQuota()).toEqual(mockQuota);
+    expect(coordinator.getDetail().storageQuota).toEqual(mockQuota);
   });
 });
