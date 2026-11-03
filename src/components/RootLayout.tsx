@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAgroClimateStore } from '@/store/agroClimateStore'
 import { reverseGeocode } from '@/services/climate/geocodingClient'
 import { LocationSetupModal } from '@/components/LocationSetupModal'
+import { HudTooltip } from '@/components/hud'
 import {
   LayoutDashboard,
   Sprout,
@@ -17,6 +18,8 @@ import {
   CloudRain,
   Snowflake,
   Sun,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 
 interface NavItem {
@@ -79,9 +82,39 @@ const NAV_ITEMS: NavItem[] = [
   },
 ]
 
+const SIDEBAR_STORAGE_KEY = 'plantin_sidebar_collapsed'
+
 export function RootLayout() {
   const location = useLocation()
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY)
+    if (saved !== null) return saved === 'true'
+    const path = window.location.pathname
+    return path === '/' || path.startsWith('/locations')
+  })
+
+  // Auto-collapse when entering the Space Map / 3D viewer route (user can re-expand)
+  const prevPathRef = useRef(location.pathname)
+  useEffect(() => {
+    const wasSpaceMap = prevPathRef.current === '/' || prevPathRef.current.startsWith('/locations')
+    const isSpaceMap = location.pathname === '/' || location.pathname.startsWith('/locations')
+    if (!wasSpaceMap && isSpaceMap) {
+      setIsCollapsed(true)
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, 'true')
+    }
+    prevPathRef.current = location.pathname
+  }, [location.pathname])
+
+  const toggleSidebar = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next))
+      return next
+    })
+  }
+
   const {
     farmCoordinates,
     currentClimate,
@@ -124,91 +157,153 @@ export function RootLayout() {
       />
       {/* ── Sidebar ── */}
       <nav
+        aria-label="Menú principal de navegación"
+        data-testid="app-sidebar"
+        data-collapsed={isCollapsed ? 'true' : 'false'}
         style={{
-          width: 244,
+          width: isCollapsed ? 64 : 244,
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
           background: 'var(--surface-elevated)',
           borderRight: '1px solid var(--border)',
           boxShadow: 'var(--shadow-sm)',
+          transition: 'width 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        {/* Logo */}
+        {/* Logo & Toggle Header */}
         <div
           style={{
             height: 56,
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            padding: '0 20px',
+            justifyContent: isCollapsed ? 'center' : 'space-between',
+            padding: isCollapsed ? '0 8px' : '0 16px',
             borderBottom: '1px solid var(--border)',
           }}
         >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Sprout size={14} color="white" strokeWidth={2} />
-          </div>
-          <div>
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                letterSpacing: '-0.01em',
-                display: 'block',
-                lineHeight: 1.1,
-              }}
-            >
-              Plantin
-            </span>
+          {isCollapsed ? (
+            <HudTooltip title="Expandir menú" description="Mostrar nombres y atajos del flujo" side="right">
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                aria-label="Expandir menú lateral"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 8,
+                  background: 'transparent',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  transition: 'background 0.15s ease',
+                }}
+                className="hover:bg-slate-100"
+              >
+                <PanelLeftOpen size={18} />
+              </button>
+            </HudTooltip>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Sprout size={14} color="white" strokeWidth={2} />
+                </div>
+                <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                  <span
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      letterSpacing: '-0.01em',
+                      display: 'block',
+                      lineHeight: 1.1,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Plantin
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: 'var(--text-tertiary)',
+                      fontFamily: 'var(--font-mono)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Germoplasma & Cultivo
+                  </span>
+                </div>
+              </div>
+
+              <HudTooltip title="Colapsar menú" description="Ocultar textos y ganar espacio en pantalla" side="right">
+                <button
+                  type="button"
+                  onClick={toggleSidebar}
+                  aria-label="Colapsar menú lateral"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: 'transparent',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-tertiary)',
+                    flexShrink: 0,
+                  }}
+                  className="hover:bg-slate-100 hover:text-slate-700 transition"
+                >
+                  <PanelLeftClose size={16} />
+                </button>
+              </HudTooltip>
+            </>
+          )}
+        </div>
+
+        {/* Nav group label */}
+        {!isCollapsed && (
+          <div style={{ padding: '16px 20px 8px' }}>
             <span
               style={{
                 fontSize: 10,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
                 color: 'var(--text-tertiary)',
                 fontFamily: 'var(--font-mono)',
               }}
             >
-              Germoplasma & Cultivo
+              Flujo de Trabajo
             </span>
           </div>
-        </div>
-
-        {/* Nav group label */}
-        <div style={{ padding: '16px 20px 8px' }}>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              color: 'var(--text-tertiary)',
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
-            Flujo de Trabajo
-          </span>
-        </div>
+        )}
 
         {/* Links */}
         <div
           style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '0 10px',
+            padding: isCollapsed ? '12px 6px' : '0 10px',
             display: 'flex',
             flexDirection: 'column',
-            gap: 4,
+            gap: isCollapsed ? 8 : 4,
           }}
         >
           {NAV_ITEMS.map(({ to, step, label, sub, icon: Icon, end, matchPaths, children }) => {
@@ -217,6 +312,46 @@ export function RootLayout() {
               : end
                 ? location.pathname === to
                 : (to === '/' ? location.pathname === '/' : location.pathname.startsWith(to))
+
+            if (isCollapsed) {
+              return (
+                <div key={to} style={{ display: 'flex', justifyContent: 'center' }}>
+                  <HudTooltip
+                    title={label}
+                    description={sub || (step ? `Paso ${step}` : undefined)}
+                    side="right"
+                  >
+                    <NavLink
+                      to={to}
+                      end={end}
+                      aria-label={label}
+                      style={{ textDecoration: 'none' }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 40,
+                          height: 40,
+                          borderRadius: 'var(--radius-md)',
+                          background: isGroupActive ? 'var(--accent-light)' : 'transparent',
+                          color: isGroupActive ? 'var(--accent)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        className="hover:bg-slate-100"
+                      >
+                        <Icon
+                          size={18}
+                          strokeWidth={isGroupActive ? 2.1 : 1.75}
+                        />
+                      </div>
+                    </NavLink>
+                  </HudTooltip>
+                </div>
+              )
+            }
 
             return (
               <div key={to}>
@@ -334,153 +469,208 @@ export function RootLayout() {
           })}
         </div>
 
-        {/* Widget Fijo de Ubicación y Clima en Sidebar */}
-        <div
-          style={{
-            margin: '8px 10px',
-            padding: '10px 12px',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--surface-subtle)',
-            border: '1px solid var(--border)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: 'var(--text-tertiary)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
+        {/* Widget de Ubicación y Clima en Sidebar */}
+        {isCollapsed ? (
+          <div style={{ padding: '8px 6px', display: 'flex', justifyContent: 'center' }}>
+            <HudTooltip
+              title={farmCoordinates?.name || 'Ubicación Activa'}
+              description={
+                currentWeather
+                  ? `${currentWeather.temperature.toFixed(1)}°C · ${currentWeather.conditionLabel}`
+                  : farmCoordinates
+                    ? `${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`
+                    : 'Configurar ubicación del establecimiento'
+              }
+              side="right"
             >
-              <MapPin size={11} color="var(--accent)" />
-              Ubicación Activa
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsLocationModalOpen(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--accent)',
-                cursor: 'pointer',
-              }}
-            >
-              Cambiar
-            </button>
-          </div>
-
-          {farmCoordinates ? (
-            <>
-              <p
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(true)}
+                aria-label="Configurar ubicación del cultivo"
                 style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  width: 40,
+                  height: 40,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--surface-subtle)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--accent)',
                 }}
-                title={farmCoordinates.name || `${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`}
               >
-                {farmCoordinates.name || `Coord. ${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`}
-              </p>
-              <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 1 }}>
-                {farmCoordinates.latitude.toFixed(2)}°, {farmCoordinates.longitude.toFixed(2)}°
-              </p>
+                <MapPin size={16} />
+                {currentWeather && (
+                  <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#78350f', marginTop: 1 }}>
+                    {Math.round(currentWeather.temperature)}°
+                  </span>
+                )}
+              </button>
+            </HudTooltip>
+          </div>
+        ) : (
+          <div
+            style={{
+              margin: '8px 10px',
+              padding: '10px 12px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--surface-subtle)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: 'var(--text-tertiary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <MapPin size={11} color="var(--accent)" />
+                Ubicación Activa
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                }}
+              >
+                Cambiar
+              </button>
+            </div>
 
-              {currentWeather && (
-                <div
+            {farmCoordinates ? (
+              <>
+                <p
                   style={{
-                    marginTop: 6,
-                    padding: '5px 8px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: '#fffbeb',
-                    border: '1px solid #fde68a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 4,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                   }}
+                  title={farmCoordinates.name || `${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`}
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#78350f' }}>
-                    <Sun size={11} color="#d97706" />
-                    {currentWeather.temperature.toFixed(1)}°C
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: '#92400e',
-                      fontWeight: 500,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                    title={`${currentWeather.conditionLabel} · ${Math.round(currentWeather.humidity)}% HR`}
-                  >
-                    {currentWeather.conditionLabel} · {Math.round(currentWeather.humidity)}%
-                  </span>
-                </div>
-              )}
-
-              {currentClimate ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginTop: 5,
-                    fontSize: 10.5,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                    <CloudRain size={10} color="#0284c7" />
-                    {Math.round(currentClimate.annualRainfall)} mm/año
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                    <Snowflake size={10} color="#38bdf8" />
-                    {Math.round(currentClimate.annualFrostDays)} d. helada
-                  </span>
-                </div>
-              ) : (
-                <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-                  {isLoadingClimate ? 'Calculando clima...' : 'Clima pendiente'}
+                  {farmCoordinates.name || `Coord. ${farmCoordinates.latitude.toFixed(2)}°, ${farmCoordinates.longitude.toFixed(2)}°`}
                 </p>
-              )}
-            </>
-          ) : (
-            <p style={{ fontSize: 11.5, color: '#b45309', fontWeight: 500 }}>
-              Pendiente de configurar
-            </p>
-          )}
-        </div>
+                <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', marginTop: 1 }}>
+                  {farmCoordinates.latitude.toFixed(2)}°, {farmCoordinates.longitude.toFixed(2)}°
+                </p>
+
+                {currentWeather && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      padding: '5px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 4,
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#78350f' }}>
+                      <Sun size={11} color="#d97706" />
+                      {currentWeather.temperature.toFixed(1)}°C
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: '#92400e',
+                        fontWeight: 500,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={`${currentWeather.conditionLabel} · ${Math.round(currentWeather.humidity)}% HR`}
+                    >
+                      {currentWeather.conditionLabel} · {Math.round(currentWeather.humidity)}%
+                    </span>
+                  </div>
+                )}
+
+                {currentClimate ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginTop: 5,
+                      fontSize: 10.5,
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <CloudRain size={10} color="#0284c7" />
+                      {Math.round(currentClimate.annualRainfall)} mm/año
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <Snowflake size={10} color="#38bdf8" />
+                      {Math.round(currentClimate.annualFrostDays)} d. helada
+                    </span>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
+                    {isLoadingClimate ? 'Calculando clima...' : 'Clima pendiente'}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p style={{ fontSize: 11.5, color: '#b45309', fontWeight: 500 }}>
+                Pendiente de configurar
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div
           style={{
-            padding: '12px 20px',
+            padding: isCollapsed ? '10px 6px' : '12px 20px',
             borderTop: '1px solid var(--border)',
+            textAlign: isCollapsed ? 'center' : 'left',
           }}
         >
-          <p
-            style={{
-              fontSize: 11,
-              color: 'var(--text-tertiary)',
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
-            Plantin v0.2 · Flujo Unificado
-          </p>
+          {isCollapsed ? (
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--text-tertiary)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              v0.2
+            </span>
+          ) : (
+            <p
+              style={{
+                fontSize: 11,
+                color: 'var(--text-tertiary)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              Plantin v0.2 · Flujo Unificado
+            </p>
+          )}
         </div>
       </nav>
 

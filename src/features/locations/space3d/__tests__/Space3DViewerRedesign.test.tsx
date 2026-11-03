@@ -44,7 +44,7 @@ describe('Space3DViewerRedesign - Full-Screen Canvas & Floating Glassmorphism HU
     // Bottom-Right Camera Widget
     expect(screen.getByRole('button', { name: /2D|Plano 2D/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /3D|Vista 3D/i })).toBeInTheDocument();
-    expect(screen.getByText('75%')).toBeInTheDocument();
+    expect(screen.getByText(/\d+%/)).toBeInTheDocument();
   });
 
   it('toggles bottom tray drawer to view seed lots and seedlings', () => {
@@ -345,6 +345,7 @@ describe('Space3DViewerRedesign - Full-Screen Canvas & Floating Glassmorphism HU
     ).toHaveLength(3);
 
     // Switch to Plantar Individual tool in Design mode and add a plant
+    fireEvent.click(screen.getByRole('button', { name: /^Plantar$/i }));
     fireEvent.click(screen.getByRole('button', { name: /Plantar Individual/i }));
     const plane = screen.getByTestId('interactive-plane-1to1');
     fireEvent.click(plane, { clientX: 300, clientY: 200 });

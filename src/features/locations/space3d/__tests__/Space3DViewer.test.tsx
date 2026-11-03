@@ -17,6 +17,9 @@ describe('Space3DViewer - Interactive 1:1 Space Builder & Viewer', () => {
       />,
     );
 
+    // Open Solar & 1:1 Metrics panel via Luz button
+    fireEvent.click(screen.getByRole('button', { name: /Luz/i }));
+
     // Initially patio_croquis has 60.0 m² total, 30.2 m² cultivable, 29.8 m² walkable
     expect(screen.getByTestId('metric-cultivable-area')).toHaveTextContent('30.2 m²');
     expect(screen.getByTestId('metric-walkable-area')).toHaveTextContent('29.8 m²');
@@ -59,7 +62,8 @@ describe('Space3DViewer - Interactive 1:1 Space Builder & Viewer', () => {
     // Initially 3 plants in patio_croquis
     expect(screen.getByTestId('total-plants-counter')).toHaveTextContent('3 plantas');
 
-    // Switch to Rellenar Sector tool
+    // Switch to Rellenar Sector tool via Plantar group
+    fireEvent.click(screen.getByRole('button', { name: /^Plantar$/i }));
     fireEvent.click(screen.getByRole('button', { name: /Rellenar Sector/i }));
 
     // Choose Lechuga preset (30 cm spacing)

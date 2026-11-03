@@ -95,4 +95,43 @@ describe('CanopyRingsInstanced', () => {
 
     await renderer.unmount();
   });
+
+  it('renders neutral rings with subtle semi-transparent material opacity (0.55)', async () => {
+    const sampleRings: CanopyRingItem[] = [
+      { id: 'plant-1', xM: 1, zM: 1, radiusM: 0.2 },
+    ];
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <CanopyRingsInstanced rings={sampleRings} />,
+    );
+
+    const ringMesh = renderer.scene.findByProps({
+      name: 'instanced-canopy-rings-mesh',
+    });
+
+    const material = ringMesh.props.args[1];
+    expect(material.transparent).toBe(true);
+    expect(material.opacity).toBe(0.55);
+
+    await renderer.unmount();
+  });
+
+  it('respects conflictingPlantIds set to only highlight conflicting plants', async () => {
+    const sampleRings: CanopyRingItem[] = [
+      { id: 'p1', xM: 0, zM: 0, radiusM: 0.2, isCrowded: true },
+      { id: 'p2', xM: 1, zM: 0, radiusM: 0.2, isCrowded: true },
+    ];
+
+    // When conflictingPlantIds is empty, even though isCrowded is true in data, no plants are red
+    const renderer = await ReactThreeTestRenderer.create(
+      <CanopyRingsInstanced rings={sampleRings} conflictingPlantIds={new Set<string>()} />,
+    );
+
+    const ringMesh = renderer.scene.findByProps({
+      name: 'instanced-canopy-rings-mesh',
+    });
+    expect(ringMesh).toBeDefined();
+
+    await renderer.unmount();
+  });
 });

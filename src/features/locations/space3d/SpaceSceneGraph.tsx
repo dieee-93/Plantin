@@ -22,8 +22,10 @@ import {
   SpaceStandardMaterial,
 } from './materials';
 import { SpacePlantSprite } from './SpacePlantSprite';
+import { SurroundingGround } from './SurroundingGround';
 import { CanopyRingsInstanced, type CanopyRingItem } from './CanopyRingsInstanced';
 import { InstancedPlantGroup, type InstancedPlantItem } from './InstancedPlantSprites';
+import type { AnalyticalLensType } from './SpaceLensBar';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import { PerfFrameTracker } from './telemetry/PerfFrameTracker';
 
@@ -42,7 +44,11 @@ export interface SpaceSceneGraphProps {
   selectedWallId?: string | null;
   selectedVertexIndex?: number | null;
   isBoundaryEditMode?: boolean;
+  fixedCenterCm?: Point2DCm;
+  transientBoundary?: Polygon2DCm;
   showRoof?: boolean;
+  activeLens?: AnalyticalLensType | null;
+  showDistancesConflict?: boolean;
   onSelectPlant?: (plantId: string) => void;
   onSelectWall?: (wallId: string) => void;
   onSelectVertex?: (vertexIndex: number | null) => void;
@@ -82,7 +88,7 @@ function computeBoundingBoxCm(polygon: Polygon2DCm): {
   };
 }
 
-function computeBoundingCenterCm(polygon: Polygon2DCm): Point2DCm {
+export function computeBoundingCenterCm(polygon: Polygon2DCm): Point2DCm {
   if (polygon.length === 0) return { x: 0, y: 0 };
   let minX = Infinity;
   let maxX = -Infinity;
@@ -225,12 +231,55 @@ export interface PlantsLayerProps {
   selectedPlantId?: string | null;
   crowdedPlantIds: Set<string>;
   centerCm: Point2DCm;
+  activeLens?: AnalyticalLensType | null;
+  showDistancesConflict?: boolean;
   onSelectPlant?: (plantId: string) => void;
 }
 
 export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
-  ({ placedPlants, selectedPlantId, crowdedPlantIds, centerCm, onSelectPlant }) => {
-    // 1. Prepare canopy ring items for instanced rendering (preallocated array for O(N) linear speed)
+  ({
+    placedPlants,
+    selectedPlantId,
+    crowdedPlantIds,
+    centerCm,
+    activeLens,
+    showDistancesConflict,
+    onSelectPlant,
+  }) => {
+    // 1. Determine which plants should visibly display red conflict rings:
+    // (a) Active lens 'distances' OR (b) simulator conflict panel/chip open: show all crowded plants
+    // (c) Selected plant: show only the selected plant and its directly conflicting neighbors
+    // Default: ZERO red rings shown for a clean, calm, world-first presentation
+    const conflictingPlantIds = useMemo(() => {
+      if (activeLens === 'distances' || showDistancesConflict) {
+        return crowdedPlantIds;
+      }
+      if (selectedPlantId) {
+        const selected = placedPlants.find((p) => p.id === selectedPlantId);
+        if (!selected) return new Set<string>();
+        const neighbors = new Set<string>();
+        let hasConflict = false;
+        for (let i = 0; i < placedPlants.length; i++) {
+          const other = placedPlants[i];
+          if (other.id === selectedPlantId) continue;
+          const dx = other.xCm - selected.xCm;
+          const dy = other.yCm - selected.yCm;
+          const dist = Math.hypot(dx, dy);
+          const reqDist = other.canopyRadiusCm + selected.canopyRadiusCm;
+          if (dist < reqDist) {
+            neighbors.add(other.id);
+            hasConflict = true;
+          }
+        }
+        if (hasConflict || crowdedPlantIds.has(selectedPlantId)) {
+          neighbors.add(selectedPlantId);
+        }
+        return neighbors;
+      }
+      return new Set<string>();
+    }, [activeLens, showDistancesConflict, selectedPlantId, placedPlants, crowdedPlantIds]);
+
+    // 2. Prepare canopy ring items for instanced rendering (preallocated array for O(N) linear speed)
     // NOTE: selectedPlantId is intentionally excluded from dependencies so selecting a plant does NOT
     // reallocate 7,762 objects or re-run matrix layout buffers.
     const ringItems = useMemo<CanopyRingItem[]>(() => {
@@ -249,7 +298,7 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
       return items;
     }, [placedPlants, centerCm, crowdedPlantIds]);
 
-    // 2. Group plants by cropCode for instanced billboard rendering (1 draw call per cropCode)
+    // 3. Group plants by cropCode for instanced billboard rendering (1 draw call per cropCode)
     // NOTE: selectedPlantId is intentionally excluded so plantGroups is reference-stable on selection.
     const plantGroups = useMemo(() => {
       const groups = new Map<string, { cropCode: string; plants: InstancedPlantItem[] }>();
@@ -287,6 +336,7 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
         <CanopyRingsInstanced
           rings={ringItems}
           selectedPlantId={selectedPlantId}
+          conflictingPlantIds={conflictingPlantIds}
           onSelectPlant={onSelectPlant}
         />
 
@@ -587,10 +637,44 @@ export interface BoundaryLayerProps {
   centerCm: Point2DCm;
   isBoundaryEditMode?: boolean;
   selectedVertexIndex?: number | null;
+  isDragging?: boolean;
   onSelectVertex?: (vertexIndex: number | null) => void;
   onStartDragVertex?: (vertexIndex: number) => void;
   onInsertVertexAtEdge?: (edgeIndex: number, pointCm: Point2DCm) => void;
 }
+
+const RubberBandSegment: React.FC<{
+  start: Point2DCm;
+  end: Point2DCm;
+  centerCm: Point2DCm;
+}> = ({ start, end, centerCm }) => {
+  const dxCm = end.x - start.x;
+  const dyCm = end.y - start.y;
+  const lengthCm = Math.hypot(dxCm, dyCm);
+  if (lengthCm < 1) return null;
+  const lengthM = lengthCm * CM_TO_M;
+  const midXCm = (start.x + end.x) / 2;
+  const midYCm = (start.y + end.y) / 2;
+  const xM = (midXCm - centerCm.x) * CM_TO_M;
+  const zM = (midYCm - centerCm.y) * CM_TO_M;
+  const angleRad = Math.atan2(dyCm, dxCm);
+
+  return (
+    <group position={[xM, 0.08, zM]} rotation={[0, -angleRad, 0]}>
+      <mesh name="boundary-rubber-band-line">
+        <boxGeometry args={[lengthM, 0.04, 0.04]} />
+        <meshStandardMaterial
+          color="#38bdf8"
+          emissive="#0284c7"
+          emissiveIntensity={0.8}
+          roughness={0.2}
+          transparent
+          opacity={0.85}
+        />
+      </mesh>
+    </group>
+  );
+};
 
 export const BoundaryLayer: React.FC<BoundaryLayerProps> = React.memo(
   ({
@@ -598,6 +682,7 @@ export const BoundaryLayer: React.FC<BoundaryLayerProps> = React.memo(
     centerCm,
     isBoundaryEditMode = false,
     selectedVertexIndex,
+    isDragging = false,
     onSelectVertex,
     onStartDragVertex,
     onInsertVertexAtEdge,
@@ -606,6 +691,34 @@ export const BoundaryLayer: React.FC<BoundaryLayerProps> = React.memo(
 
     return (
       <group name="boundary-layer">
+        {/* Rubber-band dynamic elastic guides when dragging a vertex */}
+        {isDragging &&
+          selectedVertexIndex !== null &&
+          selectedVertexIndex !== undefined &&
+          selectedVertexIndex >= 0 &&
+          selectedVertexIndex < baseBoundary.length &&
+          baseBoundary.length >= 3 && (
+            <group name="boundary-rubber-band-guides">
+              <RubberBandSegment
+                start={
+                  baseBoundary[
+                    (selectedVertexIndex - 1 + baseBoundary.length) %
+                      baseBoundary.length
+                  ]
+                }
+                end={baseBoundary[selectedVertexIndex]}
+                centerCm={centerCm}
+              />
+              <RubberBandSegment
+                start={baseBoundary[selectedVertexIndex]}
+                end={
+                  baseBoundary[(selectedVertexIndex + 1) % baseBoundary.length]
+                }
+                centerCm={centerCm}
+              />
+            </group>
+          )}
+
         {/* 3D Interactive Boundary Vertex Corner Handles */}
         {baseBoundary.map((pt, idx) => {
           const isSelected = selectedVertexIndex === idx;
@@ -666,7 +779,8 @@ export const BoundaryLayer: React.FC<BoundaryLayerProps> = React.memo(
         })}
 
         {/* 3D Interactive Edge Midpoint Handles ("+ Corner" / Split Wall) */}
-        {baseBoundary.map((pt, idx) => {
+        {!isDragging &&
+          baseBoundary.map((pt, idx) => {
           const nextPt = baseBoundary[(idx + 1) % baseBoundary.length];
           const edgeLenCm = Math.hypot(nextPt.x - pt.x, nextPt.y - pt.y);
           if (edgeLenCm < 100) return null; // Allow splitting segments of 1.0 m or longer
@@ -1028,7 +1142,11 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   selectedWallId,
   selectedVertexIndex,
   isBoundaryEditMode = false,
+  fixedCenterCm,
+  transientBoundary,
   showRoof = true,
+  activeLens,
+  showDistancesConflict,
   onSelectPlant,
   onSelectWall,
   onSelectVertex,
@@ -1037,8 +1155,8 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   onGroundPointClickCm,
 }) => {
   const centerCm = useMemo(
-    () => computeBoundingCenterCm(layout.baseBoundary),
-    [layout.baseBoundary],
+    () => fixedCenterCm ?? computeBoundingCenterCm(layout.baseBoundary),
+    [fixedCenterCm, layout.baseBoundary],
   );
 
   const bbox = useMemo(
@@ -1151,6 +1269,9 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
 
   return (
     <group name="space-scene-root">
+      {/* Surrounding landscape ground plane blending seamlessly into the horizon fog */}
+      <SurroundingGround />
+
       <ambientLight intensity={isIndoorClosed ? 0.45 : sun.isDaylight ? 0.55 : 0.2} />
       <directionalLight
         name="solar-directional-light"
@@ -1239,10 +1360,15 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
 
       {/* 3D Interactive Boundary layer (Vertex and Edge split handles) */}
       <BoundaryLayer
-        baseBoundary={layout.baseBoundary}
+        baseBoundary={transientBoundary ?? layout.baseBoundary}
         centerCm={centerCm}
         isBoundaryEditMode={isBoundaryEditMode}
         selectedVertexIndex={selectedVertexIndex}
+        isDragging={Boolean(
+          transientBoundary &&
+            selectedVertexIndex !== null &&
+            selectedVertexIndex !== undefined,
+        )}
         onSelectVertex={onSelectVertex}
         onStartDragVertex={onStartDragVertex}
         onInsertVertexAtEdge={onInsertVertexAtEdge}
@@ -1256,6 +1382,8 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
             selectedPlantId={selectedPlantId}
             crowdedPlantIds={crowdedPlantIds}
             centerCm={centerCm}
+            activeLens={activeLens}
+            showDistancesConflict={showDistancesConflict}
             onSelectPlant={onSelectPlant}
           />
         </React.Suspense>

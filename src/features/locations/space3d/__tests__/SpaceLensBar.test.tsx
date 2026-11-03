@@ -179,4 +179,82 @@ describe('SpaceLensBar - Top-Right Glassmorphism Quick Pills & Floating Analytic
     // Verify first plant and nearest neighbor distance
     expect(screen.getByText(/Planta 0 ↔ Planta 1: 20 cm/i)).toBeInTheDocument();
   });
+
+  it('renders distances panel collapsed by default with conflict badge and expands on toggle', () => {
+    const crowdedLayout = {
+      ...layout,
+      placedPlants: [
+        { id: 'p1', xCm: 100, yCm: 100, canopyRadiusCm: 30, label: 'Tomatera 1', cropCode: 'tomato' },
+        { id: 'p2', xCm: 130, yCm: 100, canopyRadiusCm: 30, label: 'Tomatera 2', cropCode: 'tomato' }, // 30cm < 60cm -> crowded!
+      ],
+    };
+
+    render(
+      <SpaceLensBar
+        layout={crowdedLayout}
+        showLabels={true}
+        onToggleShowLabels={vi.fn()}
+        activeLens={null}
+        onSelectLens={vi.fn()}
+        speciesFilter={null}
+        onSelectSpeciesFilter={vi.fn()}
+        onUpdateSolar={vi.fn()}
+        onApplyPreset={vi.fn()}
+        defaultSolarOpen={true}
+        defaultDistancesOpen={false}
+      />,
+    );
+
+    // Conflict counter badge is visible when collapsed
+    expect(screen.getByText(/⚠️ 2 conflictos/i)).toBeInTheDocument();
+    // List is not in document
+    expect(screen.queryByText(/Tomatera 1 ↔ Tomatera 2/i)).not.toBeInTheDocument();
+
+    // Toggle button to expand
+    const toggleBtn = screen.getByRole('button', { name: /Alternar lista de distancias entre plantas/i });
+    expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggleBtn);
+
+    expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/Tomatera 1 ↔ Tomatera 2: 30 cm/i)).toBeInTheDocument();
+  });
+
+  it('automatically closes solar simulator when hasSelectedPlant becomes true', () => {
+    const { rerender } = render(
+      <SpaceLensBar
+        layout={layout}
+        showLabels={true}
+        onToggleShowLabels={vi.fn()}
+        activeLens={null}
+        onSelectLens={vi.fn()}
+        speciesFilter={null}
+        onSelectSpeciesFilter={vi.fn()}
+        onUpdateSolar={vi.fn()}
+        onApplyPreset={vi.fn()}
+        defaultSolarOpen={true}
+        hasSelectedPlant={false}
+      />,
+    );
+
+    expect(screen.getByText(/Simulador Solar en Vivo/i)).toBeInTheDocument();
+
+    // Rerender with plant selected
+    rerender(
+      <SpaceLensBar
+        layout={layout}
+        showLabels={true}
+        onToggleShowLabels={vi.fn()}
+        activeLens={null}
+        onSelectLens={vi.fn()}
+        speciesFilter={null}
+        onSelectSpeciesFilter={vi.fn()}
+        onUpdateSolar={vi.fn()}
+        onApplyPreset={vi.fn()}
+        defaultSolarOpen={true}
+        hasSelectedPlant={true}
+      />,
+    );
+
+    expect(screen.queryByText(/Simulador Solar en Vivo/i)).not.toBeInTheDocument();
+  });
 });

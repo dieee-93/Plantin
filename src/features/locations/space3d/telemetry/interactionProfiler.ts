@@ -26,6 +26,17 @@ export interface ToolChangeTelemetry {
   timestamp: number;
 }
 
+export interface BoundaryDragTelemetry {
+  vertexIndex: number;
+  totalDurationMs: number;
+  clipperTimeMs: number;
+  syncWallsTimeMs: number;
+  meshRebuildTimeMs: number;
+  plantCount: number;
+  vertexCount: number;
+  timestamp: number;
+}
+
 export interface RotationTelemetrySummary {
   sampleCount: number;
   totalDurationMs: number;
@@ -48,6 +59,8 @@ export class InteractionProfiler {
 
   // Throttled cursor preview telemetry
   private lastCursorLogTime = 0;
+  private lastBoundaryDragLogTime = 0;
+  private lastBoundaryDrag: BoundaryDragTelemetry | null = null;
 
   /**
    * Records execution metrics for plant selection (target identification + neighbor measurement).
@@ -138,6 +151,36 @@ export class InteractionProfiler {
         `%c[PERF: INTERACTION] ⚡ GPU Buffer Update (${params.reason}) | ${badge} | Instancias: ${params.count} | Tiempo: ${params.durationMs.toFixed(2)}ms`,
         'color: #3b82f6; font-weight: bold;',
       );
+    }
+  }
+
+  /**
+   * Records boundary vertex dragging frame performance.
+   * Throttles console emission to at most once every 500ms during continuous drag.
+   */
+  recordBoundaryDragStep(params: {
+    vertexIndex: number;
+    clipperTimeMs: number;
+    syncWallsTimeMs: number;
+    meshRebuildTimeMs: number;
+    plantCount: number;
+    vertexCount: number;
+    totalDurationMs: number;
+  }): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.lastBoundaryDrag = {
+      ...params,
+      timestamp: now,
+    };
+
+    if (now - this.lastBoundaryDragLogTime > 500) {
+      this.lastBoundaryDragLogTime = now;
+      if (typeof console !== 'undefined' && typeof console.log === 'function') {
+        console.log(
+          `%c[PERF: BOUNDARY_DRAG] 📐 Arrastre Vértice #${params.vertexIndex} | Total: ${params.totalDurationMs.toFixed(2)}ms | Clipper: ${params.clipperTimeMs.toFixed(2)}ms | Paredes: ${params.syncWallsTimeMs.toFixed(2)}ms | Mallas: ${params.meshRebuildTimeMs.toFixed(2)}ms | Plantas: ${params.plantCount} | Vértices: ${params.vertexCount}`,
+          'color: #8b5cf6; font-weight: bold;',
+        );
+      }
     }
   }
 
@@ -240,9 +283,15 @@ export class InteractionProfiler {
     return this.lastRotationTimestamp;
   }
 
+  getLastBoundaryDrag(): BoundaryDragTelemetry | null {
+    return this.lastBoundaryDrag;
+  }
+
   reset(): void {
     this.lastSelection = null;
     this.lastToolChange = null;
+    this.lastBoundaryDrag = null;
+    this.lastBoundaryDragLogTime = 0;
     this.rotationSamples = [];
     this.isRotating = false;
     this.lastRotationSummary = null;

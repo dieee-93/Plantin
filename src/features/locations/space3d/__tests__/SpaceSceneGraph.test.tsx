@@ -438,4 +438,25 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
 
     await renderer.unmount();
   });
+
+  it('renders surrounding-ground-plane with raycast disabled to prevent interfering with picking', async () => {
+    const layout = SPACE_PRESETS.patio_croquis.createLayout('loc-ground-test');
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <SpaceSceneGraph
+        layout={layout}
+        viewMode="3d"
+      />,
+    );
+
+    const groundMesh = renderer.scene.findByProps({
+      name: 'surrounding-ground-plane',
+    });
+
+    expect(groundMesh).toBeDefined();
+    expect(groundMesh.props.raycast()).toBeNull();
+    expect(groundMesh.props.position[1]).toBe(-0.01);
+
+    await renderer.unmount();
+  });
 });

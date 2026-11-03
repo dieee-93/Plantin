@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Eye } from 'lucide-react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera } from '@react-three/drei';
 import {
@@ -11,6 +12,7 @@ import {
   createRectPolygon,
   findClosestEdgeOnPolygon,
   isRectangularPolygon,
+  movePolygonVertex,
   type Point2DCm,
   type Polygon2DCm,
   type WallMaterialType,
@@ -21,7 +23,11 @@ import { flushSpaceLayoutStorage, useSpaceLayoutStore } from '@/store/spaceLayou
 import { useIndividualStore } from '@/store/individualStore';
 import { useSeedLotStore } from '@/store/seedLotStore';
 import { useTaxonStore } from '@/store/taxonStore';
-import { SpaceSceneGraph, type SpaceViewMode } from './SpaceSceneGraph';
+import {
+  SpaceSceneGraph,
+  computeBoundingCenterCm,
+  type SpaceViewMode,
+} from './SpaceSceneGraph';
 import { ShaderWarmer } from './ShaderWarmer';
 import { SpaceHeaderNav } from './SpaceHeaderNav';
 import { SpaceLensBar, type AnalyticalLensType } from './SpaceLensBar';
@@ -353,13 +359,65 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     [layout.walls, builderState.selectedWallId],
   );
 
+  const [isHudVisible, setIsHudVisible] = useState(true);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        const target = e.target as HTMLElement | null;
+        const active = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
+        if (
+          (target &&
+            (target.tagName === 'INPUT' ||
+              target.tagName === 'TEXTAREA' ||
+              target.isContentEditable)) ||
+          (active &&
+            (active.tagName === 'INPUT' ||
+              active.tagName === 'TEXTAREA' ||
+              active.isContentEditable))
+        ) {
+          return;
+        }
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+          return;
+        }
+        e.preventDefault();
+        setIsHudVisible((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
+  const [transientBoundary, setTransientBoundary] = useState<Polygon2DCm | null>(null);
+  const [fixedCenterCm, setFixedCenterCm] = useState<Point2DCm | null>(null);
+  const dragStartCenterCmRef = useRef<Point2DCm | null>(null);
+  const pendingDragPointRef = useRef<Point2DCm | null>(null);
+  const dragRafIdRef = useRef<number | null>(null);
+
+  const commitVertexDrag = useCallback(() => {
+    if (draggingVertexIndex === null) return;
+    const finalPoint = pendingDragPointRef.current;
+    if (finalPoint) {
+      moveBoundaryVertex(locationId, draggingVertexIndex, finalPoint, 10, false);
+    }
+    if (dragRafIdRef.current !== null) {
+      cancelAnimationFrame(dragRafIdRef.current);
+      dragRafIdRef.current = null;
+    }
+    pendingDragPointRef.current = null;
+    dragStartCenterCmRef.current = null;
+    setFixedCenterCm(null);
+    setTransientBoundary(null);
+    setDraggingVertexIndex(null);
+    flushSpaceLayoutStorage();
+  }, [draggingVertexIndex, locationId, moveBoundaryVertex]);
 
   useEffect(() => {
     if (draggingVertexIndex === null) return;
     const handleGlobalPointerUp = () => {
-      setDraggingVertexIndex(null);
-      flushSpaceLayoutStorage();
+      commitVertexDrag();
     };
     window.addEventListener('pointerup', handleGlobalPointerUp);
     window.addEventListener('mouseup', handleGlobalPointerUp);
@@ -367,7 +425,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       window.removeEventListener('pointerup', handleGlobalPointerUp);
       window.removeEventListener('mouseup', handleGlobalPointerUp);
     };
-  }, [draggingVertexIndex]);
+  }, [draggingVertexIndex, commitVertexDrag]);
 
   const lastDispatchedCursorRef = useRef<Point2DCm | null>(null);
   const cursorRafIdRef = useRef<number | null>(null);
@@ -416,6 +474,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       if (cursorRafIdRef.current !== null) {
         cancelAnimationFrame(cursorRafIdRef.current);
       }
+      if (dragRafIdRef.current !== null) {
+        cancelAnimationFrame(dragRafIdRef.current);
+      }
     };
   }, []);
 
@@ -435,11 +496,61 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const handleStartDragVertex = useCallback(
     (idx: number) => {
       snapshotHistory(locationId);
+      const center = computeBoundingCenterCm(layout.baseBoundary);
+      dragStartCenterCmRef.current = center;
+      setFixedCenterCm(center);
+      pendingDragPointRef.current = null;
+      setTransientBoundary(null);
       setDraggingVertexIndex(idx);
       dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
       dispatch({ type: 'SELECT_WALL', wallId: null });
     },
-    [locationId, snapshotHistory],
+    [locationId, snapshotHistory, layout.baseBoundary],
+  );
+
+  const handleDragVertexMove = useCallback(
+    (pt: Point2DCm) => {
+      if (draggingVertexIndex === null) return;
+      const tStart = performance.now();
+      pendingDragPointRef.current = pt;
+
+      interactionProfiler.recordBoundaryDragStep({
+        vertexIndex: draggingVertexIndex,
+        clipperTimeMs: 0,
+        syncWallsTimeMs: 0,
+        meshRebuildTimeMs: 0,
+        plantCount: layout.placedPlants.length,
+        vertexCount: layout.baseBoundary.length,
+        totalDurationMs: performance.now() - tStart,
+      });
+
+      const isTestEnv =
+        (typeof globalThis !== 'undefined' &&
+          (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env?.NODE_ENV ===
+            'test') ||
+        import.meta.env?.MODE === 'test';
+
+      const updateTransient = (targetPt: Point2DCm) => {
+        const next = movePolygonVertex(layout.baseBoundary, draggingVertexIndex, targetPt, 10);
+        setTransientBoundary(next);
+      };
+
+      if (isTestEnv || typeof requestAnimationFrame === 'undefined') {
+        updateTransient(pt);
+        return;
+      }
+
+      if (dragRafIdRef.current === null) {
+        dragRafIdRef.current = requestAnimationFrame(() => {
+          dragRafIdRef.current = null;
+          const nextPt = pendingDragPointRef.current;
+          if (nextPt) {
+            updateTransient(nextPt);
+          }
+        });
+      }
+    },
+    [draggingVertexIndex, layout.baseBoundary, layout.placedPlants.length],
   );
 
   const handleInsertVertexAtEdge = useCallback(
@@ -882,58 +993,71 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       className="relative flex h-full min-h-[580px] w-full flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-slate-50 shadow-sm"
     >
       {/* ── 1. Top HUD Overlay (Navigation & Analytical Lenses) ── */}
-      <div className="pointer-events-none absolute top-3 inset-x-3 z-30 flex items-start justify-between gap-2">
-        {/* Top-Left: Nav & Room Dimensions */}
-        <SpaceHeaderNav
-          locationName={locationName || 'Espacio 1:1'}
-          plantCount={layout.placedPlants.length}
-          capacity={capacity}
-          widthM={bbox.widthCm / 100}
-          depthM={bbox.depthCm / 100}
-          areaM2={areaM2}
-          perimeterM={perimeterM}
-          isRectangular={isRectangular}
-          vertexCount={layout.baseBoundary.length}
-          onBackToCampus={onBackToCampus}
-          onApplyDimensions={(w, d) => {
-            setCustomWidthM(w.toFixed(1));
-            setCustomDepthM(d.toFixed(1));
-            setBaseBoundary(
-              locationId,
-              createRectPolygon(Math.round(w * 100), Math.round(d * 100)),
-            );
-          }}
-          onApplyShapePreset={(shape) => {
-            if (shape === 'rect') {
-              setBaseBoundary(locationId, createRectPolygon(1000, 600));
-            } else {
-              setBaseBoundary(locationId, createLShapePolygon(1000, 600, 0.4, 0.45));
-            }
-          }}
-          onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
-          onInsertVertex={handleInsertVertex}
-        />
+      {isHudVisible && (
+        <div className="pointer-events-none absolute top-3 inset-x-3 z-30 flex items-start justify-between gap-2">
+          {/* Top-Left: Nav & Room Dimensions */}
+          <SpaceHeaderNav
+            locationName={locationName || 'Espacio 1:1'}
+            plantCount={layout.placedPlants.length}
+            capacity={capacity}
+            widthM={bbox.widthCm / 100}
+            depthM={bbox.depthCm / 100}
+            areaM2={areaM2}
+            perimeterM={perimeterM}
+            isRectangular={isRectangular}
+            vertexCount={layout.baseBoundary.length}
+            onBackToCampus={onBackToCampus}
+            onApplyDimensions={(w, d) => {
+              setCustomWidthM(w.toFixed(1));
+              setCustomDepthM(d.toFixed(1));
+              setBaseBoundary(
+                locationId,
+                createRectPolygon(Math.round(w * 100), Math.round(d * 100)),
+              );
+            }}
+            onApplyShapePreset={(shape) => {
+              if (shape === 'rect') {
+                setBaseBoundary(locationId, createRectPolygon(1000, 600));
+              } else {
+                setBaseBoundary(locationId, createLShapePolygon(1000, 600, 0.4, 0.45));
+              }
+            }}
+            onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
+            onInsertVertex={handleInsertVertex}
+          />
 
-        {/* Top-Right: Quick Pills (Nombres, Luz, Lentes) & Solar Panel */}
-        <SpaceLensBar
-          layout={layout}
-          showLabels={showLabels}
-          onToggleShowLabels={() => setShowLabels((v) => !v)}
-          showRoof={showRoof}
-          onToggleShowRoof={() => setShowRoof((v) => !v)}
-          hasRoof={Boolean(layout.roofConfig && layout.roofConfig.kind !== 'none')}
-          onOpenRoofBuilder={() => dispatch({ type: 'SET_TOOL', tool: 'roof' })}
-          activeLens={activeLens}
-          onSelectLens={setActiveLens}
-          speciesFilter={speciesFilter}
-          onSelectSpeciesFilter={setSpeciesFilter}
-          availableSpecies={availableSpecies}
-          onUpdateSolar={(partial) => updateSolarConfig(locationId, partial)}
-          onApplyPreset={(presetId) => applyPreset(locationId, presetId)}
-          onFillFirstSector={() => handleFillSector(0)}
-          defaultSolarOpen={true}
-        />
-      </div>
+          {/* Top-Right: Quick Pills (Nombres, Luz, Lentes) & Solar Panel */}
+          <SpaceLensBar
+            layout={layout}
+            showLabels={showLabels}
+            onToggleShowLabels={() => setShowLabels((v) => !v)}
+            showRoof={showRoof}
+            onToggleShowRoof={() => setShowRoof((v) => !v)}
+            hasRoof={Boolean(layout.roofConfig && layout.roofConfig.kind !== 'none')}
+            onOpenRoofBuilder={() => dispatch({ type: 'SET_TOOL', tool: 'roof' })}
+            activeLens={activeLens}
+            onSelectLens={setActiveLens}
+            speciesFilter={speciesFilter}
+            onSelectSpeciesFilter={setSpeciesFilter}
+            availableSpecies={availableSpecies}
+            onUpdateSolar={(partial) => updateSolarConfig(locationId, partial)}
+            onApplyPreset={(presetId) => applyPreset(locationId, presetId)}
+            onFillFirstSector={() => handleFillSector(0)}
+            defaultSolarOpen={false}
+          />
+        </div>
+      )}
+
+      {!isHudVisible && (
+        <button
+          type="button"
+          aria-label="Salir de modo inmersivo (Tab)"
+          onClick={() => setIsHudVisible(true)}
+          className="pointer-events-auto absolute top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg backdrop-blur hover:bg-white cursor-pointer"
+        >
+          <Eye size={18} />
+        </button>
+      )}
 
       {/* ── 2. Full-Screen Central Viewport (3D R3F Canvas / 2D Vector CAD Plane) ── */}
       <div className="relative flex-1 w-full h-full overflow-hidden bg-slate-50">
@@ -1004,6 +1128,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 isBoundaryEditMode={
                   builderState.activeTool === 'edit_boundary'
                 }
+                fixedCenterCm={fixedCenterCm ?? undefined}
+                transientBoundary={transientBoundary ?? undefined}
                 onSelectPlant={handleSelectPlant}
                 onSelectWall={handleSelectWall}
                 onSelectVertex={handleSelectVertex}
@@ -1019,15 +1145,19 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   position={[0, 0, 0]}
                   onPointerMove={(e) => {
                     e.stopPropagation();
-                    const xCm = Math.round(e.point.x * 100 + bbox.centerXCm);
-                    const yCm = Math.round(e.point.z * 100 + bbox.centerYCm);
-                    moveBoundaryVertex(locationId, draggingVertexIndex, { x: xCm, y: yCm }, 10, false);
+                    const fixedCenter =
+                      dragStartCenterCmRef.current ?? {
+                        x: bbox.centerXCm,
+                        y: bbox.centerYCm,
+                      };
+                    const xCm = Math.round(e.point.x * 100 + fixedCenter.x);
+                    const yCm = Math.round(e.point.z * 100 + fixedCenter.y);
+                    handleDragVertexMove({ x: xCm, y: yCm });
                     dispatchThrottledCursor({ x: xCm, y: yCm });
                   }}
                   onPointerUp={(e) => {
                     e.stopPropagation();
-                    setDraggingVertexIndex(null);
-                    flushSpaceLayoutStorage();
+                    commitVertexDrag();
                   }}
                 >
                   <planeGeometry args={[200, 200]} />
@@ -1090,7 +1220,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 lastSvgPointerTimeRef.current = Date.now();
                 const pt = resolveEventPointCm(e);
                 if (draggingVertexIndex !== null) {
-                  moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
+                  handleDragVertexMove(pt);
                 }
                 dispatchThrottledCursor(pt);
               }}
@@ -1098,22 +1228,20 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 if (Date.now() - lastSvgPointerTimeRef.current < 50) return;
                 const pt = resolveEventPointCm(e);
                 if (draggingVertexIndex !== null) {
-                  moveBoundaryVertex(locationId, draggingVertexIndex, pt, 10, false);
+                  handleDragVertexMove(pt);
                 }
                 dispatchThrottledCursor(pt);
               }}
               onPointerUp={() => {
                 lastSvgPointerTimeRef.current = Date.now();
                 if (draggingVertexIndex !== null) {
-                  setDraggingVertexIndex(null);
-                  flushSpaceLayoutStorage();
+                  commitVertexDrag();
                 }
               }}
               onMouseUp={() => {
                 if (Date.now() - lastSvgPointerTimeRef.current < 50) return;
                 if (draggingVertexIndex !== null) {
-                  setDraggingVertexIndex(null);
-                  flushSpaceLayoutStorage();
+                  commitVertexDrag();
                 }
               }}
               onClick={(e) => {
@@ -1150,11 +1278,25 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
             {/* Base boundary */}
             <polygon
-              points={polygonToSvgPoints(layout.baseBoundary)}
+              points={polygonToSvgPoints(transientBoundary ?? layout.baseBoundary)}
               fill="#f8fafc"
               stroke="#94a3b8"
               strokeWidth={3}
             />
+
+            {/* 2D Rubber-band Elastic Preview */}
+            {draggingVertexIndex !== null &&
+              transientBoundary &&
+              (transientBoundary ?? layout.baseBoundary).length >= 3 && (
+                <polyline
+                  data-testid="boundary-rubber-band-2d"
+                  points={`${(transientBoundary ?? layout.baseBoundary)[(draggingVertexIndex - 1 + (transientBoundary ?? layout.baseBoundary).length) % (transientBoundary ?? layout.baseBoundary).length].x},${(transientBoundary ?? layout.baseBoundary)[(draggingVertexIndex - 1 + (transientBoundary ?? layout.baseBoundary).length) % (transientBoundary ?? layout.baseBoundary).length].y} ${(transientBoundary ?? layout.baseBoundary)[draggingVertexIndex].x},${(transientBoundary ?? layout.baseBoundary)[draggingVertexIndex].y} ${(transientBoundary ?? layout.baseBoundary)[(draggingVertexIndex + 1) % (transientBoundary ?? layout.baseBoundary).length].x},${(transientBoundary ?? layout.baseBoundary)[(draggingVertexIndex + 1) % (transientBoundary ?? layout.baseBoundary).length].y}`}
+                  stroke="#0284c7"
+                  strokeWidth={3.5}
+                  strokeDasharray="8 5"
+                  fill="none"
+                />
+              )}
 
             {/* Cultivable sectors */}
             {(regions.cultivableSectors ?? []).map((sector, idx) => (
@@ -1329,7 +1471,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
             {/* Draggable Handles for Boundary Vertices (Edit Boundary Tool) */}
             {builderState.activeTool === 'edit_boundary' &&
-              layout.baseBoundary.map((pt, idx) => {
+              (transientBoundary ?? layout.baseBoundary).map((pt, idx) => {
                 const isSelected = builderState.selectedVertexIndex === idx;
                 const isDragging = draggingVertexIndex === idx;
                 return (
@@ -1345,10 +1487,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                       className="cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
                       onPointerDown={(e) => {
                         e.stopPropagation();
-                        snapshotHistory(locationId);
-                        setDraggingVertexIndex(idx);
-                        dispatch({ type: 'SELECT_VERTEX', vertexIndex: idx });
-                        dispatch({ type: 'SELECT_WALL', wallId: null });
+                        handleStartDragVertex(idx);
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1603,7 +1742,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       )}
 
       {/* ── 5. Bottom HUD Dock & Camera Widget ── */}
-      <div className="pointer-events-none absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-3">
+      {isHudVisible && (
+        <div className="pointer-events-none absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-3">
         {/* Invisible spacer to center the command dock */}
         <div className="w-48 hidden md:block" />
 
@@ -1789,6 +1929,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           cameraAzimuthDeg={cameraAzimuthDeg}
         />
       </div>
+      )}
     </div>
   );
 };

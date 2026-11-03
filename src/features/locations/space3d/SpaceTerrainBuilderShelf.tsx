@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Check,
   Compass,
   Maximize2,
   Minimize2,
@@ -8,9 +7,9 @@ import {
   Sprout,
   Trash2,
   Wand2,
-  X,
 } from 'lucide-react';
 import type { FloorMaterialType } from '@/domain/spaceGeometry';
+import { HudFlyout, HudItemCard, HudTooltip } from '@/components/hud';
 
 export interface SpaceTerrainBuilderShelfProps {
   currentMaterial?: FloorMaterialType;
@@ -36,7 +35,6 @@ interface FloorMaterialCard {
   title: string;
   badge: string;
   iconText: string;
-  previewBg: string;
 }
 
 const FLOOR_MATERIALS: FloorMaterialCard[] = [
@@ -45,42 +43,36 @@ const FLOOR_MATERIALS: FloorMaterialCard[] = [
     title: 'Tierra de Cultivo',
     badge: 'Sustrato Fértil',
     iconText: '🤎',
-    previewBg: 'bg-amber-950/80 text-amber-100',
   },
   {
     value: 'grass',
     title: 'Césped / Pasto',
     badge: 'Cubierta Viva',
     iconText: '🌿',
-    previewBg: 'bg-emerald-900/80 text-emerald-100',
   },
   {
     value: 'gravel',
     title: 'Grava Drenante',
     badge: 'Árido Permeable',
     iconText: '🪨',
-    previewBg: 'bg-slate-700 text-slate-100',
   },
   {
     value: 'concrete',
     title: 'Hormigón Alisado',
     badge: 'Base Firme',
     iconText: '🏗️',
-    previewBg: 'bg-zinc-600 text-zinc-100',
   },
   {
     value: 'tile',
     title: 'Baldosas Rústicas',
     badge: 'Adoquín Cerámico',
     iconText: '🧱',
-    previewBg: 'bg-orange-900/80 text-orange-100',
   },
   {
     value: 'wood',
     title: 'Deck de Madera',
     badge: 'Tablas Tratadas',
     iconText: '🪵',
-    previewBg: 'bg-amber-800 text-amber-50',
   },
 ];
 
@@ -110,210 +102,175 @@ export const SpaceTerrainBuilderShelf: React.FC<SpaceTerrainBuilderShelfProps> =
   onClose,
 }) => {
   return (
-    <div
-      data-testid="space-terrain-builder-shelf"
-      className="pointer-events-auto flex w-full max-w-2xl flex-col gap-2 rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
-    >
-      {/* ── Top Header Strip (Planet Zoo / CS2 inspired) ── */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
-            <Compass size={14} />
-          </div>
-          <span className="text-xs font-bold text-slate-800">Terreno & Pavimentos</span>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600">
-            {vertexCount} vértices
-          </span>
-        </div>
-
-        {/* Quick CAD Actions & Restored Fill Space Button */}
-        <div className="flex items-center gap-1.5">
-          {onFillSector && (
+    <div data-testid="space-terrain-builder-shelf">
+      <HudFlyout
+        icon={<Compass size={16} />}
+        title="Terreno & Pavimentos"
+        subtitle={`${vertexCount} vértices`}
+        closeAriaLabel="Cerrar panel de terreno"
+        onClose={onClose}
+        headerActions={
+          onFillSector ? (
             <button
               type="button"
               onClick={() => onFillSector(0)}
-              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition shadow-xs"
+              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-700 transition shadow-xs cursor-pointer"
               title="Poblar sector cultivable con plantas de prueba"
             >
-              <Sprout size={12} />
+              <Sprout size={11} />
               <span>Rellenar Espacio {cultivableSectorCount > 1 ? `(${cultivableSectorCount})` : ''}</span>
             </button>
-          )}
-
-          {onInsertVertex && (
-            <button
-              type="button"
-              onClick={onInsertVertex}
-              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-              title="Añadir nueva esquina al contorno"
-            >
-              <Plus size={11} className="text-emerald-600" />
-              <span>+ Vértice</span>
-            </button>
-          )}
-
-          {selectedVertexIndex !== null && selectedVertexIndex !== undefined && onRemoveSelectedVertex && (
-            <button
-              type="button"
-              onClick={onRemoveSelectedVertex}
-              className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 transition shadow-xs"
-              title="Eliminar esquina seleccionada"
-            >
-              <Trash2 size={11} />
-              <span>Eliminar Vértice #{selectedVertexIndex + 1}</span>
-            </button>
-          )}
-
-          {onSanitizeBoundary && vertexCount > 4 && (
-            <button
-              type="button"
-              onClick={onSanitizeBoundary}
-              className="flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition shadow-xs"
-              title="Limpiar vértices redundantes"
-            >
-              <Wand2 size={11} />
-              <span>Sanear Vértices</span>
-            </button>
-          )}
-
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-              aria-label="Cerrar panel de terreno"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Personalización: Materiales de Suelo PBR (Planet Zoo Compact Swatches) ── */}
-      <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 pr-1">
-          Suelo:
-        </span>
-        {FLOOR_MATERIALS.map((card) => {
-          const isActive = currentMaterial === card.value;
-          return (
-            <button
-              key={card.value}
-              type="button"
-              onClick={() => onChangeMaterial(card.value)}
-              className={`group relative flex items-center gap-1.5 rounded-xl border px-2 py-1 transition-all duration-150 shrink-0 ${
-                isActive
-                  ? 'border-emerald-500 bg-emerald-50/70 shadow-xs ring-2 ring-emerald-400/40'
-                  : 'border-slate-200/80 bg-slate-50/80 hover:border-slate-300 hover:bg-white'
-              }`}
-              title={`${card.title} (${card.badge})`}
-            >
-              <div
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg shadow-inner ${card.previewBg}`}
-              >
-                <span className="text-xs select-none">{card.iconText}</span>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-800">
-                {card.title}
-              </span>
-              {isActive && (
-                <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs ml-0.5">
-                  <Check size={9} strokeWidth={3} />
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Configuración: Cotas & Presets de Parcela (Planet Zoo Sliders / Pills) ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-2.5 py-1.5 text-xs">
-        {/* Presets & Scaling */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            Presets:
-          </span>
-          <div className="flex items-center gap-1">
-            {PARCEL_PRESETS.map((p) => (
+          ) : undefined
+        }
+      >
+        {/* Quick CAD actions row */}
+        {(onInsertVertex || selectedVertexIndex !== null || onSanitizeBoundary) && (
+          <div className="flex flex-wrap items-center gap-1 pb-1">
+            {onInsertVertex && (
               <button
-                key={p.label}
                 type="button"
-                onClick={() => {
-                  setCustomWidthM(p.w);
-                  setCustomDepthM(p.d);
-                  onApplyDimensions();
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-slate-800 hover:border-emerald-400 hover:bg-emerald-50/50 transition shadow-xs"
-                title={`${p.label} - ${p.desc}`}
+                onClick={onInsertVertex}
+                className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                title="Añadir nueva esquina al contorno"
               >
-                {p.label}
+                <Plus size={10} className="text-emerald-600" />
+                <span>+ Vértice</span>
               </button>
+            )}
+
+            {selectedVertexIndex !== null && selectedVertexIndex !== undefined && onRemoveSelectedVertex && (
+              <button
+                type="button"
+                onClick={onRemoveSelectedVertex}
+                className="flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100 transition shadow-2xs cursor-pointer"
+                title="Eliminar esquina seleccionada"
+              >
+                <Trash2 size={10} />
+                <span>Eliminar Vértice #{selectedVertexIndex + 1}</span>
+              </button>
+            )}
+
+            {onSanitizeBoundary && vertexCount > 4 && (
+              <button
+                type="button"
+                onClick={onSanitizeBoundary}
+                className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
+                title="Limpiar vértices redundantes"
+              >
+                <Wand2 size={10} />
+                <span>Sanear Vértices</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Floor materials (compact HudItemCard grid) */}
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Material de Suelo
+          </span>
+          <div className="grid grid-cols-2 gap-1.5">
+            {FLOOR_MATERIALS.map((card) => (
+              <HudItemCard
+                key={card.value}
+                title={card.title}
+                badge={card.badge}
+                description={`${card.title} · ${card.badge}`}
+                icon={<span className="text-sm select-none">{card.iconText}</span>}
+                isActive={currentMaterial === card.value}
+                onClick={() => onChangeMaterial(card.value)}
+              />
             ))}
           </div>
+        </div>
 
-          {onScaleParcel && (
-            <div className="flex items-center gap-1 pl-1.5 border-l border-slate-200">
-              <button
-                type="button"
-                onClick={() => onScaleParcel(0.9)}
-                className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-                title="Reducir 10% la superficie"
-              >
-                <Minimize2 size={10} />
-                <span>-10%</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onScaleParcel(1.1)}
-                className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
-                title="Aumentar 10% la superficie"
-              >
-                <Maximize2 size={10} />
-                <span>+10%</span>
-              </button>
+        {/* Presets & Scaling (Single chips row) */}
+        <div className="flex flex-col gap-1 pt-1 border-t border-slate-100">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Dimensiones & Escala
+          </span>
+
+          <div className="flex flex-wrap items-center gap-1">
+            {PARCEL_PRESETS.map((p) => (
+              <HudTooltip key={p.label} title={p.label} description={p.desc} side="top">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomWidthM(p.w);
+                    setCustomDepthM(p.d);
+                    onApplyDimensions();
+                  }}
+                  className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-slate-700 hover:border-emerald-400 hover:bg-emerald-50/50 transition shadow-2xs cursor-pointer"
+                >
+                  {p.label}
+                </button>
+              </HudTooltip>
+            ))}
+
+            {onScaleParcel && (
+              <div className="flex items-center gap-1 pl-1 border-l border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => onScaleParcel(0.9)}
+                  className="flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                  title="Reducir 10% la superficie"
+                >
+                  <Minimize2 size={9} />
+                  <span>-10%</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onScaleParcel(1.1)}
+                  className="flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                  title="Aumentar 10% la superficie"
+                >
+                  <Maximize2 size={9} />
+                  <span>+10%</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Dimension inputs row */}
+          <div className="flex items-center gap-1.5 pt-1 text-[11px]">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 text-[10px]">Ancho:</span>
+              <input
+                type="number"
+                aria-label="Ancho Terreno (m)"
+                step="0.5"
+                min="1"
+                value={customWidthM}
+                onChange={(e) => setCustomWidthM(e.target.value)}
+                className="w-11 rounded border border-slate-200 bg-white px-1 py-0.5 font-mono text-[10px] text-slate-900 focus:border-emerald-500 focus:outline-hidden"
+              />
+              <span className="text-slate-400 text-[9px]">m</span>
             </div>
-          )}
-        </div>
 
-        {/* Manual Dimensions Form */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 text-[11px] font-medium text-slate-700">
-            <span>Ancho:</span>
-            <input
-              type="number"
-              aria-label="Ancho Terreno (m)"
-              step="0.5"
-              min="1"
-              value={customWidthM}
-              onChange={(e) => setCustomWidthM(e.target.value)}
-              className="w-12 rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-900 focus:border-emerald-500 focus:outline-hidden"
-            />
-            <span className="text-slate-500 text-[10px]">m</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 text-[10px]">Largo:</span>
+              <input
+                type="number"
+                aria-label="Largo Terreno (m)"
+                step="0.5"
+                min="1"
+                value={customDepthM}
+                onChange={(e) => setCustomDepthM(e.target.value)}
+                className="w-11 rounded border border-slate-200 bg-white px-1 py-0.5 font-mono text-[10px] text-slate-900 focus:border-emerald-500 focus:outline-hidden"
+              />
+              <span className="text-slate-400 text-[9px]">m</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={onApplyDimensions}
+              className="ml-auto rounded-lg bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-700 transition shadow-xs cursor-pointer"
+            >
+              Aplicar Cotas
+            </button>
           </div>
-
-          <div className="flex items-center gap-1 text-[11px] font-medium text-slate-700">
-            <span>Largo:</span>
-            <input
-              type="number"
-              aria-label="Largo Terreno (m)"
-              step="0.5"
-              min="1"
-              value={customDepthM}
-              onChange={(e) => setCustomDepthM(e.target.value)}
-              className="w-12 rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-900 focus:border-emerald-500 focus:outline-hidden"
-            />
-            <span className="text-slate-500 text-[10px]">m</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={onApplyDimensions}
-            className="rounded-lg bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-700 transition shadow-xs"
-          >
-            Aplicar Cotas
-          </button>
         </div>
-      </div>
+      </HudFlyout>
     </div>
   );
 };

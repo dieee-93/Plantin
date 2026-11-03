@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { HudTooltip } from '@/components/hud';
 
 export interface SpaceHeaderNavProps {
   locationName?: string;
@@ -49,54 +50,61 @@ export const SpaceHeaderNav: React.FC<SpaceHeaderNavProps> = ({
     setIsPopoverOpen(false);
   };
 
+  const shapeDetail = isRectangular
+    ? `${widthM.toFixed(1)} × ${depthM.toFixed(1)} m`
+    : `Irregular (${vertexCount ?? 4} esquinas) · ${computedArea.toFixed(1)} m²`;
+
   return (
     <div className="relative pointer-events-auto flex items-center gap-2">
-      <div className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 shadow-lg backdrop-blur-md">
+      <div className="flex h-9 max-h-9 items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-2.5 py-1 shadow-lg backdrop-blur-md">
         {onBackToCampus && (
           <button
             type="button"
             aria-label="← Volver al Mapa de Espacios"
             onClick={onBackToCampus}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 cursor-pointer"
             title="← Volver al Mapa de Espacios"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={13} />
             <span className="sr-only">← Volver al Mapa de Espacios</span>
           </button>
         )}
 
-        <div className="flex items-center gap-1.5 px-1">
-          <span className="text-xs font-bold text-slate-900">{locationName}</span>
+        <div className="flex items-center gap-1.5 px-0.5">
+          <span className="text-xs font-bold text-slate-900 truncate max-w-[140px]">{locationName}</span>
           <span
             data-testid="total-plants-counter"
-            className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald-800 border border-emerald-200/70"
+            className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-800 border border-emerald-200/70 whitespace-nowrap"
           >
             • {capacity ? `${plantCount} / ${capacity} plantas` : `${plantCount} plantas`}
           </span>
         </div>
 
-        {/* Room Dimension Pill */}
-        <button
-          type="button"
-          onClick={() => setIsPopoverOpen((prev) => !prev)}
-          className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          title="Ajustar dimensiones y geometría del terreno"
+        {/* Room Dimension Pill (Compact Icon + m² with Tooltip Details) */}
+        <HudTooltip
+          title="Geometría del Terreno"
+          description={shapeDetail}
+          side="bottom"
         >
-          <span>📐</span>
-          <span>
-            {isRectangular
-              ? `${widthM.toFixed(1)} × ${depthM.toFixed(1)} m`
-              : `Irregular (${vertexCount ?? 4} esquinas) · ${computedArea.toFixed(1)} m²`}
-          </span>
-          <ChevronDown size={12} className={`transition ${isPopoverOpen ? 'rotate-180' : ''}`} />
-        </button>
+          <button
+            type="button"
+            aria-label={`Geometría: ${shapeDetail}`}
+            onClick={() => setIsPopoverOpen((prev) => !prev)}
+            className="flex h-7 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 cursor-pointer"
+            title={shapeDetail}
+          >
+            <span className="text-xs">📐</span>
+            <span className="font-mono text-xs font-semibold">{computedArea.toFixed(1)} m²</span>
+            <ChevronDown size={11} className={`transition ${isPopoverOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </HudTooltip>
       </div>
 
       {/* Popover to adjust width/depth / shape presets / scaling */}
       {isPopoverOpen && (
         <form
           onSubmit={handleApply}
-          className="absolute top-12 left-0 z-50 flex w-80 flex-col gap-2.5 rounded-2xl border border-slate-200/90 bg-white/95 p-3.5 shadow-xl backdrop-blur-md"
+          className="absolute top-11 left-0 z-50 flex w-80 flex-col gap-2.5 rounded-2xl border border-slate-200/90 bg-white/95 p-3.5 shadow-xl backdrop-blur-md"
         >
           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 text-xs font-bold text-slate-800">
             <span>Geometría y Perímetro de Parcela</span>

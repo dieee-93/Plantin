@@ -47,4 +47,46 @@ describe('SpaceCameraWidget - Bottom-Right Floating Camera Controls', () => {
     fireEvent.click(screen.getByRole('button', { name: /Norte/i }));
     expect(onResetCameraNorth).toHaveBeenCalled();
   });
+
+  it('disables zoom out button when minimum zoom (50%) is reached', () => {
+    const onZoomOut = vi.fn();
+    render(
+      <SpaceCameraWidget
+        viewMode="3d"
+        onChangeViewMode={vi.fn()}
+        zoomPercent={50}
+        onZoomIn={vi.fn()}
+        onZoomOut={onZoomOut}
+        onRotateCamera={vi.fn()}
+        onResetCameraNorth={vi.fn()}
+        cameraAzimuthDeg={0}
+      />,
+    );
+
+    const zoomOutBtn = screen.getByRole('button', { name: /Disminuir zoom/i });
+    expect(zoomOutBtn).toBeDisabled();
+    fireEvent.click(zoomOutBtn);
+    expect(onZoomOut).not.toHaveBeenCalled();
+  });
+
+  it('disables zoom in button when maximum zoom (200%) is reached', () => {
+    const onZoomIn = vi.fn();
+    render(
+      <SpaceCameraWidget
+        viewMode="3d"
+        onChangeViewMode={vi.fn()}
+        zoomPercent={200}
+        onZoomIn={onZoomIn}
+        onZoomOut={vi.fn()}
+        onRotateCamera={vi.fn()}
+        onResetCameraNorth={vi.fn()}
+        cameraAzimuthDeg={0}
+      />,
+    );
+
+    const zoomInBtn = screen.getByRole('button', { name: /Aumentar zoom/i });
+    expect(zoomInBtn).toBeDisabled();
+    fireEvent.click(zoomInBtn);
+    expect(onZoomIn).not.toHaveBeenCalled();
+  });
 });

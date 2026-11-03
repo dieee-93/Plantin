@@ -15,6 +15,7 @@ export interface CanopyRingItem {
 export interface CanopyRingsInstancedProps {
   rings: CanopyRingItem[];
   selectedPlantId?: string | null;
+  conflictingPlantIds?: Set<string>;
   onSelectPlant?: (plantId: string) => void;
 }
 
@@ -29,6 +30,7 @@ const NORMAL_COLOR = new THREE.Color('#22c55e');
 export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.memo(({
   rings,
   selectedPlantId,
+  conflictingPlantIds,
   onSelectPlant,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -57,7 +59,7 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
         color: 0xffffff,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.55,
         depthWrite: false,
       }),
     [],
@@ -120,10 +122,13 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
       matrixArray[mOffset + 15] = 1;
 
       const cOffset = i * 3;
-      const isSelected = Boolean(ring.isSelected);
+      const isSelected = selectedPlantId ? ring.id === selectedPlantId : Boolean(ring.isSelected);
+      const isCrowded = conflictingPlantIds
+        ? conflictingPlantIds.has(ring.id)
+        : Boolean(ring.isCrowded);
       const col = isSelected
         ? SELECTED_COLOR
-        : ring.isCrowded
+        : isCrowded
         ? CROWDED_COLOR
         : NORMAL_COLOR;
       colorArray[cOffset] = col.r;
@@ -134,7 +139,7 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
-    prevSelectedIdRef.current = null;
+    prevSelectedIdRef.current = selectedPlantId ?? null;
 
     const elapsed = performance.now() - tStart;
     roomLoadProfiler.markGpuBuffers('canopy', count, elapsed);
@@ -144,43 +149,35 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
       durationMs: elapsed,
       reason: 'layout',
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rings, count]);
 
-  // 2. High-speed selective color update when selectedPlantId changes.
-  // Updates only the 3 floats for the previously selected and newly selected instance.
-  // ZERO matrix modifications, ZERO bounding sphere recalculations.
+  // 2. High-speed selective color update when selectedPlantId or conflictingPlantIds changes.
+  // Updates only the color floats across instances with ZERO matrix modifications and ZERO bounding sphere recalculations.
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || !mesh.instanceColor || count === 0) return;
 
-    const prevId = prevSelectedIdRef.current;
-    if (prevId === selectedPlantId) return;
-
     const tStart = performance.now();
     const colorArray = mesh.instanceColor.array as Float32Array;
 
-    // Restore previous plant's color
-    if (prevId !== null) {
-      const prevIdx = plantIndexMap.get(prevId);
-      if (prevIdx !== undefined && rings[prevIdx]) {
-        const ring = rings[prevIdx];
-        const baseCol = ring.isCrowded ? CROWDED_COLOR : NORMAL_COLOR;
-        const cOffset = prevIdx * 3;
-        colorArray[cOffset] = baseCol.r;
-        colorArray[cOffset + 1] = baseCol.g;
-        colorArray[cOffset + 2] = baseCol.b;
-      }
-    }
+    for (let i = 0; i < count; i++) {
+      const ring = rings[i];
+      const isSelected = selectedPlantId ? ring.id === selectedPlantId : Boolean(ring.isSelected);
+      const isCrowded = conflictingPlantIds
+        ? conflictingPlantIds.has(ring.id)
+        : Boolean(ring.isCrowded);
 
-    // Set new selected plant's color
-    if (selectedPlantId) {
-      const newIdx = plantIndexMap.get(selectedPlantId);
-      if (newIdx !== undefined && rings[newIdx]) {
-        const cOffset = newIdx * 3;
-        colorArray[cOffset] = SELECTED_COLOR.r;
-        colorArray[cOffset + 1] = SELECTED_COLOR.g;
-        colorArray[cOffset + 2] = SELECTED_COLOR.b;
-      }
+      const col = isSelected
+        ? SELECTED_COLOR
+        : isCrowded
+        ? CROWDED_COLOR
+        : NORMAL_COLOR;
+
+      const cOffset = i * 3;
+      colorArray[cOffset] = col.r;
+      colorArray[cOffset + 1] = col.g;
+      colorArray[cOffset + 2] = col.b;
     }
 
     mesh.instanceColor.needsUpdate = true;
@@ -193,7 +190,7 @@ export const CanopyRingsInstanced: React.FC<CanopyRingsInstancedProps> = React.m
       durationMs: elapsed,
       reason: 'selection',
     });
-  }, [selectedPlantId, plantIndexMap, rings, count]);
+  }, [selectedPlantId, conflictingPlantIds, plantIndexMap, rings, count]);
 
   if (count === 0) return null;
 

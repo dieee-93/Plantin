@@ -142,4 +142,35 @@ describe('interactionProfiler - Telemetry and Interaction Performance Benchmarks
 
     expect(avgMs).toBeLessThan(0.2);
   });
+
+  it('records boundary vertex dragging telemetry and throttles log emissions', () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    interactionProfiler.recordBoundaryDragStep({
+      vertexIndex: 2,
+      clipperTimeMs: 1.25,
+      syncWallsTimeMs: 0.15,
+      meshRebuildTimeMs: 4.80,
+      plantCount: 500,
+      vertexCount: 6,
+      totalDurationMs: 6.20,
+    });
+
+    const last = interactionProfiler.getLastBoundaryDrag();
+    expect(last).not.toBeNull();
+    expect(last?.vertexIndex).toBe(2);
+    expect(last?.clipperTimeMs).toBe(1.25);
+    expect(last?.syncWallsTimeMs).toBe(0.15);
+    expect(last?.meshRebuildTimeMs).toBe(4.80);
+    expect(last?.plantCount).toBe(500);
+    expect(last?.vertexCount).toBe(6);
+    expect(last?.totalDurationMs).toBe(6.20);
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[PERF: BOUNDARY_DRAG] 📐 Arrastre Vértice #2'),
+      expect.any(String),
+    );
+
+    consoleSpy.mockRestore();
+  });
 });

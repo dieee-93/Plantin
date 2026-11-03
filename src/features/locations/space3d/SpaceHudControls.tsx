@@ -15,6 +15,8 @@ export interface SpaceHudControlsProps {
   onApplyPreset: (presetId: string) => void;
   onFillFirstSector?: () => void;
   zoomPercent?: number;
+  minZoomPercent?: number;
+  maxZoomPercent?: number;
   onZoomIn?: () => void;
   onZoomOut?: () => void;
   showLabels?: boolean;
@@ -32,6 +34,8 @@ export const SpaceHudControls: React.FC<SpaceHudControlsProps> = ({
   onApplyPreset,
   onFillFirstSector,
   zoomPercent = 75,
+  minZoomPercent,
+  maxZoomPercent,
   onZoomIn = () => {},
   onZoomOut = () => {},
   showLabels = true,
@@ -65,6 +69,8 @@ export const SpaceHudControls: React.FC<SpaceHudControlsProps> = ({
           viewMode={viewMode}
           onChangeViewMode={onChangeViewMode}
           zoomPercent={zoomPercent}
+          minZoomPercent={minZoomPercent}
+          maxZoomPercent={maxZoomPercent}
           onZoomIn={onZoomIn}
           onZoomOut={onZoomOut}
           onRotateCamera={onRotateCamera}

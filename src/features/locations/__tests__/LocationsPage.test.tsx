@@ -116,6 +116,9 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
     // Entrar al espacio
     await user.click(screen.getByRole('button', { name: /Entrar al espacio de Patio Experimental/i }))
 
+    // Abre el panel del Simulador Solar mediante el botón Luz
+    await user.click(screen.getByRole('button', { name: /Luz/i }))
+
     // Verifica que Space3DViewer está montado directamente sin vista clásica
     expect(screen.getByTestId('space-3d-viewer')).toBeInTheDocument()
     expect(screen.getByText(/Espacio 1:1 · Patio Experimental/i)).toBeInTheDocument()
@@ -127,6 +130,7 @@ describe('LocationsPage — Motor de Espacios 1:1 y Diseño CAD 3D', () => {
     expect(screen.getByRole('button', { name: /Vista 3D Isométrica/i })).toBeInTheDocument()
 
     // Permite usar la herramienta Rellenar Sector dentro de LocationsPage
+    await user.click(screen.getByRole('button', { name: /^Plantar$/i }))
     await user.click(screen.getByRole('button', { name: /Rellenar Sector/i }))
     await user.click(screen.getByRole('button', { name: /Rellenar Sector 1/i }))
     expect(screen.getByTestId('total-plants-counter')).not.toHaveTextContent('3 plantas')

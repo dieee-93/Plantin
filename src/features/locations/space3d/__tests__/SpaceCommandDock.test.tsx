@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SpaceCommandDock } from '../SpaceCommandDock';
 
-describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tools', () => {
+describe('SpaceCommandDock - Left Vertical HudRail & Bottom Command Dock', () => {
   it('renders mode switch (Cultivo / Diseñar), Sembrar button, and Tray toggle button', () => {
     const onChangeMode = vi.fn();
     const onOpenSow = vi.fn();
@@ -59,7 +59,7 @@ describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tool
     expect(onToggleTray).toHaveBeenCalled();
   });
 
-  it('renders design sub-toolbar with 1:1 tools when mode is "design"', () => {
+  it('renders vertical HudRail with 1:1 tool icons and status line when mode is "design"', () => {
     const onChangeTool = vi.fn();
     const onChangePathWidth = vi.fn();
 
@@ -94,15 +94,50 @@ describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tool
       />,
     );
 
-    expect(screen.getByRole('button', { name: /Trazar Camino/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Muros/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Editar Contorno/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Plantar Individual/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Surco\/Fila/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Rellenar Sector/i })).toBeInTheDocument();
+    // Vertical HUD toolbar
+    expect(screen.getByRole('toolbar')).toBeInTheDocument();
 
-    // Clicking 100 cm width option
-    fireEvent.click(screen.getByRole('button', { name: '100 cm' }));
+    // Tool buttons queried by role and aria-label
+    const inspectBtn = screen.getByRole('button', { name: /^Inspeccionar$/i });
+    const drawPathBtn = screen.getByRole('button', { name: /^Trazar Camino$/i });
+    const wallsBtn = screen.getByRole('button', { name: /^Muros$/i });
+    const roofBtn = screen.getByRole('button', { name: /^Techo$/i });
+    const editBoundaryBtn = screen.getByRole('button', { name: /^Editar Contorno$/i });
+    const plantGroupBtn = screen.getByRole('button', { name: /^Plantar$/i });
+
+    expect(inspectBtn).toBeInTheDocument();
+    expect(drawPathBtn).toBeInTheDocument();
+    expect(wallsBtn).toBeInTheDocument();
+    expect(roofBtn).toBeInTheDocument();
+    expect(editBoundaryBtn).toBeInTheDocument();
+    expect(plantGroupBtn).toBeInTheDocument();
+
+    // Click Plantar to open sub-tools flyout
+    fireEvent.click(plantGroupBtn);
+
+    const plantSingleBtn = screen.getByRole('button', { name: /^Plantar Individual$/i });
+    const plantLineBtn = screen.getByRole('button', { name: /^Surco\/Fila$/i });
+    const plantFillSectorBtn = screen.getByRole('button', { name: /^Rellenar Sector$/i });
+
+    expect(plantSingleBtn).toBeInTheDocument();
+    expect(plantLineBtn).toBeInTheDocument();
+    expect(plantFillSectorBtn).toBeInTheDocument();
+
+    // Active tool state
+    expect(drawPathBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(inspectBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Switch tool
+    fireEvent.click(inspectBtn);
+    expect(onChangeTool).toHaveBeenCalledWith('inspect');
+
+    // Contextual status line
+    expect(screen.getByRole('status')).toBeInTheDocument();
+
+    // Clicking 100 cm width option in status line actions
+    const width100Btn = screen.getByRole('button', { name: '100 cm' });
+    expect(width100Btn).toBeInTheDocument();
+    fireEvent.click(width100Btn);
     expect(onChangePathWidth).toHaveBeenCalledWith(100);
   });
 
@@ -238,5 +273,58 @@ describe('SpaceCommandDock - Bottom-Center Floating Dock with Mode Toggle & Tool
 
     fireEvent.click(redoBtn);
     expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('displays transient rail hints on first visit, dismisses on hover/click, and persists to localStorage', () => {
+    localStorage.removeItem('plantin_hud_rail_hints_shown');
+    // Ensure prefers-reduced-motion is false
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    const { unmount } = render(
+      <SpaceCommandDock
+        mode="design"
+        onChangeMode={vi.fn()}
+        onOpenSowModalOrDrawer={vi.fn()}
+        isTrayOpen={false}
+        onToggleTray={vi.fn()}
+        activeTool="inspect"
+        onChangeTool={vi.fn()}
+        pathWidthCm={80}
+        onChangePathWidth={vi.fn()}
+        pathMaterial="concrete"
+        onChangePathMaterial={vi.fn()}
+        paths={[]}
+        onRemovePath={vi.fn()}
+        plantCropCode="tomato"
+        onChangePlantCropCode={vi.fn()}
+        plantSpacingCm={30}
+        onChangePlantSpacing={vi.fn()}
+        cultivableSectorCount={2}
+        onFillSector={vi.fn()}
+        customWidthM="10"
+        setCustomWidthM={vi.fn()}
+        customDepthM="6"
+        setCustomDepthM={vi.fn()}
+        onApplyDimensions={vi.fn()}
+        onInsertVertex={vi.fn()}
+        vertexCount={4}
+      />,
+    );
+
+    const rail = screen.getByTestId('hud-left-rail');
+    // Hovering dismisses hints and persists
+    fireEvent.mouseEnter(rail);
+    expect(localStorage.getItem('plantin_hud_rail_hints_shown')).toBe('true');
+
+    unmount();
   });
 });
