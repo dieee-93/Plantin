@@ -78,4 +78,99 @@ describe('BreedingPage', () => {
     expect(crossings[0].resultingSeedLotId).toBe(lots[0].id)
     expect(crossings[0].successStatus).toBe('successful')
   })
+
+  it('renders hybrid lines in the visual grid and opens pedigree detail in HudFlyout when clicking a card', async () => {
+    const user = userEvent.setup()
+
+    const motherAcc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-001',
+      cultivarName: 'Platense',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'cultivated',
+    })
+    const fatherAcc = useAccessionStore.getState().add({
+      accessionNumber: 'TOM-002',
+      cultivarName: 'Cherry',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'cultivated',
+    })
+
+    const f1 = useAccessionStore.getState().add({
+      accessionNumber: 'F1-TOM-2026-001',
+      cultivarName: 'Híbrido Test',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'breeding',
+      pedigree: 'TOM-001 × TOM-002',
+      maternalAccessionId: motherAcc.id,
+      paternalAccessionId: fatherAcc.id,
+    })
+
+    useSeedLotStore.getState().add({
+      accessionId: f1.id,
+      lotCode: 'F1-TOM-2026-001-L1',
+      initialCount: 50,
+    })
+
+    render(
+      <MemoryRouter>
+        <BreedingPage />
+      </MemoryRouter>
+    )
+
+    // Should render card in grid
+    expect(screen.getByText('F1-TOM-2026-001')).toBeInTheDocument()
+    expect(screen.getByText('TOM-001 × TOM-002')).toBeInTheDocument()
+    expect(screen.getByText(/50 sem\./i)).toBeInTheDocument()
+
+    // Click card to open Detail HudFlyout
+    await user.click(screen.getByText('F1-TOM-2026-001'))
+
+    // HudFlyout detail should display pedigree title and parent cards
+    expect(screen.getByText('Pedigrí: F1-TOM-2026-001')).toBeInTheDocument()
+    expect(screen.getByText(/Árbol Genealógico y Parentales/i)).toBeInTheDocument()
+    expect(screen.getByText('F1-TOM-2026-001-L1')).toBeInTheDocument()
+  })
+
+  it('filters hybrid lines by search and cross type chips', async () => {
+    const user = userEvent.setup()
+
+    useAccessionStore.getState().add({
+      accessionNumber: 'F1-TOM-CTRL',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'breeding',
+      pedigree: 'TOM-001 × TOM-002',
+      remarks: 'Controlada (Manual)',
+    })
+    useAccessionStore.getState().add({
+      accessionNumber: 'F1-TOM-SELF',
+      taxonId: 'tax-tom',
+      acquisitionSource: 'breeding',
+      pedigree: 'TOM-001 (Self)',
+      remarks: 'Autofecundación (Self)',
+    })
+
+    render(
+      <MemoryRouter>
+        <BreedingPage />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('F1-TOM-CTRL')).toBeInTheDocument()
+    expect(screen.getByText('F1-TOM-SELF')).toBeInTheDocument()
+
+    // Filter by Self
+    await user.click(screen.getByRole('button', { name: /Autofecundación \(Self\)/i }))
+    expect(screen.queryByText('F1-TOM-CTRL')).not.toBeInTheDocument()
+    expect(screen.getByText('F1-TOM-SELF')).toBeInTheDocument()
+
+    // Search query
+    const searchInput = screen.getByPlaceholderText(/Buscar cruza, variedad, pedigrí/i)
+    await user.type(searchInput, 'NO-MATCH')
+    expect(screen.getByText(/Sin resultados para la búsqueda/i)).toBeInTheDocument()
+
+    await user.clear(searchInput)
+    await user.click(screen.getByRole('button', { name: 'Todas' }))
+    expect(screen.getByText('F1-TOM-CTRL')).toBeInTheDocument()
+    expect(screen.getByText('F1-TOM-SELF')).toBeInTheDocument()
+  })
 })

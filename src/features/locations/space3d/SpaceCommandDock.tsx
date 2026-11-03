@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Boxes,
   BrickWall,
   ChevronUp,
   Grid3x3,
@@ -107,6 +108,13 @@ const BASE_TOOL_ITEMS: ToolItemConfig[] = [
     icon: Spline,
     description: 'Edita vértices, cotas y sustrato del terreno',
     shortcut: 'E',
+  },
+  {
+    tool: 'place_object',
+    label: 'Equipamiento',
+    icon: Boxes,
+    description: 'Racks, palets, mesas y climatización 3D',
+    shortcut: 'Q',
   },
 ];
 

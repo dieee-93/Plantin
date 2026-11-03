@@ -1,0 +1,19 @@
+{
+  "id": "pallet_standard_wood_a01",
+  "label": "Palet de Madera Estándar",
+  "category": "logistics",
+  "dimensionsCm": {
+    "width": 120.4,
+    "height": 20.9,
+    "depth": 80
+  },
+  "occupancyCm": {
+    "width": 120.4,
+    "depth": 80
+  },
+  "snapAnchor": "floor",
+  "stackable": true,
+  "source": "simready-glb",
+  "sourceUrl": "https://huggingface.co/datasets/codepawl/simready-glb/resolve/main/glb/pallet_a01.glb",
+  "normalizedAt": "2026-11-03T17:31:56.686Z"
+}

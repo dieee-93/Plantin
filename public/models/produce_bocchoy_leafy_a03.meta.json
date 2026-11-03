@@ -1,0 +1,19 @@
+{
+  "id": "produce_bocchoy_leafy_a03",
+  "label": "Boc Choy / Hoja Verde",
+  "category": "botanical",
+  "dimensionsCm": {
+    "width": 33.5,
+    "height": 6.4,
+    "depth": 17
+  },
+  "occupancyCm": {
+    "width": 33.5,
+    "depth": 17
+  },
+  "snapAnchor": "floor",
+  "stackable": true,
+  "source": "simready-glb",
+  "sourceUrl": "https://huggingface.co/datasets/codepawl/simready-glb/resolve/main/glb/food_produce_bocChoy_a03.glb",
+  "normalizedAt": "2026-11-03T18:56:17.653Z"
+}

@@ -16,6 +16,7 @@ export type SpaceBuilderTool =
   | 'walls'
   | 'roof'
   | 'edit_boundary'
+  | 'place_object'
   | 'plant_single'
   | 'plant_line'
   | 'plant_fill_sector';
@@ -80,6 +81,9 @@ export interface SpaceBuilderState {
   pathWidthCm: number;
   pathMaterial: FloorMaterialType;
   plantTemplate: PlantBuilderTemplate;
+  selectedObjectAssetId: string;
+  objectRotationDeg: number;
+  objectElevationM: number;
   draftStartCm: Point2DCm | null;
   cursorCm: Point2DCm | null;
   selectedVertexIndex: number | null;
@@ -97,6 +101,9 @@ export type SpaceBuilderEvent =
       plantSpacingCm: number;
       rowSpacingCm?: number;
     }
+  | { type: 'SET_OBJECT_ASSET'; assetId: string }
+  | { type: 'SET_OBJECT_ROTATION'; rotationDeg: number }
+  | { type: 'SET_OBJECT_ELEVATION'; elevationM: number }
   | { type: 'SET_DRAFT_START'; pointCm: Point2DCm | null }
   | { type: 'MOVE_CURSOR'; pointCm: Point2DCm | null }
   | { type: 'SELECT_VERTEX'; vertexIndex: number | null }
@@ -109,6 +116,9 @@ export function createInitialBuilderState(): SpaceBuilderState {
     pathWidthCm: 80,
     pathMaterial: 'concrete',
     plantTemplate: { ...PLANT_BUILDER_PRESETS.tomato },
+    selectedObjectAssetId: 'pallet_standard_wood_a01',
+    objectRotationDeg: 0,
+    objectElevationM: 0,
     draftStartCm: null,
     cursorCm: null,
     selectedVertexIndex: null,
@@ -163,6 +173,21 @@ export function spaceBuilderReducer(
         },
       };
     }
+    case 'SET_OBJECT_ASSET':
+      return {
+        ...state,
+        selectedObjectAssetId: event.assetId,
+      };
+    case 'SET_OBJECT_ROTATION':
+      return {
+        ...state,
+        objectRotationDeg: event.rotationDeg,
+      };
+    case 'SET_OBJECT_ELEVATION':
+      return {
+        ...state,
+        objectElevationM: event.elevationM,
+      };
     case 'SET_DRAFT_START':
       return {
         ...state,

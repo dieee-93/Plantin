@@ -1,0 +1,19 @@
+{
+  "id": "crate_harvest_plastic_green_a01",
+  "label": "Caja de Cosecha Plástica Verde",
+  "category": "logistics",
+  "dimensionsCm": {
+    "width": 60.5,
+    "height": 25.3,
+    "depth": 40.5
+  },
+  "occupancyCm": {
+    "width": 60.5,
+    "depth": 40.5
+  },
+  "snapAnchor": "floor",
+  "stackable": true,
+  "source": "simready-glb",
+  "sourceUrl": "https://huggingface.co/datasets/codepawl/simready-glb/resolve/main/glb/crate_green_a01.glb",
+  "normalizedAt": "2026-11-03T17:32:16.201Z"
+}

@@ -13,7 +13,11 @@ import {
   shouldCutawayWall,
   type PlacedPlantSpatialCm,
 } from '@/domain/solarAndPlantSpatial';
-import type { SpaceLayout1to1, SpaceRoofConfig } from '@/store/spaceLayoutStore';
+import type {
+  PlacedObjectSpatialCm,
+  SpaceLayout1to1,
+  SpaceRoofConfig,
+} from '@/store/spaceLayoutStore';
 import {
   applyContinuousWallPrismUVs,
   applyMetricUVsToShapeGeometry,
@@ -22,6 +26,7 @@ import {
   SpaceStandardMaterial,
 } from './materials';
 import { SpacePlantSprite } from './SpacePlantSprite';
+import { SpaceModelInstance } from './SpaceModelInstance';
 import { SurroundingGround } from './SurroundingGround';
 import { CanopyRingsInstanced, type CanopyRingItem } from './CanopyRingsInstanced';
 import { InstancedPlantGroup, type InstancedPlantItem } from './InstancedPlantSprites';
@@ -382,6 +387,39 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
   },
 );
 PlantsLayer.displayName = 'PlantsLayer';
+
+export interface ObjectsLayerProps {
+  placedObjects?: PlacedObjectSpatialCm[];
+  centerCm: Point2DCm;
+  selectedObjectId?: string | null;
+  onSelectObject?: (objectId: string) => void;
+}
+
+export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
+  ({ placedObjects = [], centerCm, selectedObjectId: _selectedObjectId, onSelectObject }) => {
+    if (!placedObjects || placedObjects.length === 0) return null;
+
+    return (
+      <group name="objects-layer">
+        {placedObjects.map((obj) => (
+          <SpaceModelInstance
+            key={obj.id}
+            modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
+            positionCm={{ x: obj.xCm, y: obj.yCm }}
+            centerCm={centerCm}
+            elevationM={obj.elevationM ?? 0}
+            rotationDeg={obj.rotationDeg ?? 0}
+            onClick={(e) => {
+              (e as { stopPropagation?: () => void })?.stopPropagation?.();
+              onSelectObject?.(obj.id);
+            }}
+          />
+        ))}
+      </group>
+    );
+  },
+);
+ObjectsLayer.displayName = 'ObjectsLayer';
 
 export interface WallsLayerProps {
   walls: WallSegmentCm[];
@@ -1385,6 +1423,16 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
             activeLens={activeLens}
             showDistancesConflict={showDistancesConflict}
             onSelectPlant={onSelectPlant}
+          />
+        </React.Suspense>
+      )}
+
+      {/* 1:1 Placed 3D Objects & Logistics layer */}
+      {layout.placedObjects && layout.placedObjects.length > 0 && (
+        <React.Suspense fallback={null}>
+          <ObjectsLayer
+            placedObjects={layout.placedObjects}
+            centerCm={centerCm}
           />
         </React.Suspense>
       )}

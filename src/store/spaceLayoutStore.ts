@@ -51,6 +51,19 @@ export interface SpaceRoofConfig {
   hasGrowLights?: boolean;
 }
 
+export interface PlacedObjectSpatialCm {
+  id: string;
+  assetId: string;
+  modelUrl?: string;
+  thumbnailUrl?: string;
+  label: string;
+  xCm: number;
+  yCm: number;
+  elevationM?: number;
+  rotationDeg?: number;
+  category?: 'logistics' | 'cultivation_container' | 'mep' | 'botanical' | string;
+}
+
 export interface SpaceLayout1to1 {
   locationId: string;
   presetId: string;
@@ -62,6 +75,7 @@ export interface SpaceLayout1to1 {
   roofConfig?: SpaceRoofConfig;
   solarConfig: SpaceSolarConfig;
   placedPlants: PlacedPlantSpatialCm[];
+  placedObjects?: PlacedObjectSpatialCm[];
 }
 
 export interface SpacePresetDefinition {
@@ -165,6 +179,38 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
             xCm: 80,
             yCm: 480,
             canopyRadiusCm: 15,
+          },
+        ],
+        placedObjects: [
+          {
+            id: 'obj-pallet-1',
+            assetId: 'pallet_standard_wood_a01',
+            label: 'Palet de Madera',
+            xCm: 850,
+            yCm: 100,
+            elevationM: 0,
+            rotationDeg: 0,
+            category: 'logistics',
+          },
+          {
+            id: 'obj-crate-stacked-1',
+            assetId: 'crate_harvest_plastic_green_a01',
+            label: 'Caja de Cosecha Verde (Apilada)',
+            xCm: 850,
+            yCm: 100,
+            elevationM: 0.209,
+            rotationDeg: 0,
+            category: 'logistics',
+          },
+          {
+            id: 'obj-crate-floor-2',
+            assetId: 'crate_harvest_plastic_green_a01',
+            label: 'Caja de Cosecha Verde',
+            xCm: 760,
+            yCm: 100,
+            elevationM: 0,
+            rotationDeg: 90,
+            category: 'logistics',
           },
         ],
       };
@@ -284,6 +330,7 @@ export interface StructuralHistoryEntry {
   roofConfig?: SpaceRoofConfig;
   solarConfig: SpaceSolarConfig;
   placedPlants?: PlacedPlantSpatialCm[];
+  placedObjects?: PlacedObjectSpatialCm[];
 }
 
 export interface PlantAddDeltaEntry {
@@ -345,6 +392,7 @@ function cloneStructuralSnapshot(
     roofConfig: layout.roofConfig ? structuredClone(layout.roofConfig) : undefined,
     solarConfig: { ...layout.solarConfig },
     placedPlants: includePlants ? structuredClone(layout.placedPlants) : undefined,
+    placedObjects: layout.placedObjects ? structuredClone(layout.placedObjects) : undefined,
   };
 }
 
@@ -445,6 +493,11 @@ export interface SpaceLayoutStoreState {
     locationId: string,
     plant: Omit<PlacedPlantSpatialCm, 'id'> & { id?: string },
   ) => string;
+  placeObject: (
+    locationId: string,
+    objectData: Omit<PlacedObjectSpatialCm, 'id'> & { id?: string },
+  ) => string;
+  removeObject: (locationId: string, objectId: string) => void;
   movePlant: (locationId: string, plantId: string, xCm: number, yCm: number) => void;
   removePlant: (locationId: string, plantId: string) => void;
   placePlantLine: (
@@ -683,6 +736,10 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
               }));
               return healed;
             }
+          }
+          if (existing.presetId === 'patio_croquis' && (!existing.placedObjects || existing.placedObjects.length === 0)) {
+            const defaultPatio = SPACE_PRESETS.patio_croquis.createLayout(locationId);
+            existing.placedObjects = defaultPatio.placedObjects;
           }
           return existing;
         }
@@ -1101,6 +1158,41 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         return id;
       },
 
+      placeObject: (locationId, objectData) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        const id = objectData.id ?? `obj-${uuidv7()}`;
+        const newObj: PlacedObjectSpatialCm = {
+          ...objectData,
+          id,
+        };
+        set((state) => ({
+          history: pushStructuralSnapshot(locationId, current, state.history, true),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              placedObjects: [...(current.placedObjects ?? []), newObj],
+            },
+          },
+        }));
+        return id;
+      },
+
+      removeObject: (locationId, objectId) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        if (!current.placedObjects) return;
+        set((state) => ({
+          history: pushStructuralSnapshot(locationId, current, state.history, true),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              placedObjects: (current.placedObjects ?? []).filter((o) => o.id !== objectId),
+            },
+          },
+        }));
+      },
+
       movePlant: (locationId, plantId, xCm, yCm) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         const targetIndex = current.placedPlants.findIndex((p) => p.id === plantId);
@@ -1331,6 +1423,10 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
                 structuralCmd.placedPlants !== undefined
                   ? structuredClone(structuralCmd.placedPlants)
                   : current.placedPlants,
+              placedObjects:
+                structuralCmd.placedObjects !== undefined
+                  ? structuredClone(structuralCmd.placedObjects)
+                  : (current.placedObjects ? structuredClone(current.placedObjects) : undefined),
             };
             break;
           }
@@ -1417,6 +1513,10 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
                 structuralCmd.placedPlants !== undefined
                   ? structuredClone(structuralCmd.placedPlants)
                   : current.placedPlants,
+              placedObjects:
+                structuralCmd.placedObjects !== undefined
+                  ? structuredClone(structuralCmd.placedObjects)
+                  : (current.placedObjects ? structuredClone(current.placedObjects) : undefined),
             };
             break;
           }

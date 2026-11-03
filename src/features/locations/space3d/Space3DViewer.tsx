@@ -41,6 +41,8 @@ import { SpaceRoofActionBar } from './SpaceRoofActionBar';
 import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
 import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
 import { SpacePlantBuilderShelf } from './SpacePlantBuilderShelf';
+import { SpaceObjectBuilderShelf } from './SpaceObjectBuilderShelf';
+import { FACILITY_OBJECTS_CATALOG } from './objectsCatalog';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import { interactionProfiler } from './telemetry/interactionProfiler';
@@ -58,6 +60,7 @@ const CURSOR_TOOLS: string[] = [
   'edit_boundary',
   'plant_single',
   'plant_fill_sector',
+  'place_object',
 ];
 
 export interface Space3DViewerProps {
@@ -183,6 +186,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     (state) => state.updateRoofConfig,
   );
   const placePlant = useSpaceLayoutStore((state) => state.placePlant);
+  const placeObject = useSpaceLayoutStore((state) => state.placeObject);
   const removePlant = useSpaceLayoutStore((state) => state.removePlant);
   const placePlantLine = useSpaceLayoutStore((state) => state.placePlantLine);
   const fillCultivableSector = useSpaceLayoutStore(
@@ -773,6 +777,25 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
         });
         dispatch({ type: 'SELECT_PLANT', plantId: newId });
+        return;
+      }
+
+      if (builderState.activeTool === 'place_object') {
+        const item =
+          FACILITY_OBJECTS_CATALOG.find(
+            (i) => i.assetId === builderState.selectedObjectAssetId,
+          ) ?? FACILITY_OBJECTS_CATALOG[0];
+        placeObject(locationId, {
+          assetId: item.assetId,
+          modelUrl: item.glbUrl,
+          thumbnailUrl: item.thumbnailUrl,
+          label: item.label,
+          xCm: pt.x,
+          yCm: pt.y,
+          elevationM: builderState.objectElevationM,
+          rotationDeg: builderState.objectRotationDeg,
+          category: item.category,
+        });
         return;
       }
 
@@ -1804,8 +1827,6 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               }
             }}
             onSanitizeBoundary={() => sanitizeBoundary(locationId)}
-            cultivableSectorCount={regions.cultivableSectors?.length ?? regions.cultivablePolygons.length}
-            onFillSector={handleFillSector}
             onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
       )}
@@ -1854,6 +1875,25 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             onFillSector={handleFillSector}
             onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
           />
+      )}
+
+      {/* ── 3.10. Contextual Builder Shelf for Logistics & 3D Objects ── */}
+      {builderState.activeTool === 'place_object' && (
+        <SpaceObjectBuilderShelf
+          selectedAssetId={builderState.selectedObjectAssetId}
+          onSelectAssetId={(assetId) =>
+            dispatch({ type: 'SET_OBJECT_ASSET', assetId })
+          }
+          rotationDeg={builderState.objectRotationDeg}
+          onChangeRotationDeg={(deg) =>
+            dispatch({ type: 'SET_OBJECT_ROTATION', rotationDeg: deg })
+          }
+          elevationM={builderState.objectElevationM}
+          onChangeElevationM={(elevationM) =>
+            dispatch({ type: 'SET_OBJECT_ELEVATION', elevationM })
+          }
+          onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+        />
       )}
 
 
