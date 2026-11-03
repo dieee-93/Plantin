@@ -30,6 +30,7 @@ import {
 } from './SpaceSceneGraph';
 import { ShaderWarmer } from './ShaderWarmer';
 import { SpaceHeaderNav } from './SpaceHeaderNav';
+import { HudSyncIndicator } from '@/components/hud';
 import { SpaceLensBar, type AnalyticalLensType } from './SpaceLensBar';
 import { SpaceCommandDock } from './SpaceCommandDock';
 import { SpaceCameraWidget } from './SpaceCameraWidget';
@@ -995,36 +996,39 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       {/* ── 1. Top HUD Overlay (Navigation & Analytical Lenses) ── */}
       {isHudVisible && (
         <div className="pointer-events-none absolute top-3 inset-x-3 z-30 flex items-start justify-between gap-2">
-          {/* Top-Left: Nav & Room Dimensions */}
-          <SpaceHeaderNav
-            locationName={locationName || 'Espacio 1:1'}
-            plantCount={layout.placedPlants.length}
-            capacity={capacity}
-            widthM={bbox.widthCm / 100}
-            depthM={bbox.depthCm / 100}
-            areaM2={areaM2}
-            perimeterM={perimeterM}
-            isRectangular={isRectangular}
-            vertexCount={layout.baseBoundary.length}
-            onBackToCampus={onBackToCampus}
-            onApplyDimensions={(w, d) => {
-              setCustomWidthM(w.toFixed(1));
-              setCustomDepthM(d.toFixed(1));
-              setBaseBoundary(
-                locationId,
-                createRectPolygon(Math.round(w * 100), Math.round(d * 100)),
-              );
-            }}
-            onApplyShapePreset={(shape) => {
-              if (shape === 'rect') {
-                setBaseBoundary(locationId, createRectPolygon(1000, 600));
-              } else {
-                setBaseBoundary(locationId, createLShapePolygon(1000, 600, 0.4, 0.45));
-              }
-            }}
-            onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
-            onInsertVertex={handleInsertVertex}
-          />
+          {/* Top-Left: Nav & Room Dimensions + Cloud Sync Status */}
+          <div className="flex items-center gap-2">
+            <SpaceHeaderNav
+              locationName={locationName || 'Espacio 1:1'}
+              plantCount={layout.placedPlants.length}
+              capacity={capacity}
+              widthM={bbox.widthCm / 100}
+              depthM={bbox.depthCm / 100}
+              areaM2={areaM2}
+              perimeterM={perimeterM}
+              isRectangular={isRectangular}
+              vertexCount={layout.baseBoundary.length}
+              onBackToCampus={onBackToCampus}
+              onApplyDimensions={(w, d) => {
+                setCustomWidthM(w.toFixed(1));
+                setCustomDepthM(d.toFixed(1));
+                setBaseBoundary(
+                  locationId,
+                  createRectPolygon(Math.round(w * 100), Math.round(d * 100)),
+                );
+              }}
+              onApplyShapePreset={(shape) => {
+                if (shape === 'rect') {
+                  setBaseBoundary(locationId, createRectPolygon(1000, 600));
+                } else {
+                  setBaseBoundary(locationId, createLShapePolygon(1000, 600, 0.4, 0.45));
+                }
+              }}
+              onScaleParcel={(factor) => scaleBoundary(locationId, factor)}
+              onInsertVertex={handleInsertVertex}
+            />
+            <HudSyncIndicator />
+          </div>
 
           {/* Top-Right: Quick Pills (Nombres, Luz, Lentes) & Solar Panel */}
           <SpaceLensBar

@@ -6,3 +6,4 @@ export * from './HudStatusLine';
 export * from './HudChipRow';
 export * from './HudItemCard';
 export * from './HudFlyout';
+export * from './HudSyncIndicator';

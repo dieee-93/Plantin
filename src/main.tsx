@@ -4,6 +4,11 @@ import { RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import { router } from './router'
+import { syncCoordinator } from '@/services/cloudSync'
+import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
+
+// Auto-start reactive background cloud sync with Google Drive appDataFolder
+syncCoordinator.startListening(useSpaceLayoutStore)
 
 const queryClient = new QueryClient({
   defaultOptions: {
