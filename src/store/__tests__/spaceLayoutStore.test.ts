@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { get as idbGet } from 'idb-keyval';
 import { classifySpacePoint, computeSpaceRegions } from '@/domain/spaceGeometry';
 import { measurePlantNeighbors } from '@/domain/solarAndPlantSpatial';
 import { flushSpaceLayoutStorage, SPACE_PRESETS, useSpaceLayoutStore } from '../spaceLayoutStore';
@@ -399,7 +400,7 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
       ).toHaveLength(1);
     });
 
-    it('excludes history from serialized localStorage to prevent quota exceeded errors', () => {
+    it('excludes history from serialized storage to prevent quota exceeded errors', async () => {
       const store = useSpaceLayoutStore.getState();
       store.getOrCreateSpaceLayout('loc-storage-test', 'outdoor', 'empty_lot_1to1');
       store.placePlant('loc-storage-test', {
@@ -408,13 +409,19 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
         yCm: 50,
         canopyRadiusCm: 15,
       });
-      flushSpaceLayoutStorage();
+      await flushSpaceLayoutStorage();
 
       const rawStorage = localStorage.getItem('plantin-space-layout-v1');
       if (rawStorage) {
         const parsed = JSON.parse(rawStorage);
         expect(parsed.state.history).toBeUndefined();
         expect(parsed.state.layouts).toBeDefined();
+      }
+
+      const idbData = (await idbGet('plantin-space-layout-v1')) as { state?: { history?: unknown; layouts?: unknown } };
+      if (idbData && idbData.state) {
+        expect(idbData.state.history).toBeUndefined();
+        expect(idbData.state.layouts).toBeDefined();
       }
     });
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
+import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
 import { uuidv7 } from 'uuidv7';
 import {
   canInsertVertexAtEdge,
@@ -471,91 +472,182 @@ export interface PersistedSpaceLayoutState {
   layouts: Record<string, SpaceLayout1to1>;
 }
 
-let pendingStorageFlush: (() => void) | null = null;
-
-export function flushSpaceLayoutStorage(): void {
-  if (pendingStorageFlush) {
-    pendingStorageFlush();
+function isIndexedDBAvailable(): boolean {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      typeof indexedDB !== 'undefined' &&
+      indexedDB !== null &&
+      typeof indexedDB.open === 'function'
+    );
+  } catch {
+    return false;
   }
 }
 
-function createDebouncedPersistStorage(
+const activeFlushFunctions = new Set<() => Promise<void>>();
+
+export async function flushSpaceLayoutStorage(): Promise<void> {
+  await Promise.all(Array.from(activeFlushFunctions).map((fn) => fn()));
+}
+
+export interface DebouncedPersistStorage<S> extends PersistStorage<S> {
+  flush: (key?: string) => Promise<void>;
+}
+
+export function createDebouncedPersistStorage(
   delayMs = 400,
-): PersistStorage<PersistedSpaceLayoutState> {
+): DebouncedPersistStorage<PersistedSpaceLayoutState> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const pendingWrites = new Map<string, StorageValue<PersistedSpaceLayoutState>>();
+  const memoryFallback = new Map<string, StorageValue<PersistedSpaceLayoutState>>();
 
-  const flush = (key?: string) => {
-    if (typeof window === 'undefined' || !window.localStorage) return;
+  const flush = async (key?: string): Promise<void> => {
     if (key) {
       const val = pendingWrites.get(key);
       if (val !== undefined) {
-        try {
-          window.localStorage.setItem(key, JSON.stringify(val));
-        } catch (e) {
-          console.warn('[spaceLayoutStore] localStorage setItem error:', e);
-        }
         pendingWrites.delete(key);
+        if (isIndexedDBAvailable()) {
+          try {
+            await idbSet(key, val);
+          } catch (e) {
+            console.warn('[spaceLayoutStore] idb-keyval setItem error:', e);
+            if (typeof window !== 'undefined' && window.localStorage) {
+              try {
+                window.localStorage.setItem(key, JSON.stringify(val));
+              } catch (lsErr) {
+                console.warn('[spaceLayoutStore] localStorage fallback error:', lsErr);
+              }
+            }
+          }
+        } else if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            window.localStorage.setItem(key, JSON.stringify(val));
+          } catch (lsErr) {
+            console.warn('[spaceLayoutStore] localStorage fallback error:', lsErr);
+          }
+        }
       }
     } else {
-      for (const [k, val] of pendingWrites.entries()) {
-        try {
-          window.localStorage.setItem(k, JSON.stringify(val));
-        } catch (e) {
-          console.warn('[spaceLayoutStore] localStorage setItem error:', e);
+      const entries = Array.from(pendingWrites.entries());
+      pendingWrites.clear();
+      for (const [k, val] of entries) {
+        if (isIndexedDBAvailable()) {
+          try {
+            await idbSet(k, val);
+          } catch (e) {
+            console.warn('[spaceLayoutStore] idb-keyval setItem error:', e);
+            if (typeof window !== 'undefined' && window.localStorage) {
+              try {
+                window.localStorage.setItem(k, JSON.stringify(val));
+              } catch (lsErr) {
+                console.warn('[spaceLayoutStore] localStorage fallback error:', lsErr);
+              }
+            }
+          }
+        } else if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            window.localStorage.setItem(k, JSON.stringify(val));
+          } catch (lsErr) {
+            console.warn('[spaceLayoutStore] localStorage fallback error:', lsErr);
+          }
         }
       }
-      pendingWrites.clear();
     }
   };
 
-  pendingStorageFlush = () => {
+  const instanceFlush = async (): Promise<void> => {
     if (timer) {
       clearTimeout(timer);
       timer = null;
     }
-    flush();
+    await flush();
   };
+
+  activeFlushFunctions.add(instanceFlush);
 
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('beforeunload', () => {
-      flush();
+      void instanceFlush();
     });
   }
 
   return {
-    getItem: (name: string): StorageValue<PersistedSpaceLayoutState> | null => {
+    flush: instanceFlush,
+    getItem: async (name: string): Promise<StorageValue<PersistedSpaceLayoutState> | null> => {
       if (pendingWrites.has(name)) {
         return pendingWrites.get(name)!;
       }
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const raw = window.localStorage.getItem(name);
-        if (!raw) return null;
+
+      // 1. Intentar leer de IndexedDB
+      if (isIndexedDBAvailable()) {
         try {
-          return JSON.parse(raw) as StorageValue<PersistedSpaceLayoutState>;
+          const idbVal = await idbGet<StorageValue<PersistedSpaceLayoutState>>(name);
+          if (idbVal !== undefined && idbVal !== null) {
+            memoryFallback.set(name, idbVal);
+            return idbVal;
+          }
         } catch (e) {
-          console.warn('[spaceLayoutStore] localStorage parse error:', e);
-          return null;
+          console.warn('[spaceLayoutStore] idb-keyval getItem error:', e);
         }
       }
-      return null;
+
+      // 2. Auto-migración desde localStorage si no hay en IndexedDB
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          const raw = window.localStorage.getItem(name);
+          if (raw) {
+            const data = JSON.parse(raw) as StorageValue<PersistedSpaceLayoutState>;
+            memoryFallback.set(name, data);
+            // Guardar inmediatamente en IndexedDB
+            if (isIndexedDBAvailable()) {
+              try {
+                await idbSet(name, data);
+                // Limpiar localStorage para liberar los 5 MB
+                window.localStorage.removeItem(name);
+              } catch (e) {
+                console.warn('[spaceLayoutStore] idb-keyval setItem migration error:', e);
+              }
+            }
+            return data;
+          }
+        } catch (e) {
+          console.warn('[spaceLayoutStore] localStorage migration parse error:', e);
+        }
+      }
+
+      // 3. Fallback a memoria
+      return memoryFallback.get(name) ?? null;
     },
     setItem: (name: string, value: StorageValue<PersistedSpaceLayoutState>): void => {
       pendingWrites.set(name, value);
+      memoryFallback.set(name, value);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        flush(name);
+        void flush(name);
         timer = null;
       }, delayMs);
     },
-    removeItem: (name: string): void => {
+    removeItem: async (name: string): Promise<void> => {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
       pendingWrites.delete(name);
+      memoryFallback.delete(name);
+      if (isIndexedDBAvailable()) {
+        try {
+          await idbDel(name);
+        } catch (e) {
+          console.warn('[spaceLayoutStore] idb-keyval removeItem error:', e);
+        }
+      }
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(name);
+        try {
+          window.localStorage.removeItem(name);
+        } catch {
+          // ignore
+        }
       }
     },
   };
