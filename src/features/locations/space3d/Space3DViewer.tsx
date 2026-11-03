@@ -37,6 +37,7 @@ import { SpaceLensBar, type AnalyticalLensType } from './SpaceLensBar';
 import { SpaceCommandDock } from './SpaceCommandDock';
 import { SpaceCameraWidget } from './SpaceCameraWidget';
 import { SpacePlantActionBar } from './SpacePlantActionBar';
+import { SpaceObjectActionBar } from './SpaceObjectActionBar';
 import { SpaceWallActionBar } from './SpaceWallActionBar';
 import { SpaceWallBuilderShelf } from './SpaceWallBuilderShelf';
 import { SpaceRoofActionBar } from './SpaceRoofActionBar';
@@ -189,6 +190,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   );
   const placePlant = useSpaceLayoutStore((state) => state.placePlant);
   const placeObject = useSpaceLayoutStore((state) => state.placeObject);
+  const updateObject = useSpaceLayoutStore((state) => state.updateObject);
+  const removeObject = useSpaceLayoutStore((state) => state.removeObject);
   const removePlant = useSpaceLayoutStore((state) => state.removePlant);
   const placePlantLine = useSpaceLayoutStore((state) => state.placePlantLine);
   const fillCultivableSector = useSpaceLayoutStore(
@@ -399,6 +402,13 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     () =>
       layout.walls.find((w) => w.id === builderState.selectedWallId) ?? null,
     [layout.walls, builderState.selectedWallId],
+  );
+
+  const selectedObject = useMemo(
+    () =>
+      layout.placedObjects?.find((o) => o.id === builderState.selectedObjectId) ??
+      null,
+    [layout.placedObjects, builderState.selectedObjectId],
   );
 
   const [isHudVisible, setIsHudVisible] = useState(true);
@@ -651,6 +661,68 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       dispatch({ type: 'SELECT_WALL', wallId: null });
     }
   }, [builderState.selectedWallId, selectedWall]);
+
+  useEffect(() => {
+    if (builderState.selectedObjectId && !selectedObject) {
+      dispatch({ type: 'SELECT_OBJECT', objectId: null });
+    }
+  }, [builderState.selectedObjectId, selectedObject]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isInput) return;
+
+      if (e.key === 'Escape') {
+        if (builderState.selectedObjectId) {
+          dispatch({ type: 'SELECT_OBJECT', objectId: null });
+        } else if (builderState.selectedPlantId) {
+          dispatch({ type: 'SELECT_PLANT', plantId: null });
+        } else if (builderState.selectedWallId) {
+          dispatch({ type: 'SELECT_WALL', wallId: null });
+        }
+      } else if (builderState.selectedObjectId && selectedObject) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          removeObject(locationId, selectedObject.id);
+          dispatch({ type: 'SELECT_OBJECT', objectId: null });
+          if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+          setFillToast({
+            type: 'info',
+            message: `Objeto "${selectedObject.label}" eliminado. Puedes usar Deshacer (Ctrl+Z).`,
+          });
+          fillToastTimerRef.current = setTimeout(() => setFillToast(null), 4000);
+        } else if (e.key.toLowerCase() === 'r') {
+          e.preventDefault();
+          const nextDeg = ((selectedObject.rotationDeg ?? 0) + 90) % 360;
+          updateObject(locationId, selectedObject.id, { rotationDeg: nextDeg });
+          if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+          setFillToast({
+            type: 'info',
+            message: `Rotación: ${nextDeg}°`,
+          });
+          fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2000);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    builderState.selectedObjectId,
+    builderState.selectedPlantId,
+    builderState.selectedWallId,
+    selectedObject,
+    locationId,
+    removeObject,
+    updateObject,
+    undo,
+  ]);
 
   useEffect(() => {
     if (layout.baseBoundary.length > 8) {
@@ -1217,6 +1289,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 showRoof={showRoof}
                 selectedPlantId={builderState.selectedPlantId}
                 selectedWallId={builderState.selectedWallId}
+                selectedObjectId={builderState.selectedObjectId}
                 selectedVertexIndex={builderState.selectedVertexIndex}
                 isBoundaryEditMode={
                   builderState.activeTool === 'edit_boundary'
@@ -1234,6 +1307,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 }
                 onSelectPlant={handleSelectPlant}
                 onSelectWall={handleSelectWall}
+                onSelectObject={(objId) =>
+                  dispatch({ type: 'SELECT_OBJECT', objectId: objId })
+                }
                 onSelectVertex={handleSelectVertex}
                 onStartDragVertex={handleStartDragVertex}
                 onInsertVertexAtEdge={handleInsertVertexAtEdge}
@@ -1704,19 +1780,41 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
             {/* Placed objects in 2D CAD floor plan */}
             {layout.placedObjects?.map((obj) => {
+              const isSelected = builderState.selectedObjectId === obj.id;
               const dims = getObjectDimensionsCm(obj.assetId, obj.category);
               const w = obj.widthCm ?? dims.widthCm;
               const d = obj.depthCm ?? dims.depthCm;
               const rot = obj.rotationDeg ?? 0;
               const poly = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
               return (
-                <g key={obj.id} data-testid={`svg-object-${obj.id}`}>
+                <g
+                  key={obj.id}
+                  data-testid={`svg-object-${obj.id}`}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatch({ type: 'SELECT_OBJECT', objectId: obj.id });
+                  }}
+                >
                   <polygon
                     points={poly.map((p) => `${p.x},${p.y}`).join(' ')}
-                    fill="rgba(56, 189, 248, 0.2)"
-                    stroke="#0284c7"
-                    strokeWidth={1.5}
+                    fill={
+                      isSelected
+                        ? 'rgba(14, 165, 233, 0.45)'
+                        : 'rgba(56, 189, 248, 0.2)'
+                    }
+                    stroke={isSelected ? '#0369a1' : '#0284c7'}
+                    strokeWidth={isSelected ? 3 : 1.5}
+                    strokeDasharray={isSelected ? '6,3' : undefined}
                   />
+                  {isSelected && (
+                    <circle
+                      cx={obj.xCm}
+                      cy={obj.yCm}
+                      r={4}
+                      fill="#0284c7"
+                    />
+                  )}
                   <text
                     x={obj.xCm}
                     y={obj.yCm}
@@ -1724,7 +1822,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     dominantBaseline="middle"
                     fontSize={10}
                     fontWeight="bold"
-                    fill="#0369a1"
+                    fill={isSelected ? '#0c4a6e' : '#0369a1'}
                     className="pointer-events-none select-none font-sans"
                   >
                     {obj.label}
@@ -1816,6 +1914,68 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             }}
             onUpdateOpening={(openingId, partial) => {
               updateWallOpening(locationId, selectedWall.id, openingId, partial);
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── 3.7. Floating Contextual Popover for Selected 3D Object ── */}
+      {selectedObject && (
+        <div className="absolute top-20 right-4 z-40">
+          <SpaceObjectActionBar
+            object={selectedObject}
+            onClose={() => dispatch({ type: 'SELECT_OBJECT', objectId: null })}
+            onRotate={(nextDeg) => {
+              updateObject(locationId, selectedObject.id, { rotationDeg: nextDeg });
+              if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+              setFillToast({
+                type: 'info',
+                message: `Rotación: ${nextDeg}°`,
+              });
+              fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2000);
+            }}
+            onUpdateElevation={(elevationM) => {
+              updateObject(locationId, selectedObject.id, { elevationM });
+              if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+              setFillToast({
+                type: 'info',
+                message: `Elevación: ${Math.round(elevationM * 100)} cm`,
+              });
+              fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2000);
+            }}
+            onDuplicate={() => {
+              const nextX = selectedObject.xCm + 30;
+              const nextY = selectedObject.yCm + 30;
+              const newId = placeObject(locationId, {
+                assetId: selectedObject.assetId,
+                label: `${selectedObject.label} (Copia)`,
+                category: selectedObject.category,
+                xCm: nextX,
+                yCm: nextY,
+                elevationM: selectedObject.elevationM,
+                rotationDeg: selectedObject.rotationDeg,
+                widthCm: selectedObject.widthCm,
+                depthCm: selectedObject.depthCm,
+                heightCm: selectedObject.heightCm,
+                modelUrl: selectedObject.modelUrl,
+              });
+              dispatch({ type: 'SELECT_OBJECT', objectId: newId });
+              if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+              setFillToast({
+                type: 'success',
+                message: `Duplicado: ${selectedObject.label}`,
+              });
+              fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2500);
+            }}
+            onRemove={() => {
+              removeObject(locationId, selectedObject.id);
+              dispatch({ type: 'SELECT_OBJECT', objectId: null });
+              if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+              setFillToast({
+                type: 'info',
+                message: `Objeto "${selectedObject.label}" eliminado. Puedes usar Deshacer (Ctrl+Z).`,
+              });
+              fillToastTimerRef.current = setTimeout(() => setFillToast(null), 4000);
             }}
           />
         </div>

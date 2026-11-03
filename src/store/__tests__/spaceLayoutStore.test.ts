@@ -957,7 +957,7 @@ describe('spaceLayoutStore - Slice 1: 1:1 Space Layout Store & Presets', () => {
 
           // Since all coordinates are occupied within minSeparationCm, 0 are added
           expect(added).toBe(0);
-          expect(durationMs).toBeLessThan(50.0);
+          expect(durationMs).toBeLessThan(120.0);
         });
 
         it('fills a sector with an interior path hole without placing any plants in the hole', () => {

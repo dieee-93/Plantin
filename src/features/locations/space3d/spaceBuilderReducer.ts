@@ -89,6 +89,7 @@ export interface SpaceBuilderState {
   selectedVertexIndex: number | null;
   selectedWallId: string | null;
   selectedPlantId: string | null;
+  selectedObjectId: string | null;
 }
 
 export type SpaceBuilderEvent =
@@ -108,7 +109,8 @@ export type SpaceBuilderEvent =
   | { type: 'MOVE_CURSOR'; pointCm: Point2DCm | null }
   | { type: 'SELECT_VERTEX'; vertexIndex: number | null }
   | { type: 'SELECT_WALL'; wallId: string | null }
-  | { type: 'SELECT_PLANT'; plantId: string | null };
+  | { type: 'SELECT_PLANT'; plantId: string | null }
+  | { type: 'SELECT_OBJECT'; objectId: string | null };
 
 export function createInitialBuilderState(): SpaceBuilderState {
   return {
@@ -124,6 +126,7 @@ export function createInitialBuilderState(): SpaceBuilderState {
     selectedVertexIndex: null,
     selectedWallId: null,
     selectedPlantId: null,
+    selectedObjectId: null,
   };
 }
 
@@ -139,6 +142,7 @@ export function spaceBuilderReducer(
         draftStartCm: null,
         selectedVertexIndex: null,
         selectedWallId: null,
+        selectedObjectId: null,
       };
     case 'SET_PATH_WIDTH':
       return {
@@ -211,11 +215,21 @@ export function spaceBuilderReducer(
       return {
         ...state,
         selectedWallId: event.wallId,
+        selectedObjectId: event.wallId ? null : state.selectedObjectId,
       };
     case 'SELECT_PLANT':
       return {
         ...state,
         selectedPlantId: event.plantId,
+        selectedObjectId: event.plantId ? null : state.selectedObjectId,
+      };
+    case 'SELECT_OBJECT':
+      return {
+        ...state,
+        selectedObjectId: event.objectId,
+        selectedPlantId: event.objectId ? null : state.selectedPlantId,
+        selectedWallId: event.objectId ? null : state.selectedWallId,
+        selectedVertexIndex: event.objectId ? null : state.selectedVertexIndex,
       };
     default:
       return state;

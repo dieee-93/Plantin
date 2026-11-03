@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import {
+  computeObjectFootprintPolygon,
   computeSpaceRegions,
   decomposeWallIntoPrisms,
   type Point2DCm,
@@ -33,6 +34,7 @@ import { InstancedPlantGroup, type InstancedPlantItem } from './InstancedPlantSp
 import type { AnalyticalLensType } from './SpaceLensBar';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import { PerfFrameTracker } from './telemetry/PerfFrameTracker';
+import { getObjectDimensionsCm } from './objectsCatalog';
 
 const CM_TO_M = 0.01;
 const CUTAWAY_WALL_HEIGHT_M = 0.15;
@@ -53,6 +55,7 @@ export interface SpaceSceneGraphProps {
   cameraGroundPosCm?: Point2DCm;
   selectedPlantId?: string | null;
   selectedWallId?: string | null;
+  selectedObjectId?: string | null;
   selectedVertexIndex?: number | null;
   isBoundaryEditMode?: boolean;
   fixedCenterCm?: Point2DCm;
@@ -63,6 +66,7 @@ export interface SpaceSceneGraphProps {
   objectCursorPreview?: ObjectPlacementCursorPreviewData | null;
   onSelectPlant?: (plantId: string) => void;
   onSelectWall?: (wallId: string) => void;
+  onSelectObject?: (objectId: string) => void;
   onSelectVertex?: (vertexIndex: number | null) => void;
   onStartDragVertex?: (vertexIndex: number) => void;
   onInsertVertexAtEdge?: (edgeIndex: number, pointCm: Point2DCm) => void;
@@ -403,25 +407,51 @@ export interface ObjectsLayerProps {
 }
 
 export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
-  ({ placedObjects = [], centerCm, selectedObjectId: _selectedObjectId, onSelectObject }) => {
+  ({ placedObjects = [], centerCm, selectedObjectId, onSelectObject }) => {
     if (!placedObjects || placedObjects.length === 0) return null;
 
     return (
       <group name="objects-layer">
-        {placedObjects.map((obj) => (
-          <SpaceModelInstance
-            key={obj.id}
-            modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
-            positionCm={{ x: obj.xCm, y: obj.yCm }}
-            centerCm={centerCm}
-            elevationM={obj.elevationM ?? 0}
-            rotationDeg={obj.rotationDeg ?? 0}
-            onClick={(e) => {
-              (e as { stopPropagation?: () => void })?.stopPropagation?.();
-              onSelectObject?.(obj.id);
-            }}
-          />
-        ))}
+        {placedObjects.map((obj) => {
+          const isSelected = selectedObjectId === obj.id;
+          const dims = getObjectDimensionsCm(obj.assetId, obj.category);
+          const w = obj.widthCm ?? dims.widthCm;
+          const d = obj.depthCm ?? dims.depthCm;
+          const rot = obj.rotationDeg ?? 0;
+          const footprint = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
+          const footprintShape = isSelected ? buildShapeFromPolygonCm(footprint, centerCm) : null;
+
+          return (
+            <group key={obj.id} name={`object-node-${obj.id}`}>
+              <SpaceModelInstance
+                modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
+                positionCm={{ x: obj.xCm, y: obj.yCm }}
+                centerCm={centerCm}
+                elevationM={obj.elevationM ?? 0}
+                rotationDeg={rot}
+                onClick={(e) => {
+                  (e as { stopPropagation?: () => void })?.stopPropagation?.();
+                  onSelectObject?.(obj.id);
+                }}
+              />
+              {isSelected && footprintShape && (
+                <mesh
+                  name="selected-object-footprint-outline"
+                  position={[0, (obj.elevationM ?? 0) + 0.006, 0]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                >
+                  <shapeGeometry args={[footprintShape]} />
+                  <meshBasicMaterial
+                    color="#0284c7"
+                    opacity={0.45}
+                    transparent
+                    depthWrite={false}
+                  />
+                </mesh>
+              )}
+            </group>
+          );
+        })}
       </group>
     );
   },
@@ -1185,6 +1215,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   cameraGroundPosCm = { x: 500, y: 950 },
   selectedPlantId,
   selectedWallId,
+  selectedObjectId,
   selectedVertexIndex,
   isBoundaryEditMode = false,
   fixedCenterCm,
@@ -1195,6 +1226,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   objectCursorPreview,
   onSelectPlant,
   onSelectWall,
+  onSelectObject,
   onSelectVertex,
   onStartDragVertex,
   onInsertVertexAtEdge,
@@ -1446,6 +1478,8 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
           <ObjectsLayer
             placedObjects={layout.placedObjects}
             centerCm={centerCm}
+            selectedObjectId={selectedObjectId}
+            onSelectObject={onSelectObject}
           />
         </React.Suspense>
       )}
