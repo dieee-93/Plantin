@@ -132,4 +132,34 @@ describe('SpaceModelInstance & ObjectsLayer - 3D Logistics & Facility Assets', (
 
     await renderer.unmount();
   });
+
+  it('renders SpaceObjectGizmo wrapping selected object in ObjectsLayer with cardinal axes', async () => {
+    const placedObjects: PlacedObjectSpatialCm[] = [
+      {
+        id: 'obj-pallet-1',
+        assetId: 'pallet_standard_wood_a01',
+        label: 'Palet de Madera',
+        xCm: 500,
+        yCm: 300,
+        elevationM: 0,
+        rotationDeg: 0,
+        category: 'logistics',
+      },
+    ];
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <ObjectsLayer
+        placedObjects={placedObjects}
+        centerCm={{ x: 500, y: 300 }}
+        selectedObjectId="obj-pallet-1"
+      />,
+    );
+
+    const gizmoNode = renderer.scene.findAllByProps({
+      name: 'object-gizmo-obj-pallet-1',
+    });
+    expect(gizmoNode).toHaveLength(1);
+
+    await renderer.unmount();
+  });
 });

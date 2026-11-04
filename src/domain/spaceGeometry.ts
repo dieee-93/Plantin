@@ -1052,6 +1052,9 @@ export interface ObjectPlacementValidationResult {
   collidingWallIds: string[];
   collidingObjectIds: string[];
   reasons: string[];
+  effectiveElevationM?: number;
+  isStacked?: boolean;
+  stackedOnLabel?: string;
 }
 
 /**
@@ -1165,6 +1168,7 @@ export function validateObjectPlacement(
     collidingWallIds,
     collidingObjectIds,
     reasons,
+    effectiveElevationM: elevationM,
   };
 }
 
@@ -1269,6 +1273,22 @@ export interface AutoStackElevationResult {
   rejectionReason?: string;
 }
 
+function inferDefaultDimensions(
+  assetId?: string,
+  category?: string,
+): { widthCm: number; depthCm: number; heightCm: number } {
+  if (!assetId) return { widthCm: 60, depthCm: 40, heightCm: 30 };
+  const idLower = assetId.toLowerCase();
+  if (idLower.includes('pallet')) return { widthCm: 120, depthCm: 80, heightCm: 21 };
+  if (idLower.includes('crate') || idLower.includes('box')) return { widthCm: 60, depthCm: 40, heightCm: 25 };
+  if (idLower.includes('table') || idLower.includes('bench') || idLower.includes('desk'))
+    return { widthCm: 150, depthCm: 80, heightCm: 90 };
+  if (idLower.includes('rack') || idLower.includes('shelf'))
+    return { widthCm: 130, depthCm: 50, heightCm: 180 };
+  if (category === 'harvest_produce') return { widthCm: 30, depthCm: 30, heightCm: 20 };
+  return { widthCm: 60, depthCm: 60, heightCm: 60 };
+}
+
 /**
  * Calcula niveles de apilado transitivos debajo de un objeto base.
  */
@@ -1282,19 +1302,33 @@ function countStackLevelsUnder(
 
   while ((current.elevationM ?? 0) > 0.05) {
     const currentElevation = current.elevationM ?? 0;
-    // Buscar un objeto por debajo cuyo polígono contenga el centro del actual
+    const currentDefaults = inferDefaultDimensions(current.assetId, current.category);
+    const currFootprint = computeObjectFootprintPolygon(
+      { x: current.xCm, y: current.yCm },
+      current.widthCm ?? currentDefaults.widthCm,
+      current.depthCm ?? currentDefaults.depthCm,
+      current.rotationDeg ?? 0,
+    );
+    const currFootprintPath = toPath64(currFootprint);
+
+    // Buscar un objeto por debajo cuya huella sostenga al actual
     const under = allObjects.find((o) => {
       if (visited.has(o.id)) return false;
       const oElevation = o.elevationM ?? 0;
       if (oElevation >= currentElevation - 0.02) return false;
 
+      const oDefaults = inferDefaultDimensions(o.assetId, o.category);
       const poly = computeObjectFootprintPolygon(
         { x: o.xCm, y: o.yCm },
-        o.widthCm ?? 60,
-        o.depthCm ?? 40,
+        o.widthCm ?? oDefaults.widthCm,
+        o.depthCm ?? oDefaults.depthCm,
         o.rotationDeg ?? 0,
       );
-      return isPointInPolygonCm({ x: current.xCm, y: current.yCm }, poly);
+
+      // Soportado si el centro está dentro o si intersectan con área significativa
+      if (isPointInPolygonCm({ x: current.xCm, y: current.yCm }, poly)) return true;
+      const inter = intersect([currFootprintPath], [toPath64(poly)], FillRule.NonZero);
+      return Math.abs(areaPaths(inter)) >= 100;
     });
 
     if (!under) break;
@@ -1308,8 +1342,8 @@ function countStackLevelsUnder(
 }
 
 /**
- * Detecta si el punto central de un objeto arrastrado o ubicado coincide con la huella
- * de un objeto base soportante (palet, mesa, estante, cajón inferior) y calcula
+ * Detecta si la huella 2D de un objeto (por contención de centro o por superposición de superficie >= 20%)
+ * se apoya sobre un objeto base soportante (palet, mesa, estante, cajón inferior) y calcula
  * la elevación vertical exacta (Z_top = Z_base + H_base + 1mm) con prevención de Z-fighting
  * y validación jerárquica de apilado.
  */
@@ -1318,6 +1352,9 @@ export function detectAutoStackElevation(
 ): AutoStackElevationResult {
   const {
     centerCm,
+    widthCm,
+    depthCm,
+    rotationDeg = 0,
     itemAssetId,
     itemCategory,
     itemStackRole,
@@ -1340,29 +1377,55 @@ export function detectAutoStackElevation(
     };
   }
 
-  // Filtrar candidatos que contengan el centro del objeto arrastrado
+  const defaultDims = inferDefaultDimensions(itemAssetId, itemCategory);
+  const itemW = widthCm ?? defaultDims.widthCm;
+  const itemD = depthCm ?? defaultDims.depthCm;
+  const itemRot = rotationDeg ?? 0;
+  const itemFootprint = computeObjectFootprintPolygon(centerCm, itemW, itemD, itemRot);
+  const itemFootprintPath = toPath64(itemFootprint);
+  const itemAreaCm2 = itemW * itemD;
+
+  // Filtrar candidatos que contengan el centro o tengan superficie de soporte suficiente
   const containingCandidates: Array<{
     base: ExistingObjectSpatialSummary;
     topM: number;
     elevationM: number;
+    interAreaCm2: number;
+    overlapRatio: number;
   }> = [];
 
   for (const obj of existingObjects) {
     if (ignoreObjectId && obj.id === ignoreObjectId) continue;
 
-    const w = obj.widthCm ?? 60;
-    const d = obj.depthCm ?? 40;
-    const rot = obj.rotationDeg ?? 0;
-    const footprint = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
+    const baseDefaults = inferDefaultDimensions(obj.assetId, obj.category);
+    const baseW = obj.widthCm ?? baseDefaults.widthCm;
+    const baseD = obj.depthCm ?? baseDefaults.depthCm;
+    const baseRot = obj.rotationDeg ?? 0;
+    const baseFootprint = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, baseW, baseD, baseRot);
+    const baseFootprintPath = toPath64(baseFootprint);
 
-    if (isPointInPolygonCm(centerCm, footprint)) {
+    // 1. ¿El centro del ítem está dentro de la base?
+    const centerInside = isPointInPolygonCm(centerCm, baseFootprint);
+
+    // 2. ¿Qué porcentaje del ítem se apoya físicamente sobre la base?
+    const inter = intersect([itemFootprintPath], [baseFootprintPath], FillRule.NonZero);
+    const interAreaCm2 = Math.abs(areaPaths(inter));
+    const overlapRatio = itemAreaCm2 > 0 ? interAreaCm2 / itemAreaCm2 : 0;
+
+    // Se considera soportado si el centro está dentro O si al menos el 25% de su huella
+    // descansa sobre la superficie de la base (permite ubicar cajas en los bordes y esquinas de palets)
+    const isSupported = centerInside || overlapRatio >= 0.25;
+
+    if (isSupported) {
       const elevationM = obj.elevationM ?? 0;
-      const surfaceHeightM = (obj.supportSurfaceHeightCm ?? obj.heightCm ?? 20) * 0.01;
+      const surfaceHeightM = (obj.supportSurfaceHeightCm ?? obj.heightCm ?? baseDefaults.heightCm) * 0.01;
       const topM = elevationM + surfaceHeightM;
       containingCandidates.push({
         base: obj,
         topM,
         elevationM,
+        interAreaCm2,
+        overlapRatio,
       });
     }
   }
@@ -1377,8 +1440,14 @@ export function detectAutoStackElevation(
     };
   }
 
-  // Ordenar candidatos por superficie superior descendente (la superficie de soporte más alta)
-  containingCandidates.sort((a, b) => b.topM - a.topM);
+  // Ordenar candidatos: primero la superficie de soporte más alta, luego mayor superficie de apoyo
+  containingCandidates.sort((a, b) => {
+    if (Math.abs(b.topM - a.topM) > 0.01) {
+      return b.topM - a.topM;
+    }
+    return b.interAreaCm2 - a.interAreaCm2;
+  });
+
   const bestCandidate = containingCandidates[0];
   const baseObj = bestCandidate.base;
 

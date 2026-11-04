@@ -807,15 +807,44 @@ describe('spaceGeometry - Slice 9: Object Footprint & Collision Validation (Clip
         elevationM: 0,
       };
 
-      // Pallet X spans 240 to 360 cm. Center at 380 is outside!
+      // Pallet X spans 240 to 360 cm.
+      // Crate at 390 spans 360 to 420 (0% overlap, completely outside!)
       const result = detectAutoStackElevation({
-        centerCm: { x: 380, y: 300 },
+        centerCm: { x: 395, y: 300 },
         itemAssetId: 'crate_harvest_plastic_green_a01',
         existingObjects: [pallet],
       });
 
       expect(result.isStacked).toBe(false);
       expect(result.targetElevationM).toBe(0);
+    });
+
+    it('detects pallet support even when placed off-center or on the edge with partial overhang', () => {
+      const pallet = {
+        id: 'pallet-1',
+        assetId: 'pallet_standard_wood_a01',
+        label: 'Palet Europeo',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 120,
+        depthCm: 80,
+        heightCm: 21,
+        elevationM: 0,
+      };
+
+      // Pallet X ends at 360 cm.
+      // Crate at x=365 cm has center outside pallet (365 > 360), but 41% of its body sits on the pallet!
+      const result = detectAutoStackElevation({
+        centerCm: { x: 365, y: 300 },
+        widthCm: 60,
+        depthCm: 40,
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        existingObjects: [pallet],
+      });
+
+      expect(result.isStacked).toBe(true);
+      expect(result.baseObjectId).toBe('pallet-1');
+      expect(result.targetElevationM).toBe(0.211);
     });
 
     it('supports multi-level stacking (crate on crate on pallet)', () => {

@@ -397,7 +397,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       ? autoStack.targetElevationM
       : builderState.objectElevationM;
 
-    return validateObjectPlacement({
+    const validation = validateObjectPlacement({
       centerCm: builderState.cursorCm,
       widthCm: activeObjectDimensions.widthCm,
       depthCm: activeObjectDimensions.depthCm,
@@ -409,6 +409,13 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       walls: layout.walls,
       existingObjects: layout.placedObjects,
     });
+
+    return {
+      ...validation,
+      isStacked: autoStack.isStacked,
+      stackedOnLabel: autoStack.baseObjectLabel ?? undefined,
+      effectiveElevationM: effectiveElevation,
+    };
   }, [
     builderState.activeTool,
     builderState.cursorCm,
@@ -1508,12 +1515,15 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 }
                 fixedCenterCm={fixedCenterCm ?? undefined}
                 transientBoundary={transientBoundary ?? undefined}
+                activeTool={builderState.activeTool}
                 objectCursorPreview={
                   objectPlacementValidation
                     ? {
                         footprint: objectPlacementValidation.footprint,
                         isValid: objectPlacementValidation.isValid,
-                        elevationM: builderState.objectElevationM,
+                        elevationM:
+                          objectPlacementValidation.effectiveElevationM ??
+                          builderState.objectElevationM,
                       }
                     : null
                 }
@@ -1646,7 +1656,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   }`}
                 />
                 {objectPlacementValidation.isValid
-                  ? `Posición libre (${activeObjectDimensions.widthCm} × ${activeObjectDimensions.depthCm} cm) · Clic para colocar`
+                  ? objectPlacementValidation.isStacked
+                    ? `📦 Apilar sobre ${objectPlacementValidation.stackedOnLabel} (+${Math.round(
+                        (objectPlacementValidation.effectiveElevationM ?? 0) * 100,
+                      )} cm) · Clic para colocar`
+                    : `Posición libre (${activeObjectDimensions.widthCm} × ${activeObjectDimensions.depthCm} cm) · Clic para colocar`
                   : `⚠️ ${objectPlacementValidation.reasons.join(' · ')}`}
               </div>
             )}

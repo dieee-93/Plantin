@@ -28,6 +28,8 @@ import {
 } from './materials';
 import { SpacePlantSprite } from './SpacePlantSprite';
 import { SpaceModelInstance } from './SpaceModelInstance';
+import { SpaceObjectGizmo } from './gizmo/SpaceObjectGizmo';
+import type { GizmoSpatialResult } from './gizmo/calculateGizmoSpatialUpdate';
 import { SurroundingGround } from './SurroundingGround';
 import { CanopyRingsInstanced, type CanopyRingItem } from './CanopyRingsInstanced';
 import { InstancedPlantGroup, type InstancedPlantItem } from './InstancedPlantSprites';
@@ -65,6 +67,7 @@ export interface SpaceSceneGraphProps {
   activeLens?: AnalyticalLensType | null;
   showDistancesConflict?: boolean;
   objectCursorPreview?: ObjectPlacementCursorPreviewData | null;
+  activeTool?: string;
   onSelectPlant?: (plantId: string) => void;
   onSelectWall?: (wallId: string) => void;
   onSelectObject?: (objectId: string) => void;
@@ -73,6 +76,9 @@ export interface SpaceSceneGraphProps {
   onStartDragVertex?: (vertexIndex: number) => void;
   onInsertVertexAtEdge?: (edgeIndex: number, pointCm: Point2DCm) => void;
   onGroundPointClickCm?: (pointCm: Point2DCm) => void;
+  onGizmoDragStart?: (objectId: string) => void;
+  onGizmoDragChange?: (objectId: string, update: GizmoSpatialResult) => void;
+  onGizmoDragCommit?: (objectId: string, update: GizmoSpatialResult) => void;
 }
 
 function computeBoundingBoxCm(polygon: Polygon2DCm): {
@@ -405,6 +411,7 @@ export interface TransientObjectDragData {
   objectId: string;
   xCm: number;
   yCm: number;
+  rotationDeg?: number;
   elevationM?: number;
   isStacked?: boolean;
   stackedOnLabel?: string;
@@ -417,9 +424,14 @@ export interface ObjectsLayerProps {
   placedObjects?: PlacedObjectSpatialCm[];
   centerCm: Point2DCm;
   selectedObjectId?: string | null;
+  activeTool?: string;
   transientObjectDrag?: TransientObjectDragData | null;
   onSelectObject?: (objectId: string) => void;
   onStartDragObject?: (objectId: string, pointCm: Point2DCm) => void;
+  onGroundPointClickCm?: (pointCm: Point2DCm) => void;
+  onGizmoDragStart?: (objectId: string) => void;
+  onGizmoDragChange?: (objectId: string, update: GizmoSpatialResult) => void;
+  onGizmoDragCommit?: (objectId: string, update: GizmoSpatialResult) => void;
 }
 
 export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
@@ -427,9 +439,14 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
     placedObjects = [],
     centerCm,
     selectedObjectId,
+    activeTool,
     transientObjectDrag,
     onSelectObject,
     onStartDragObject,
+    onGroundPointClickCm,
+    onGizmoDragStart,
+    onGizmoDragChange,
+    onGizmoDragCommit,
   }) => {
     if (!placedObjects || placedObjects.length === 0) return null;
 
@@ -447,7 +464,10 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
           const dims = getObjectDimensionsCm(obj.assetId, obj.category);
           const w = obj.widthCm ?? dims.widthCm;
           const d = obj.depthCm ?? dims.depthCm;
-          const rot = obj.rotationDeg ?? 0;
+          const rot =
+            isDragging && transientObjectDrag.rotationDeg !== undefined
+              ? transientObjectDrag.rotationDeg
+              : (obj.rotationDeg ?? 0);
           const footprint = isDragging
             ? transientObjectDrag.footprint
             : computeObjectFootprintPolygon({ x: posX, y: posY }, w, d, rot);
@@ -458,21 +478,41 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
 
           return (
             <group key={obj.id} name={`object-node-${obj.id}`}>
-              <SpaceModelInstance
-                modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
-                positionCm={{ x: posX, y: posY }}
+              <SpaceObjectGizmo
+                object={obj}
                 centerCm={centerCm}
-                elevationM={posElevationM}
-                rotationDeg={rot}
-                onClick={(e) => {
-                  (e as { stopPropagation?: () => void })?.stopPropagation?.();
-                  onSelectObject?.(obj.id);
-                }}
-                onPointerDown={(e) => {
-                  (e as { stopPropagation?: () => void })?.stopPropagation?.();
-                  onStartDragObject?.(obj.id, { x: posX, y: posY });
-                }}
-              />
+                isSelected={isSelected}
+                onDragStart={() => onGizmoDragStart?.(obj.id)}
+                onTransformChange={(update) => onGizmoDragChange?.(obj.id, update)}
+                onTransformCommit={(update) => onGizmoDragCommit?.(obj.id, update)}
+              >
+                <SpaceModelInstance
+                  modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
+                  positionCm={{ x: posX, y: posY }}
+                  centerCm={centerCm}
+                  elevationM={posElevationM}
+                  rotationDeg={rot}
+                  onClick={(e) => {
+                    (e as { stopPropagation?: () => void })?.stopPropagation?.();
+                    if (activeTool === 'place_object' && onGroundPointClickCm) {
+                      const intersectPoint = (e as { point?: THREE.Vector3 }).point;
+                      if (intersectPoint) {
+                        onGroundPointClickCm({
+                          x: Math.round(intersectPoint.x * 100 + centerCm.x),
+                          y: Math.round(intersectPoint.z * 100 + centerCm.y),
+                        });
+                        return;
+                      }
+                    }
+                    onSelectObject?.(obj.id);
+                  }}
+                  onPointerDown={(e) => {
+                    if (activeTool === 'place_object') return;
+                    (e as { stopPropagation?: () => void })?.stopPropagation?.();
+                    onStartDragObject?.(obj.id, { x: posX, y: posY });
+                  }}
+                />
+              </SpaceObjectGizmo>
               {footprintShape && (
                 <mesh
                   name={
@@ -1280,6 +1320,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   activeLens,
   showDistancesConflict,
   objectCursorPreview,
+  activeTool,
   onSelectPlant,
   onSelectWall,
   onSelectObject,
@@ -1288,6 +1329,9 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   onStartDragVertex,
   onInsertVertexAtEdge,
   onGroundPointClickCm,
+  onGizmoDragStart,
+  onGizmoDragChange,
+  onGizmoDragCommit,
 }) => {
   const centerCm = useMemo(
     () => fixedCenterCm ?? computeBoundingCenterCm(layout.baseBoundary),
@@ -1536,9 +1580,14 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
             placedObjects={layout.placedObjects}
             centerCm={centerCm}
             selectedObjectId={selectedObjectId}
+            activeTool={activeTool}
             transientObjectDrag={transientObjectDrag}
             onSelectObject={onSelectObject}
             onStartDragObject={onStartDragObject}
+            onGroundPointClickCm={onGroundPointClickCm}
+            onGizmoDragStart={onGizmoDragStart}
+            onGizmoDragChange={onGizmoDragChange}
+            onGizmoDragCommit={onGizmoDragCommit}
           />
         </React.Suspense>
       )}
