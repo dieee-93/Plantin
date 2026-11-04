@@ -1490,3 +1490,263 @@ export function detectAutoStackElevation(
     stackLevels: currentLevelsUnder + 1,
   };
 }
+
+export interface MagneticWallSnapInput {
+  candidateCenterCm: Point2DCm;
+  widthCm: number;
+  depthCm: number;
+  currentRotationDeg?: number;
+  baseBoundary: Polygon2DCm;
+  walls?: WallSegmentCm[];
+  snapThresholdCm?: number;
+  breakAwayThresholdCm?: number;
+  currentlySnappedWallId?: string | null;
+  tangentGridStepCm?: number;
+}
+
+export interface MagneticWallSnapResult {
+  isSnapped: boolean;
+  wallId: string | null;
+  snappedCenterCm: Point2DCm;
+  snappedRotationDeg: number;
+  wallNormal: Point2DCm | null;
+  distanceToFaceCm: number;
+  isBlockingOpening: boolean;
+  openingKind?: 'door' | 'window';
+  warning?: string;
+}
+
+function normalizeAngleDeg(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+function circularAngleDiffDeg(a: number, b: number): number {
+  const diff = Math.abs(normalizeAngleDeg(a) - normalizeAngleDeg(b));
+  return Math.min(diff, 360 - diff);
+}
+
+/**
+ * Motor de atracción magnética inteligente hacia caras interiores de muros (Wall Snapping).
+ * - Calcula la distancia exacta a la cara interior (restando espesor de muro y semi-dimensión de objeto).
+ * - Auto-rota el objeto al ángulo paralelo o perpendicular más cercano minimizando saltos de 180°.
+ * - Evita falsas colisiones y Z-fighting agregando holgura técnica de 0.5 cm.
+ * - Delimita los extremos del muro (edge clamping) para no permitir snap en el vacío.
+ * - Aplica histéresis (dead-band) para eliminar el parpadeo en umbrales y el "corner ping-pong".
+ * - Detecta obstrucción de puertas y ventanas definidas en el muro.
+ */
+export function findMagneticWallSnap(
+  input: MagneticWallSnapInput,
+): MagneticWallSnapResult {
+  const {
+    candidateCenterCm,
+    widthCm,
+    depthCm,
+    currentRotationDeg = 0,
+    baseBoundary,
+    walls = [],
+    snapThresholdCm = 18,
+    breakAwayThresholdCm = 28,
+    currentlySnappedWallId = null,
+    tangentGridStepCm = 5,
+  } = input;
+
+  const defaultResult: MagneticWallSnapResult = {
+    isSnapped: false,
+    wallId: null,
+    snappedCenterCm: candidateCenterCm,
+    snappedRotationDeg: currentRotationDeg,
+    wallNormal: null,
+    distanceToFaceCm: Infinity,
+    isBlockingOpening: false,
+  };
+
+  if (!walls || walls.length === 0) {
+    return defaultResult;
+  }
+
+  interface SnapCandidate {
+    wall: WallSegmentCm;
+    snappedCenterCm: Point2DCm;
+    snappedRotationDeg: number;
+    wallNormal: Point2DCm;
+    distanceToFaceCm: number;
+    score: number;
+    isBlockingOpening: boolean;
+    openingKind?: 'door' | 'window';
+    warning?: string;
+  }
+
+  const candidates: SnapCandidate[] = [];
+
+  for (const wall of walls) {
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1) continue;
+
+    const ux = dx / length;
+    const uy = dy / length;
+    const wallAngleDeg = normalizeAngleDeg((Math.atan2(dy, dx) * 180) / Math.PI);
+
+    // Normal base preliminar (-uy, ux)
+    let nx = -uy;
+    let ny = ux;
+
+    // Orientar la normal hacia el interior de la sala
+    const mx = (wall.start.x + wall.end.x) / 2;
+    const my = (wall.start.y + wall.end.y) / 2;
+    if (baseBoundary && baseBoundary.length >= 3) {
+      const testPtA = { x: mx + nx * 5, y: my + ny * 5 };
+      const testPtB = { x: mx - nx * 5, y: my - ny * 5 };
+      const inA = isPointInPolygonCm(testPtA, baseBoundary);
+      const inB = isPointInPolygonCm(testPtB, baseBoundary);
+
+      if (!inA && inB) {
+        nx = -nx;
+        ny = -ny;
+      }
+    }
+
+    // Proyección del centro tentativo sobre la línea del muro
+    const vx = candidateCenterCm.x - wall.start.x;
+    const vy = candidateCenterCm.y - wall.start.y;
+    const tangentDist = vx * ux + vy * uy;
+    const signedDistToCenterline = vx * nx + vy * ny;
+
+    // Si el cursor está muy lejos de los extremos del muro longitudinalmente (> 15 cm), no atraer
+    if (tangentDist < -15 || tangentDist > length + 15) {
+      continue;
+    }
+
+    // Auto-alineación angular: candidatos ortogonales al muro
+    const rotCandidates = [
+      wallAngleDeg,
+      normalizeAngleDeg(wallAngleDeg + 90),
+      normalizeAngleDeg(wallAngleDeg + 180),
+      normalizeAngleDeg(wallAngleDeg + 270),
+    ];
+    const currRotNorm = normalizeAngleDeg(currentRotationDeg);
+    let bestRot = rotCandidates[0];
+    let minDiff = circularAngleDiffDeg(currRotNorm, bestRot);
+
+    for (let i = 1; i < rotCandidates.length; i++) {
+      const diff = circularAngleDiffDeg(currRotNorm, rotCandidates[i]);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestRot = rotCandidates[i];
+      }
+    }
+
+    // Dimensiones efectivas según si el objeto se alinea paralelo o transversal al muro
+    const diffWithWall = circularAngleDiffDeg(bestRot, wallAngleDeg);
+    const isParallel = diffWithWall <= 45 || diffWithWall >= 135;
+    const tangentDim = isParallel ? widthCm : depthCm;
+    const normalDim = isParallel ? depthCm : widthCm;
+
+    const wallThickness = wall.thicknessCm > 0 ? wall.thicknessCm : 15;
+    const halfWallThickness = wallThickness / 2;
+    const halfNormalDim = normalDim / 2;
+
+    // Distancia entre el borde más cercano del objeto y la cara interior del muro
+    // cara interior está a +halfWallThickness de la centerline
+    const gapToFaceCm = signedDistToCenterline - (halfWallThickness + halfNormalDim);
+    const absDistToFace = Math.abs(gapToFaceCm);
+
+    // Verificación de umbral con histéresis
+    const isCurrentlySnapped = currentlySnappedWallId === wall.id;
+    const effectiveThreshold = isCurrentlySnapped
+      ? breakAwayThresholdCm
+      : snapThresholdCm;
+
+    if (absDistToFace > effectiveThreshold) {
+      continue;
+    }
+
+    // Delimitación de extremos (Edge Clamping): evitar que el objeto cuelgue en el vacío
+    const halfTangent = tangentDim / 2;
+    const minTangentDist = halfTangent + 0.5;
+    const maxTangentDist = length - halfTangent - 0.5;
+
+    let clampedTangentDist: number;
+    if (minTangentDist > maxTangentDist) {
+      clampedTangentDist = length / 2;
+    } else {
+      clampedTangentDist = Math.max(minTangentDist, Math.min(maxTangentDist, tangentDist));
+    }
+
+    // Snap métrico tangencial a lo largo del muro
+    let finalTangentDist = clampedTangentDist;
+    if (tangentGridStepCm > 0 && minTangentDist <= maxTangentDist) {
+      const snappedTangent = Math.round(clampedTangentDist / tangentGridStepCm) * tangentGridStepCm;
+      finalTangentDist = Math.max(minTangentDist, Math.min(maxTangentDist, snappedTangent));
+    }
+
+    // Offset a cara interior con 0.5 cm de holgura anti-colisión y anti-Z fighting
+    const targetNormalDist = halfWallThickness + halfNormalDim + 0.5;
+
+    const snappedCenterCm: Point2DCm = {
+      x: Math.round(wall.start.x + ux * finalTangentDist + nx * targetNormalDist),
+      y: Math.round(wall.start.y + uy * finalTangentDist + ny * targetNormalDist),
+    };
+
+    // Verificación de aberturas (puertas / ventanas)
+    let isBlockingOpening = false;
+    let openingKind: 'door' | 'window' | undefined;
+    let warning: string | undefined;
+
+    if (wall.openings && wall.openings.length > 0) {
+      const objStart = finalTangentDist - halfTangent;
+      const objEnd = finalTangentDist + halfTangent;
+
+      for (const op of wall.openings) {
+        const opStart = op.offsetCm;
+        const opEnd = op.offsetCm + op.widthCm;
+        const hasOverlap = Math.max(objStart, opStart) < Math.min(objEnd, opEnd);
+        if (hasOverlap) {
+          isBlockingOpening = true;
+          openingKind = op.kind;
+          warning =
+            op.kind === 'door'
+              ? '⚠️ Obstruye puerta de acceso'
+              : '⚠️ Bloquea ventana';
+          break;
+        }
+      }
+    }
+
+    // Puntuación de histéresis: ventaja de 6 cm al muro actual para evitar ping-pong en esquinas
+    const score = isCurrentlySnapped ? absDistToFace - 6 : absDistToFace;
+
+    candidates.push({
+      wall,
+      snappedCenterCm,
+      snappedRotationDeg: bestRot,
+      wallNormal: { x: nx, y: ny },
+      distanceToFaceCm: Math.round(absDistToFace * 10) / 10,
+      score,
+      isBlockingOpening,
+      openingKind,
+      warning,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return defaultResult;
+  }
+
+  // Ordenar por menor puntaje
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  return {
+    isSnapped: true,
+    wallId: best.wall.id,
+    snappedCenterCm: best.snappedCenterCm,
+    snappedRotationDeg: best.snappedRotationDeg,
+    wallNormal: best.wallNormal,
+    distanceToFaceCm: best.distanceToFaceCm,
+    isBlockingOpening: best.isBlockingOpening,
+    openingKind: best.openingKind,
+    warning: best.warning,
+  };
+}

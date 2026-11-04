@@ -415,6 +415,7 @@ export interface TransientObjectDragData {
   elevationM?: number;
   isStacked?: boolean;
   stackedOnLabel?: string;
+  isWallSnapped?: boolean;
   isValid: boolean;
   reasons: string[];
   footprint: Polygon2DCm;

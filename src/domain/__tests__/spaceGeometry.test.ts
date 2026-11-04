@@ -16,6 +16,7 @@ import {
   decomposeWallIntoPrisms,
   detectAutoStackElevation,
   findClosestEdgeOnPolygon,
+  findMagneticWallSnap,
   findNextOpeningSlot,
   inferSpatialStackRole,
   inflatePathToPolygon,
@@ -929,6 +930,176 @@ describe('spaceGeometry - Slice 9: Object Footprint & Collision Validation (Clip
 
       expect(result.isStacked).toBe(false);
       expect(result.targetElevationM).toBe(0);
+    });
+  });
+
+  describe('findMagneticWallSnap', () => {
+    // 1000x800 cm room with standard 15 cm perimeter walls
+    const baseBoundary: Polygon2DCm = createRectPolygon(1000, 800);
+    const southWall: WallSegmentCm = {
+      id: 'wall-south',
+      start: { x: 0, y: 0 },
+      end: { x: 1000, y: 0 },
+      heightCm: 200,
+      thicknessCm: 15,
+      material: 'brick',
+    };
+    const westWall: WallSegmentCm = {
+      id: 'wall-west',
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 800 },
+      heightCm: 200,
+      thicknessCm: 15,
+      material: 'brick',
+    };
+    const walls = [southWall, westWall];
+
+    it('snaps an object flush against the inner face of a wall with clearance and correct offset', () => {
+      // South wall is at y=0, thickness=15 cm (centerline at y=0, inner face at y=7.5).
+      // Shelf with width=120 cm, depth=40 cm.
+      // Expected center: y = 7.5 + 40/2 + 0.5 = 28 cm.
+      const result = findMagneticWallSnap({
+        candidateCenterCm: { x: 300, y: 35 }, // 35 cm from centerline -> ~7 cm from inner face
+        widthCm: 120,
+        depthCm: 40,
+        currentRotationDeg: 0,
+        baseBoundary,
+        walls,
+        snapThresholdCm: 18,
+      });
+
+      expect(result.isSnapped).toBe(true);
+      expect(result.wallId).toBe('wall-south');
+      expect(result.snappedCenterCm.y).toBe(28);
+      // Tangent sliding snapped to 5 cm grid
+      expect(result.snappedCenterCm.x).toBe(300);
+      expect(result.snappedRotationDeg).toBe(0);
+      expect(result.isBlockingOpening).toBe(false);
+    });
+
+    it('auto-rotates object to align with the wall orientation', () => {
+      // West wall is vertical (angle 90°).
+      // Table with width=120, depth=60, user dragged it with rotation=85°.
+      const result = findMagneticWallSnap({
+        candidateCenterCm: { x: 40, y: 400 },
+        widthCm: 120,
+        depthCm: 60,
+        currentRotationDeg: 85,
+        baseBoundary,
+        walls,
+        snapThresholdCm: 18,
+      });
+
+      expect(result.isSnapped).toBe(true);
+      expect(result.wallId).toBe('wall-west');
+      expect(result.snappedRotationDeg).toBe(90);
+      // West wall centerline x=0, inner face x=7.5.
+      // Since it's rotated 90°, width (120) is along tangent (y), depth (60) is along normal (x).
+      // Center x = 7.5 + 60/2 + 0.5 = 38 cm.
+      expect(result.snappedCenterCm.x).toBe(38);
+    });
+
+    it('dynamically adapts dimensions when rotated 90 degrees so it does not penetrate the wall', () => {
+      // South wall: angle 0°.
+      // If user approaches with rotation=90°, width (120 cm) is now perpendicular to the wall!
+      const result = findMagneticWallSnap({
+        candidateCenterCm: { x: 300, y: 70 },
+        widthCm: 120,
+        depthCm: 40,
+        currentRotationDeg: 90,
+        baseBoundary,
+        walls,
+        snapThresholdCm: 18,
+      });
+
+      expect(result.isSnapped).toBe(true);
+      expect(result.wallId).toBe('wall-south');
+      expect(result.snappedRotationDeg).toBe(90);
+      // Perpendicular dimension is now widthCm=120.
+      // Offset: 7.5 + 120/2 + 0.5 = 68 cm.
+      expect(result.snappedCenterCm.y).toBe(68);
+    });
+
+    it('clamps object at the edge of the wall to prevent overhang into empty air', () => {
+      // South wall length is 1000 cm. Object width is 200 cm (halfTangent = 100 cm).
+      // User attempts to place at x = 50 cm (which would overhang past x=0 into exterior).
+      const result = findMagneticWallSnap({
+        candidateCenterCm: { x: 50, y: 25 },
+        widthCm: 200,
+        depthCm: 50,
+        currentRotationDeg: 0,
+        baseBoundary,
+        walls,
+      });
+
+      expect(result.isSnapped).toBe(true);
+      // Must be clamped so minTangent = 100 + 0.5 -> rounded to tangent grid step (e.g. 100.5 or 105)
+      expect(result.snappedCenterCm.x).toBeGreaterThanOrEqual(100);
+    });
+
+    it('applies dead-band hysteresis to retain snapped state and prevent corner ping-pong', () => {
+      // At distance 22 cm from south wall inner face:
+      // Without previous snap, threshold is 18 cm -> does NOT snap.
+      const initial = findMagneticWallSnap({
+        candidateCenterCm: { x: 400, y: 55 }, // gap ~ 27 cm
+        widthCm: 100,
+        depthCm: 40,
+        baseBoundary,
+        walls,
+        snapThresholdCm: 18,
+        breakAwayThresholdCm: 28,
+        currentlySnappedWallId: null,
+      });
+      expect(initial.isSnapped).toBe(false);
+
+      // If already snapped to south wall, breakaway is 28 cm -> stays snapped!
+      const retained = findMagneticWallSnap({
+        candidateCenterCm: { x: 400, y: 50 }, // gap ~ 22 cm
+        widthCm: 100,
+        depthCm: 40,
+        baseBoundary,
+        walls,
+        snapThresholdCm: 18,
+        breakAwayThresholdCm: 28,
+        currentlySnappedWallId: 'wall-south',
+      });
+      expect(retained.isSnapped).toBe(true);
+      expect(retained.wallId).toBe('wall-south');
+    });
+
+    it('detects door obstruction along wall and provides clear warning', () => {
+      const wallWithDoor: WallSegmentCm = {
+        id: 'wall-door',
+        start: { x: 0, y: 0 },
+        end: { x: 1000, y: 0 },
+        heightCm: 200,
+        thicknessCm: 15,
+        material: 'brick',
+        openings: [
+          {
+            id: 'door-1',
+            kind: 'door',
+            offsetCm: 300,
+            widthCm: 90,
+            heightCm: 200,
+            sillHeightCm: 0,
+          },
+        ],
+      };
+
+      // Placing a 100 cm table right across the door at x = 320 cm
+      const result = findMagneticWallSnap({
+        candidateCenterCm: { x: 320, y: 30 },
+        widthCm: 100,
+        depthCm: 50,
+        baseBoundary,
+        walls: [wallWithDoor],
+      });
+
+      expect(result.isSnapped).toBe(true);
+      expect(result.isBlockingOpening).toBe(true);
+      expect(result.openingKind).toBe('door');
+      expect(result.warning).toBe('⚠️ Obstruye puerta de acceso');
     });
   });
 });

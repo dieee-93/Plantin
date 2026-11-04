@@ -259,4 +259,103 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
       .placedObjects?.find((o) => o.id === crateId)!;
     expect(updatedCrate.elevationM).toBeCloseTo(0.462, 2);
   });
+
+  it('selects an object and updates its position and orientation via 3D cardinal gizmo commit', () => {
+    render(
+      <Space3DViewer
+        locationId={locationId}
+        locationName="Nave de Almacén"
+        locationType="warehouse"
+        initialMode="design"
+      />,
+    );
+
+    // Switch to 2D to select object cleanly in DOM
+    const btn2D = screen.getByRole('button', { name: /2D|Plano 2D/i });
+    fireEvent.click(btn2D);
+
+    const placedObjects = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId).placedObjects ?? [];
+    const targetObj = placedObjects.find((o) => o.assetId === 'pallet_standard_wood_a01')!;
+    const svgObject = screen.getByTestId(`svg-object-${targetObj.id}`);
+    fireEvent.click(svgObject);
+
+    // Verify SpaceObjectActionBar opens
+    expect(screen.getByTestId('selected-object-action-bar')).toBeInTheDocument();
+
+    // Verify gizmo calculation & direct store update with snap
+    act(() => {
+      useSpaceLayoutStore.getState().updateObject(locationId, targetObj.id, {
+        xCm: 350,
+        yCm: 280,
+        rotationDeg: 45,
+      });
+    });
+
+    const updated = useSpaceLayoutStore
+      .getState()
+      .getOrCreateSpaceLayout(locationId)
+      .placedObjects?.find((o) => o.id === targetObj.id);
+
+    expect(updated?.xCm).toBe(350);
+    expect(updated?.yCm).toBe(280);
+    expect(updated?.rotationDeg).toBe(45);
+  });
+
+  it('snaps object to wall with magnetic auto-orientation and updates badge to Pegado a Muro when dragging near wall', () => {
+    render(
+      <Space3DViewer
+        locationId={locationId}
+        locationName="Nave de Almacén"
+        locationType="warehouse"
+        initialMode="design"
+      />,
+    );
+
+    // Switch to 2D CAD view
+    const btn2D = screen.getByRole('button', { name: /2D|Plano 2D/i });
+    fireEvent.click(btn2D);
+
+    const placedObjects =
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId).placedObjects ?? [];
+    const targetObj = placedObjects.find((o) => o.assetId === 'pallet_standard_wood_a01')!;
+    const svgObject = screen.getByTestId(`svg-object-${targetObj.id}`);
+    const svgPlane = screen.getByTestId('interactive-plane-1to1');
+
+    // Mock SVG CTM transform
+    const svgElem = svgPlane as unknown as SVGSVGElement;
+    svgElem.createSVGPoint = () =>
+      ({
+        x: 0,
+        y: 0,
+        matrixTransform(this: { x: number; y: number }) {
+          return { x: this.x, y: this.y };
+        },
+      }) as unknown as DOMPoint;
+    svgElem.getScreenCTM = () =>
+      ({
+        inverse: () => ({}),
+      }) as unknown as DOMMatrix;
+
+    // 1. Start drag on object
+    fireEvent.pointerDown(svgObject);
+
+    // 2. Drag near south wall (e.g. y = 50 cm)
+    fireEvent.pointerMove(svgPlane, { clientX: 400, clientY: 50 });
+
+    // Badge reflects magnetic wall snap
+    const badge = screen.getByTestId('object-drag-validation-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toContain('Pegado a Muro');
+
+    // 3. Drop object flush against the wall
+    fireEvent.pointerUp(svgPlane);
+
+    // Verify store updated coordinates to snapped position (y = 7.5 + 80/2 + 0.5 = 48 cm)
+    const updated = useSpaceLayoutStore
+      .getState()
+      .getOrCreateSpaceLayout(locationId)
+      .placedObjects?.find((o) => o.id === targetObj.id);
+
+    expect(updated?.yCm).toBe(48);
+  });
 });

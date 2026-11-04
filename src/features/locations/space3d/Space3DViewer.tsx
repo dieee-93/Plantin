@@ -12,6 +12,7 @@ import {
   createRectPolygon,
   detectAutoStackElevation,
   findClosestEdgeOnPolygon,
+  findMagneticWallSnap,
   isRectangularPolygon,
   movePolygonVertex,
   computeObjectFootprintPolygon,
@@ -33,6 +34,7 @@ import {
   type SpaceViewMode,
   type TransientObjectDragData,
 } from './SpaceSceneGraph';
+import type { GizmoSpatialResult } from './gizmo/calculateGizmoSpatialUpdate';
 import { ShaderWarmer } from './ShaderWarmer';
 import { SpaceHeaderNav } from './SpaceHeaderNav';
 import { HudSyncIndicator } from '@/components/hud';
@@ -384,11 +386,28 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       return null;
     }
 
-    const autoStack = detectAutoStackElevation({
-      centerCm: builderState.cursorCm,
+    // Snap magnético inteligente a muros perimetrales e interiores
+    const wallSnap = findMagneticWallSnap({
+      candidateCenterCm: builderState.cursorCm,
       widthCm: activeObjectDimensions.widthCm,
       depthCm: activeObjectDimensions.depthCm,
-      rotationDeg: builderState.objectRotationDeg,
+      currentRotationDeg: builderState.objectRotationDeg,
+      baseBoundary: layout.baseBoundary,
+      walls: layout.walls,
+    });
+
+    const activeCenter = wallSnap.isSnapped
+      ? wallSnap.snappedCenterCm
+      : builderState.cursorCm;
+    const activeRotation = wallSnap.isSnapped
+      ? wallSnap.snappedRotationDeg
+      : builderState.objectRotationDeg;
+
+    const autoStack = detectAutoStackElevation({
+      centerCm: activeCenter,
+      widthCm: activeObjectDimensions.widthCm,
+      depthCm: activeObjectDimensions.depthCm,
+      rotationDeg: activeRotation,
       itemAssetId: builderState.selectedObjectAssetId,
       existingObjects: layout.placedObjects ?? [],
     });
@@ -398,11 +417,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       : builderState.objectElevationM;
 
     const validation = validateObjectPlacement({
-      centerCm: builderState.cursorCm,
+      centerCm: activeCenter,
       widthCm: activeObjectDimensions.widthCm,
       depthCm: activeObjectDimensions.depthCm,
       heightCm: activeObjectDimensions.heightCm,
-      rotationDeg: builderState.objectRotationDeg,
+      rotationDeg: activeRotation,
       elevationM: effectiveElevation,
       stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
       baseBoundary: layout.baseBoundary,
@@ -410,11 +429,25 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       existingObjects: layout.placedObjects,
     });
 
+    const reasons = [...validation.reasons];
+    let isValid = validation.isValid;
+    if (wallSnap.warning) {
+      reasons.push(wallSnap.warning);
+      if (wallSnap.isBlockingOpening && wallSnap.openingKind === 'door') {
+        isValid = false;
+      }
+    }
+
     return {
       ...validation,
+      isValid,
+      reasons,
       isStacked: autoStack.isStacked,
       stackedOnLabel: autoStack.baseObjectLabel ?? undefined,
       effectiveElevationM: effectiveElevation,
+      isWallSnapped: wallSnap.isSnapped,
+      snappedCenterCm: activeCenter,
+      snappedRotationDeg: activeRotation,
     };
   }, [
     builderState.activeTool,
@@ -521,6 +554,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const [transientObjectDrag, setTransientObjectDrag] =
     useState<TransientObjectDragData | null>(null);
   const dragObjectOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+  const lastSnappedWallIdRef = useRef<string | null>(null);
 
   const handleStartDragObject = useCallback(
     (objectId: string, pointCm?: Point2DCm) => {
@@ -528,6 +562,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       if (!obj) return;
       dispatch({ type: 'SELECT_OBJECT', objectId });
       setDraggingObjectId(objectId);
+      lastSnappedWallIdRef.current = null;
       if (pointCm) {
         dragObjectOffsetRef.current = {
           dx: obj.xCm - pointCm.x,
@@ -554,7 +589,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         x: rawPt.x + dragObjectOffsetRef.current.dx,
         y: rawPt.y + dragObjectOffsetRef.current.dy,
       };
-      const snapped = snapPointToMetricGrid(candidateCm, isShiftKey ? 1 : 10);
+      const gridSnapped = snapPointToMetricGrid(candidateCm, isShiftKey ? 1 : 10);
 
       const dims = getObjectDimensionsCm(target.assetId, target.category);
       const w = target.widthCm ?? dims.widthCm;
@@ -562,12 +597,45 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       const h = target.heightCm ?? dims.heightCm;
       const rot = target.rotationDeg ?? 0;
 
+      let activePos = gridSnapped;
+      let activeRot = rot;
+      let isWallSnapped = false;
+      let wallSnapWarning: string | undefined;
+      let isBlockingDoor = false;
+
+      // Snap magnético inteligente a muros perimetrales con histéresis (Shift anula snap)
+      if (!isShiftKey) {
+        const wallSnap = findMagneticWallSnap({
+          candidateCenterCm: gridSnapped,
+          widthCm: w,
+          depthCm: d,
+          currentRotationDeg: rot,
+          baseBoundary: layout.baseBoundary,
+          walls: layout.walls,
+          currentlySnappedWallId: lastSnappedWallIdRef.current,
+        });
+
+        if (wallSnap.isSnapped) {
+          activePos = wallSnap.snappedCenterCm;
+          activeRot = wallSnap.snappedRotationDeg;
+          isWallSnapped = true;
+          wallSnapWarning = wallSnap.warning;
+          isBlockingDoor =
+            wallSnap.isBlockingOpening && wallSnap.openingKind === 'door';
+          lastSnappedWallIdRef.current = wallSnap.wallId;
+        } else {
+          lastSnappedWallIdRef.current = null;
+        }
+      } else {
+        lastSnappedWallIdRef.current = null;
+      }
+
       // Detección de auto-apilado magnético sobre palets, mesas o racks
       const autoStack = detectAutoStackElevation({
-        centerCm: snapped,
+        centerCm: activePos,
         widthCm: w,
         depthCm: d,
-        rotationDeg: rot,
+        rotationDeg: activeRot,
         itemAssetId: target.assetId,
         itemCategory: target.category,
         existingObjects: layout.placedObjects ?? [],
@@ -579,11 +647,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         : 0;
 
       const validation = validateObjectPlacement({
-        centerCm: snapped,
+        centerCm: activePos,
         widthCm: w,
         depthCm: d,
         heightCm: h,
-        rotationDeg: rot,
+        rotationDeg: activeRot,
         elevationM: effectiveElevationM,
         stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
         baseBoundary: layout.baseBoundary,
@@ -593,15 +661,26 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         ),
       });
 
+      const reasons = [...validation.reasons];
+      let isValid = validation.isValid;
+      if (wallSnapWarning) {
+        reasons.push(wallSnapWarning);
+        if (isBlockingDoor) {
+          isValid = false;
+        }
+      }
+
       setTransientObjectDrag({
         objectId: draggingObjectId,
-        xCm: snapped.x,
-        yCm: snapped.y,
+        xCm: activePos.x,
+        yCm: activePos.y,
+        rotationDeg: activeRot,
         elevationM: effectiveElevationM,
         isStacked: autoStack.isStacked,
         stackedOnLabel: autoStack.baseObjectLabel ?? undefined,
-        isValid: validation.isValid,
-        reasons: validation.reasons,
+        isWallSnapped,
+        isValid,
+        reasons,
         footprint: validation.footprint,
       });
     },
@@ -624,11 +703,15 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       const targetElev = target.elevationM ?? 0;
       const dragElev = dragData.elevationM ?? 0;
       const deltaZ = Math.abs(dragElev - targetElev);
+      const targetRot = target.rotationDeg ?? 0;
+      const dragRot = dragData.rotationDeg ?? targetRot;
+      const deltaRot = Math.abs(dragRot - targetRot);
 
-      if (deltaX >= 1 || deltaY >= 1 || deltaZ >= 0.005) {
+      if (deltaX >= 1 || deltaY >= 1 || deltaZ >= 0.005 || deltaRot >= 1) {
         updateObject(locationId, draggingObjectId, {
           xCm: dragData.xCm,
           yCm: dragData.yCm,
+          rotationDeg: dragRot,
           elevationM: dragElev,
         });
         if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
@@ -637,9 +720,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           : dragElev > 0
             ? ` a ${Math.round(dragElev * 100)} cm`
             : '';
+        const wallNote = dragData.isWallSnapped ? ' [Muro alineado]' : '';
         setFillToast({
           type: 'success',
-          message: `Objeto reubicado en (${dragData.xCm}, ${dragData.yCm} cm)${stackNote}`,
+          message: `Objeto reubicado en (${dragData.xCm}, ${dragData.yCm} cm)${wallNote}${stackNote}`,
         });
         fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2500);
       }
@@ -652,6 +736,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       fillToastTimerRef.current = setTimeout(() => setFillToast(null), 3000);
     }
 
+    lastSnappedWallIdRef.current = null;
     setDraggingObjectId(null);
     setTransientObjectDrag(null);
   }, [
@@ -661,6 +746,105 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     locationId,
     updateObject,
   ]);
+
+  const handleGizmoDragStart = useCallback((objectId: string) => {
+    dispatch({ type: 'SELECT_OBJECT', objectId });
+    setDraggingObjectId(objectId);
+  }, []);
+
+  const handleGizmoDragChange = useCallback(
+    (objectId: string, update: GizmoSpatialResult) => {
+      const target = layout.placedObjects?.find((o) => o.id === objectId);
+      if (!target) return;
+
+      const dims = getObjectDimensionsCm(target.assetId, target.category);
+      const w = target.widthCm ?? dims.widthCm;
+      const d = target.depthCm ?? dims.depthCm;
+      const h = target.heightCm ?? dims.heightCm;
+      const rot = update.rotationDeg;
+      const snapped = { x: update.xCm, y: update.yCm };
+
+      const autoStack = detectAutoStackElevation({
+        centerCm: snapped,
+        widthCm: w,
+        depthCm: d,
+        rotationDeg: rot,
+        itemAssetId: target.assetId,
+        itemCategory: target.category,
+        existingObjects: layout.placedObjects ?? [],
+        ignoreObjectId: objectId,
+      });
+
+      const effectiveElevationM = autoStack.isStacked
+        ? autoStack.targetElevationM
+        : update.elevationM;
+
+      const validation = validateObjectPlacement({
+        centerCm: snapped,
+        widthCm: w,
+        depthCm: d,
+        heightCm: h,
+        rotationDeg: rot,
+        elevationM: effectiveElevationM,
+        stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
+        baseBoundary: layout.baseBoundary,
+        walls: layout.walls,
+        existingObjects: (layout.placedObjects ?? []).filter(
+          (o) => o.id !== objectId,
+        ),
+      });
+
+      setTransientObjectDrag({
+        objectId,
+        xCm: snapped.x,
+        yCm: snapped.y,
+        rotationDeg: rot,
+        elevationM: effectiveElevationM,
+        isStacked: autoStack.isStacked,
+        stackedOnLabel: autoStack.baseObjectLabel ?? undefined,
+        isValid: validation.isValid,
+        reasons: validation.reasons,
+        footprint: validation.footprint,
+      });
+    },
+    [layout.placedObjects, layout.baseBoundary, layout.walls],
+  );
+
+  const handleGizmoDragCommit = useCallback(
+    (objectId: string, update: GizmoSpatialResult) => {
+      const target = layout.placedObjects?.find((o) => o.id === objectId);
+      const dragData = transientObjectDrag;
+
+      const finalX = dragData?.isValid ? dragData.xCm : update.xCm;
+      const finalY = dragData?.isValid ? dragData.yCm : update.yCm;
+      const finalRot = dragData?.isValid
+        ? (dragData.rotationDeg ?? update.rotationDeg)
+        : update.rotationDeg;
+      const finalElev = dragData?.isValid
+        ? (dragData.elevationM ?? update.elevationM)
+        : update.elevationM;
+
+      if (target && (!dragData || dragData.isValid)) {
+        updateObject(locationId, objectId, {
+          xCm: finalX,
+          yCm: finalY,
+          rotationDeg: finalRot,
+          elevationM: finalElev,
+        });
+
+        if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+        setFillToast({
+          type: 'success',
+          message: `Objeto reubicado en (${finalX}, ${finalY} cm) con rotación ${finalRot}°`,
+        });
+        fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2500);
+      }
+
+      setDraggingObjectId(null);
+      setTransientObjectDrag(null);
+    },
+    [layout.placedObjects, transientObjectDrag, locationId, updateObject],
+  );
 
   useEffect(() => {
     if (draggingObjectId === null) return;
@@ -1092,11 +1276,25 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           ) ?? FACILITY_OBJECTS_CATALOG[0];
         const dims = getObjectDimensionsCm(item.assetId, item.category);
 
-        const autoStack = detectAutoStackElevation({
-          centerCm: pt,
+        const wallSnap = findMagneticWallSnap({
+          candidateCenterCm: pt,
           widthCm: dims.widthCm,
           depthCm: dims.depthCm,
-          rotationDeg: builderState.objectRotationDeg,
+          currentRotationDeg: builderState.objectRotationDeg,
+          baseBoundary: layout.baseBoundary,
+          walls: layout.walls,
+        });
+
+        const activePos = wallSnap.isSnapped ? wallSnap.snappedCenterCm : pt;
+        const activeRot = wallSnap.isSnapped
+          ? wallSnap.snappedRotationDeg
+          : builderState.objectRotationDeg;
+
+        const autoStack = detectAutoStackElevation({
+          centerCm: activePos,
+          widthCm: dims.widthCm,
+          depthCm: dims.depthCm,
+          rotationDeg: activeRot,
           itemAssetId: item.assetId,
           itemCategory: item.category,
           existingObjects: layout.placedObjects ?? [],
@@ -1107,11 +1305,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           : builderState.objectElevationM;
 
         const validation = validateObjectPlacement({
-          centerCm: pt,
+          centerCm: activePos,
           widthCm: dims.widthCm,
           depthCm: dims.depthCm,
           heightCm: dims.heightCm,
-          rotationDeg: builderState.objectRotationDeg,
+          rotationDeg: activeRot,
           elevationM: effectiveElevationM,
           stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
           baseBoundary: layout.baseBoundary,
@@ -1119,11 +1317,20 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           existingObjects: layout.placedObjects,
         });
 
-        if (!validation.isValid) {
+        const reasons = [...validation.reasons];
+        let isValid = validation.isValid;
+        if (wallSnap.warning) {
+          reasons.push(wallSnap.warning);
+          if (wallSnap.isBlockingOpening && wallSnap.openingKind === 'door') {
+            isValid = false;
+          }
+        }
+
+        if (!isValid) {
           if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
           setFillToast({
             type: 'info',
-            message: `No se puede colocar aquí: ${validation.reasons.join(' · ')}`,
+            message: `No se puede colocar aquí: ${reasons.join(' · ')}`,
           });
           fillToastTimerRef.current = setTimeout(() => {
             setFillToast(null);
@@ -1136,13 +1343,13 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           modelUrl: item.glbUrl,
           thumbnailUrl: item.thumbnailUrl,
           label: item.label,
-          xCm: pt.x,
-          yCm: pt.y,
+          xCm: activePos.x,
+          yCm: activePos.y,
           widthCm: dims.widthCm,
           depthCm: dims.depthCm,
           heightCm: dims.heightCm,
           elevationM: effectiveElevationM,
-          rotationDeg: builderState.objectRotationDeg,
+          rotationDeg: activeRot,
           category: item.category,
         });
         return;
@@ -1534,6 +1741,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 }
                 transientObjectDrag={transientObjectDrag}
                 onStartDragObject={handleStartDragObject}
+                onGizmoDragStart={handleGizmoDragStart}
+                onGizmoDragChange={handleGizmoDragChange}
+                onGizmoDragCommit={handleGizmoDragCommit}
                 onSelectVertex={handleSelectVertex}
                 onStartDragVertex={handleStartDragVertex}
                 onInsertVertexAtEdge={handleInsertVertexAtEdge}
@@ -1660,7 +1870,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     ? `📦 Apilar sobre ${objectPlacementValidation.stackedOnLabel} (+${Math.round(
                         (objectPlacementValidation.effectiveElevationM ?? 0) * 100,
                       )} cm) · Clic para colocar`
-                    : `Posición libre (${activeObjectDimensions.widthCm} × ${activeObjectDimensions.depthCm} cm) · Clic para colocar`
+                    : objectPlacementValidation.isWallSnapped
+                      ? `🧲 Pegado a Muro (${objectPlacementValidation.snappedRotationDeg}°) · Clic para colocar`
+                      : `Posición libre (${activeObjectDimensions.widthCm} × ${activeObjectDimensions.depthCm} cm) · Clic para colocar`
                   : `⚠️ ${objectPlacementValidation.reasons.join(' · ')}`}
               </div>
             )}
@@ -1686,7 +1898,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     ? `📦 Apilado sobre ${transientObjectDrag.stackedOnLabel} (+${Math.round(
                         (transientObjectDrag.elevationM ?? 0) * 100,
                       )} cm) · Soltar para ubicar`
-                    : `Mover a (${transientObjectDrag.xCm}, ${transientObjectDrag.yCm} cm) · Soltar para ubicar`
+                    : transientObjectDrag.isWallSnapped
+                      ? `🧲 Pegado a Muro (${transientObjectDrag.rotationDeg ?? 0}°) · Soltar para ubicar`
+                      : `Mover a (${transientObjectDrag.xCm}, ${transientObjectDrag.yCm} cm) · Soltar para ubicar`
                   : `⚠️ ${transientObjectDrag.reasons.join(' · ')}`}
               </div>
             )}
