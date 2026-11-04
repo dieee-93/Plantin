@@ -1012,8 +1012,12 @@ export function computeWallFootprintPolygon(wall: WallSegmentCm): Polygon2DCm[] 
   return fromPaths64(inflated);
 }
 
+export type StackingRole = 'support_base' | 'stackable_item' | 'top_only';
+
 export interface ExistingObjectSpatialSummary {
   id: string;
+  assetId?: string;
+  category?: string;
   xCm: number;
   yCm: number;
   widthCm?: number;
@@ -1022,6 +1026,8 @@ export interface ExistingObjectSpatialSummary {
   rotationDeg?: number;
   elevationM?: number;
   label?: string;
+  stackRole?: StackingRole;
+  supportSurfaceHeightCm?: number;
 }
 
 export interface ValidateObjectPlacementInput {
@@ -1035,6 +1041,7 @@ export interface ValidateObjectPlacementInput {
   walls?: WallSegmentCm[];
   existingObjects?: ExistingObjectSpatialSummary[];
   ignoreObjectId?: string;
+  stackedBaseObjectId?: string;
 }
 
 export interface ObjectPlacementValidationResult {
@@ -1066,6 +1073,7 @@ export function validateObjectPlacement(
     walls = [],
     existingObjects = [],
     ignoreObjectId,
+    stackedBaseObjectId,
   } = input;
 
   const footprint = computeObjectFootprintPolygon(centerCm, widthCm, depthCm, rotationDeg);
@@ -1109,6 +1117,7 @@ export function validateObjectPlacement(
 
   for (const other of existingObjects) {
     if (ignoreObjectId && other.id === ignoreObjectId) continue;
+    if (stackedBaseObjectId && other.id === stackedBaseObjectId) continue;
 
     const otherBottomM = other.elevationM ?? 0;
     const otherHeightM = (other.heightCm ?? 50) * 0.01;
@@ -1178,5 +1187,237 @@ export function snapPointToMetricGrid(
   return {
     x: snapToMetricGrid(pointCm.x, stepCm),
     y: snapToMetricGrid(pointCm.y, stepCm),
+  };
+}
+
+/**
+ * Infiere el rol de apilado físico de un objeto en el espacio agronómico/logístico.
+ */
+export function inferSpatialStackRole(
+  assetId?: string,
+  category?: string,
+): StackingRole {
+  if (!assetId) return 'top_only';
+  const idLower = assetId.toLowerCase();
+  if (
+    idLower.includes('pallet') ||
+    idLower.includes('table') ||
+    idLower.includes('workbench') ||
+    idLower.includes('desk') ||
+    idLower.includes('bench') ||
+    idLower.includes('rack') ||
+    idLower.includes('shelf')
+  ) {
+    return 'support_base';
+  }
+  if (
+    idLower.includes('crate') ||
+    idLower.includes('box') ||
+    idLower.includes('bin') ||
+    idLower.includes('container')
+  ) {
+    return 'stackable_item';
+  }
+  if (category === 'logistics' && idLower.includes('cart')) {
+    return 'support_base';
+  }
+  return 'top_only';
+}
+
+/**
+ * Determina si un objeto puede apoyarse encima de otro.
+ * Regla:
+ * - Objetos 'top_only' no admiten nada encima.
+ * - Objetos 'support_base' (palets, mesas, racks) nunca se apilan sobre otros objetos.
+ * - 'support_base' puede soportar 'stackable_item' y 'top_only'.
+ * - 'stackable_item' (cajones) pueden soportar otros 'stackable_item' o 'top_only'.
+ */
+export function canStackRoles(
+  itemRole: StackingRole,
+  baseRole: StackingRole,
+): boolean {
+  if (baseRole === 'top_only') return false;
+  if (itemRole === 'support_base') return false;
+  if (baseRole === 'support_base') {
+    return itemRole === 'stackable_item' || itemRole === 'top_only';
+  }
+  if (baseRole === 'stackable_item') {
+    return itemRole === 'stackable_item' || itemRole === 'top_only';
+  }
+  return false;
+}
+
+export interface AutoStackDetectionInput {
+  centerCm: Point2DCm;
+  widthCm?: number;
+  depthCm?: number;
+  rotationDeg?: number;
+  itemAssetId?: string;
+  itemCategory?: string;
+  itemStackRole?: StackingRole;
+  existingObjects?: ExistingObjectSpatialSummary[];
+  ignoreObjectId?: string;
+  maxStackLevels?: number;
+}
+
+export interface AutoStackElevationResult {
+  isStacked: boolean;
+  targetElevationM: number;
+  baseObjectId: string | null;
+  baseObjectLabel: string | null;
+  stackLevels: number;
+  rejectionReason?: string;
+}
+
+/**
+ * Calcula niveles de apilado transitivos debajo de un objeto base.
+ */
+function countStackLevelsUnder(
+  baseObj: ExistingObjectSpatialSummary,
+  allObjects: ExistingObjectSpatialSummary[],
+): number {
+  let count = 1;
+  let current = baseObj;
+  const visited = new Set<string>([baseObj.id]);
+
+  while ((current.elevationM ?? 0) > 0.05) {
+    const currentElevation = current.elevationM ?? 0;
+    // Buscar un objeto por debajo cuyo polígono contenga el centro del actual
+    const under = allObjects.find((o) => {
+      if (visited.has(o.id)) return false;
+      const oElevation = o.elevationM ?? 0;
+      if (oElevation >= currentElevation - 0.02) return false;
+
+      const poly = computeObjectFootprintPolygon(
+        { x: o.xCm, y: o.yCm },
+        o.widthCm ?? 60,
+        o.depthCm ?? 40,
+        o.rotationDeg ?? 0,
+      );
+      return isPointInPolygonCm({ x: current.xCm, y: current.yCm }, poly);
+    });
+
+    if (!under) break;
+    visited.add(under.id);
+    count++;
+    current = under;
+    if (count > 10) break; // salvaguarda contra bucles infinitos
+  }
+
+  return count;
+}
+
+/**
+ * Detecta si el punto central de un objeto arrastrado o ubicado coincide con la huella
+ * de un objeto base soportante (palet, mesa, estante, cajón inferior) y calcula
+ * la elevación vertical exacta (Z_top = Z_base + H_base + 1mm) con prevención de Z-fighting
+ * y validación jerárquica de apilado.
+ */
+export function detectAutoStackElevation(
+  input: AutoStackDetectionInput,
+): AutoStackElevationResult {
+  const {
+    centerCm,
+    itemAssetId,
+    itemCategory,
+    itemStackRole,
+    existingObjects = [],
+    ignoreObjectId,
+    maxStackLevels = 4,
+  } = input;
+
+  const itemRole =
+    itemStackRole ?? inferSpatialStackRole(itemAssetId, itemCategory);
+
+  // Bases de soporte pesadas (como palets y mesas) nunca se apilan sobre otros objetos
+  if (itemRole === 'support_base') {
+    return {
+      isStacked: false,
+      targetElevationM: 0,
+      baseObjectId: null,
+      baseObjectLabel: null,
+      stackLevels: 0,
+    };
+  }
+
+  // Filtrar candidatos que contengan el centro del objeto arrastrado
+  const containingCandidates: Array<{
+    base: ExistingObjectSpatialSummary;
+    topM: number;
+    elevationM: number;
+  }> = [];
+
+  for (const obj of existingObjects) {
+    if (ignoreObjectId && obj.id === ignoreObjectId) continue;
+
+    const w = obj.widthCm ?? 60;
+    const d = obj.depthCm ?? 40;
+    const rot = obj.rotationDeg ?? 0;
+    const footprint = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
+
+    if (isPointInPolygonCm(centerCm, footprint)) {
+      const elevationM = obj.elevationM ?? 0;
+      const surfaceHeightM = (obj.supportSurfaceHeightCm ?? obj.heightCm ?? 20) * 0.01;
+      const topM = elevationM + surfaceHeightM;
+      containingCandidates.push({
+        base: obj,
+        topM,
+        elevationM,
+      });
+    }
+  }
+
+  if (containingCandidates.length === 0) {
+    return {
+      isStacked: false,
+      targetElevationM: 0,
+      baseObjectId: null,
+      baseObjectLabel: null,
+      stackLevels: 0,
+    };
+  }
+
+  // Ordenar candidatos por superficie superior descendente (la superficie de soporte más alta)
+  containingCandidates.sort((a, b) => b.topM - a.topM);
+  const bestCandidate = containingCandidates[0];
+  const baseObj = bestCandidate.base;
+
+  const baseRole =
+    baseObj.stackRole ?? inferSpatialStackRole(baseObj.assetId, baseObj.category);
+
+  // Validar compatibilidad de roles
+  if (!canStackRoles(itemRole, baseRole)) {
+    return {
+      isStacked: false,
+      targetElevationM: 0,
+      baseObjectId: null,
+      baseObjectLabel: null,
+      stackLevels: 0,
+      rejectionReason: 'Base incompatible para apilar este elemento',
+    };
+  }
+
+  // Verificar límite de niveles de apilado
+  const currentLevelsUnder = countStackLevelsUnder(baseObj, existingObjects);
+  if (currentLevelsUnder >= maxStackLevels) {
+    return {
+      isStacked: false,
+      targetElevationM: 0,
+      baseObjectId: null,
+      baseObjectLabel: null,
+      stackLevels: currentLevelsUnder,
+      rejectionReason: `Límite máximo de apilado alcanzado (${maxStackLevels} niveles)`,
+    };
+  }
+
+  // Z_top = Z_base + H_base + 0.001 m (1mm de epsilon anti Z-fighting)
+  const targetElevationM = Math.round((bestCandidate.topM + 0.001) * 1000) / 1000;
+
+  return {
+    isStacked: true,
+    targetElevationM,
+    baseObjectId: baseObj.id,
+    baseObjectLabel: baseObj.label || baseObj.assetId || 'Base',
+    stackLevels: currentLevelsUnder + 1,
   };
 }

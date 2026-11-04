@@ -3,6 +3,7 @@ import {
   calculatePolygonAreaM2,
   calculatePolygonPerimeterM,
   canInsertVertexAtEdge,
+  canStackRoles,
   classifySpacePoint,
   computeObjectFootprintPolygon,
   computeSpaceRegions,
@@ -13,8 +14,10 @@ import {
   createPerimeterWalls,
   createRectPolygon,
   decomposeWallIntoPrisms,
+  detectAutoStackElevation,
   findClosestEdgeOnPolygon,
   findNextOpeningSlot,
+  inferSpatialStackRole,
   inflatePathToPolygon,
   insertPolygonVertex,
   isPointInPolygonCm,
@@ -722,6 +725,182 @@ describe('spaceGeometry - Slice 9: Object Footprint & Collision Validation (Clip
 
     const snapped = snapPointToMetricGrid({ x: 234.6, y: 588.2 }, 10);
     expect(snapped).toEqual({ x: 230, y: 590 });
+  });
+
+  describe('Magnetic Auto-Stacking & Surface Snapping', () => {
+    it('infers correct spatial stacking roles for logistics and horticultural models', () => {
+      expect(inferSpatialStackRole('pallet_standard_wood_a01')).toBe('support_base');
+      expect(inferSpatialStackRole('workbench_modular_table_b01')).toBe('support_base');
+      expect(inferSpatialStackRole('rack_heavyduty_metal_f01')).toBe('support_base');
+      expect(inferSpatialStackRole('crate_harvest_plastic_green_a01')).toBe('stackable_item');
+      expect(inferSpatialStackRole('fan_axial_floor_a01')).toBe('top_only');
+      expect(inferSpatialStackRole('produce_tomato_fruit_a01')).toBe('top_only');
+    });
+
+    it('enforces agronomic stacking compatibility hierarchy', () => {
+      // Crate on pallet: OK
+      expect(canStackRoles('stackable_item', 'support_base')).toBe(true);
+      // Crate on crate: OK
+      expect(canStackRoles('stackable_item', 'stackable_item')).toBe(true);
+      // Fruit on crate: OK
+      expect(canStackRoles('top_only', 'stackable_item')).toBe(true);
+      // Fruit on workbench: OK
+      expect(canStackRoles('top_only', 'support_base')).toBe(true);
+      // Heavy pallet on crate: REJECTED
+      expect(canStackRoles('support_base', 'stackable_item')).toBe(false);
+      // Workbench on workbench: REJECTED
+      expect(canStackRoles('support_base', 'support_base')).toBe(false);
+      // Anything on top of top_only (e.g. fan or tomato): REJECTED
+      expect(canStackRoles('stackable_item', 'top_only')).toBe(false);
+    });
+
+    it('returns elevation 0 when dragging over empty floor', () => {
+      const result = detectAutoStackElevation({
+        centerCm: { x: 300, y: 300 },
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        existingObjects: [],
+      });
+
+      expect(result.isStacked).toBe(false);
+      expect(result.targetElevationM).toBe(0);
+      expect(result.baseObjectId).toBeNull();
+    });
+
+    it('automatically snaps elevation when dragging a crate over a euro-pallet', () => {
+      const pallet = {
+        id: 'pallet-1',
+        assetId: 'pallet_standard_wood_a01',
+        label: 'Palet Europeo',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 120,
+        depthCm: 80,
+        heightCm: 21,
+        supportSurfaceHeightCm: 21,
+        elevationM: 0,
+      };
+
+      // Drag center inside pallet bounds (e.g. at 310, 305)
+      const result = detectAutoStackElevation({
+        centerCm: { x: 310, y: 305 },
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        existingObjects: [pallet],
+      });
+
+      expect(result.isStacked).toBe(true);
+      expect(result.baseObjectId).toBe('pallet-1');
+      // Elevation = 0m + 0.21m + 0.001m epsilon = 0.211m
+      expect(result.targetElevationM).toBe(0.211);
+      // Total stack height: 2 levels (1 base pallet + 1 crate)
+      expect(result.stackLevels).toBe(2);
+    });
+
+    it('drops elevation to 0 when dragging center off the pallet edge (hysteresis)', () => {
+      const pallet = {
+        id: 'pallet-1',
+        assetId: 'pallet_standard_wood_a01',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 120,
+        depthCm: 80,
+        heightCm: 21,
+        elevationM: 0,
+      };
+
+      // Pallet X spans 240 to 360 cm. Center at 380 is outside!
+      const result = detectAutoStackElevation({
+        centerCm: { x: 380, y: 300 },
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        existingObjects: [pallet],
+      });
+
+      expect(result.isStacked).toBe(false);
+      expect(result.targetElevationM).toBe(0);
+    });
+
+    it('supports multi-level stacking (crate on crate on pallet)', () => {
+      const pallet = {
+        id: 'pallet-1',
+        assetId: 'pallet_standard_wood_a01',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 120,
+        depthCm: 80,
+        heightCm: 21,
+        supportSurfaceHeightCm: 21,
+        elevationM: 0,
+      };
+
+      const crate1 = {
+        id: 'crate-1',
+        assetId: 'crate_harvest_plastic_green_a01',
+        label: 'Cajón 1',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 60,
+        depthCm: 40,
+        heightCm: 25,
+        supportSurfaceHeightCm: 25,
+        elevationM: 0.211,
+      };
+
+      // Dragging crate2 directly over crate1
+      const result = detectAutoStackElevation({
+        centerCm: { x: 300, y: 300 },
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        existingObjects: [pallet, crate1],
+      });
+
+      expect(result.isStacked).toBe(true);
+      expect(result.baseObjectId).toBe('crate-1');
+      // crate1 top = 0.211 + 0.25 = 0.461m -> target = 0.462m (+0.001)
+      expect(result.targetElevationM).toBe(0.462);
+      // Total stack height: 3 levels (1 base pallet + crate 1 + crate 2)
+      expect(result.stackLevels).toBe(3);
+    });
+
+    it('rejects stacking heavy support bases like pallets on top of small crates', () => {
+      const crate = {
+        id: 'crate-1',
+        assetId: 'crate_harvest_plastic_green_a01',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 60,
+        depthCm: 40,
+        heightCm: 25,
+      };
+
+      const result = detectAutoStackElevation({
+        centerCm: { x: 300, y: 300 },
+        itemAssetId: 'pallet_standard_wood_a01',
+        existingObjects: [crate],
+      });
+
+      expect(result.isStacked).toBe(false);
+      expect(result.targetElevationM).toBe(0);
+    });
+
+    it('ignores own object id when checking existing objects', () => {
+      const movingCrate = {
+        id: 'crate-1',
+        assetId: 'crate_harvest_plastic_green_a01',
+        xCm: 300,
+        yCm: 300,
+        widthCm: 60,
+        depthCm: 40,
+        heightCm: 25,
+      };
+
+      const result = detectAutoStackElevation({
+        centerCm: { x: 300, y: 300 },
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        ignoreObjectId: 'crate-1',
+        existingObjects: [movingCrate],
+      });
+
+      expect(result.isStacked).toBe(false);
+      expect(result.targetElevationM).toBe(0);
+    });
   });
 });
 

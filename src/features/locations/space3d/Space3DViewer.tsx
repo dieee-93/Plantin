@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, Layers, RotateCw, X } from 'lucide-react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, OrthographicCamera } from '@react-three/drei';
 import {
@@ -10,6 +10,7 @@ import {
   createDefaultWindowOpening,
   createLShapePolygon,
   createRectPolygon,
+  detectAutoStackElevation,
   findClosestEdgeOnPolygon,
   isRectangularPolygon,
   movePolygonVertex,
@@ -46,7 +47,7 @@ import { SpaceRoofActionBar } from './SpaceRoofActionBar';
 import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
 import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
 import { SpacePlantBuilderShelf } from './SpacePlantBuilderShelf';
-import { SpaceObjectBuilderShelf } from './SpaceObjectBuilderShelf';
+import { SpaceAssetDrawer } from './SpaceAssetDrawer';
 import { FACILITY_OBJECTS_CATALOG, getObjectDimensionsCm } from './objectsCatalog';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
@@ -226,6 +227,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const [speciesFilter, setSpeciesFilter] = useState<string | null>(null);
   const [dockMode, setDockMode] = useState<'crop' | 'design'>(initialMode ?? 'design');
   const [isTrayOpen, setIsTrayOpen] = useState<boolean>(false);
+  const [isAssetDrawerOpen, setIsAssetDrawerOpen] = useState<boolean>(true);
 
   // Undo Toast state for Cultivo mode
   interface PlantUndoToastState {
@@ -293,6 +295,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const prevActiveToolRef = useRef(builderState.activeTool);
   useEffect(() => {
     if (prevActiveToolRef.current !== builderState.activeTool) {
+      if (builderState.activeTool === 'place_object') {
+        setIsAssetDrawerOpen(true);
+      }
       interactionProfiler.recordToolChange({
         fromTool: prevActiveToolRef.current,
         toTool: builderState.activeTool,
@@ -363,6 +368,13 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     return getObjectDimensionsCm(builderState.selectedObjectAssetId);
   }, [builderState.activeTool, builderState.selectedObjectAssetId]);
 
+  const selectedObjectItem = useMemo(() => {
+    if (builderState.activeTool !== 'place_object') return null;
+    return FACILITY_OBJECTS_CATALOG.find(
+      (item) => item.assetId === builderState.selectedObjectAssetId,
+    );
+  }, [builderState.activeTool, builderState.selectedObjectAssetId]);
+
   const objectPlacementValidation = useMemo(() => {
     if (
       builderState.activeTool !== 'place_object' ||
@@ -371,13 +383,28 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     ) {
       return null;
     }
+
+    const autoStack = detectAutoStackElevation({
+      centerCm: builderState.cursorCm,
+      widthCm: activeObjectDimensions.widthCm,
+      depthCm: activeObjectDimensions.depthCm,
+      rotationDeg: builderState.objectRotationDeg,
+      itemAssetId: builderState.selectedObjectAssetId,
+      existingObjects: layout.placedObjects ?? [],
+    });
+
+    const effectiveElevation = autoStack.isStacked
+      ? autoStack.targetElevationM
+      : builderState.objectElevationM;
+
     return validateObjectPlacement({
       centerCm: builderState.cursorCm,
       widthCm: activeObjectDimensions.widthCm,
       depthCm: activeObjectDimensions.depthCm,
       heightCm: activeObjectDimensions.heightCm,
       rotationDeg: builderState.objectRotationDeg,
-      elevationM: builderState.objectElevationM,
+      elevationM: effectiveElevation,
+      stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
       baseBoundary: layout.baseBoundary,
       walls: layout.walls,
       existingObjects: layout.placedObjects,
@@ -386,6 +413,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     builderState.activeTool,
     builderState.cursorCm,
     activeObjectDimensions,
+    builderState.selectedObjectAssetId,
     builderState.objectRotationDeg,
     builderState.objectElevationM,
     layout.baseBoundary,
@@ -527,13 +555,30 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       const h = target.heightCm ?? dims.heightCm;
       const rot = target.rotationDeg ?? 0;
 
+      // Detección de auto-apilado magnético sobre palets, mesas o racks
+      const autoStack = detectAutoStackElevation({
+        centerCm: snapped,
+        widthCm: w,
+        depthCm: d,
+        rotationDeg: rot,
+        itemAssetId: target.assetId,
+        itemCategory: target.category,
+        existingObjects: layout.placedObjects ?? [],
+        ignoreObjectId: draggingObjectId,
+      });
+
+      const effectiveElevationM = autoStack.isStacked
+        ? autoStack.targetElevationM
+        : 0;
+
       const validation = validateObjectPlacement({
         centerCm: snapped,
         widthCm: w,
         depthCm: d,
         heightCm: h,
         rotationDeg: rot,
-        elevationM: target.elevationM ?? 0,
+        elevationM: effectiveElevationM,
+        stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
         baseBoundary: layout.baseBoundary,
         walls: layout.walls,
         existingObjects: (layout.placedObjects ?? []).filter(
@@ -545,6 +590,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         objectId: draggingObjectId,
         xCm: snapped.x,
         yCm: snapped.y,
+        elevationM: effectiveElevationM,
+        isStacked: autoStack.isStacked,
+        stackedOnLabel: autoStack.baseObjectLabel ?? undefined,
         isValid: validation.isValid,
         reasons: validation.reasons,
         footprint: validation.footprint,
@@ -566,15 +614,25 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     if (dragData && dragData.isValid && target) {
       const deltaX = Math.abs(dragData.xCm - target.xCm);
       const deltaY = Math.abs(dragData.yCm - target.yCm);
-      if (deltaX >= 1 || deltaY >= 1) {
+      const targetElev = target.elevationM ?? 0;
+      const dragElev = dragData.elevationM ?? 0;
+      const deltaZ = Math.abs(dragElev - targetElev);
+
+      if (deltaX >= 1 || deltaY >= 1 || deltaZ >= 0.005) {
         updateObject(locationId, draggingObjectId, {
           xCm: dragData.xCm,
           yCm: dragData.yCm,
+          elevationM: dragElev,
         });
         if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+        const stackNote = dragData.isStacked
+          ? ` (Apilado sobre ${dragData.stackedOnLabel} a ${Math.round(dragElev * 100)} cm)`
+          : dragElev > 0
+            ? ` a ${Math.round(dragElev * 100)} cm`
+            : '';
         setFillToast({
           type: 'success',
-          message: `Objeto reubicado en (${dragData.xCm}, ${dragData.yCm} cm)`,
+          message: `Objeto reubicado en (${dragData.xCm}, ${dragData.yCm} cm)${stackNote}`,
         });
         fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2500);
       }
@@ -1027,13 +1085,28 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           ) ?? FACILITY_OBJECTS_CATALOG[0];
         const dims = getObjectDimensionsCm(item.assetId, item.category);
 
+        const autoStack = detectAutoStackElevation({
+          centerCm: pt,
+          widthCm: dims.widthCm,
+          depthCm: dims.depthCm,
+          rotationDeg: builderState.objectRotationDeg,
+          itemAssetId: item.assetId,
+          itemCategory: item.category,
+          existingObjects: layout.placedObjects ?? [],
+        });
+
+        const effectiveElevationM = autoStack.isStacked
+          ? autoStack.targetElevationM
+          : builderState.objectElevationM;
+
         const validation = validateObjectPlacement({
           centerCm: pt,
           widthCm: dims.widthCm,
           depthCm: dims.depthCm,
           heightCm: dims.heightCm,
           rotationDeg: builderState.objectRotationDeg,
-          elevationM: builderState.objectElevationM,
+          elevationM: effectiveElevationM,
+          stackedBaseObjectId: autoStack.baseObjectId ?? undefined,
           baseBoundary: layout.baseBoundary,
           walls: layout.walls,
           existingObjects: layout.placedObjects,
@@ -1061,7 +1134,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           widthCm: dims.widthCm,
           depthCm: dims.depthCm,
           heightCm: dims.heightCm,
-          elevationM: builderState.objectElevationM,
+          elevationM: effectiveElevationM,
           rotationDeg: builderState.objectRotationDeg,
           category: item.category,
         });
@@ -1595,7 +1668,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   }`}
                 />
                 {transientObjectDrag.isValid
-                  ? `Mover a (${transientObjectDrag.xCm}, ${transientObjectDrag.yCm} cm) · Soltar para ubicar`
+                  ? transientObjectDrag.isStacked
+                    ? `📦 Apilado sobre ${transientObjectDrag.stackedOnLabel} (+${Math.round(
+                        (transientObjectDrag.elevationM ?? 0) * 100,
+                      )} cm) · Soltar para ubicar`
+                    : `Mover a (${transientObjectDrag.xCm}, ${transientObjectDrag.yCm} cm) · Soltar para ubicar`
                   : `⚠️ ${transientObjectDrag.reasons.join(' · ')}`}
               </div>
             )}
@@ -2305,6 +2382,19 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         </div>
       )}
 
+      {/* ── 3.10a. 3D Asset Drawer & Taxonomy (Left-docked CAD Library) ── */}
+      {isHudVisible && builderState.activeTool === 'place_object' && (
+        <SpaceAssetDrawer
+          isOpen={isAssetDrawerOpen}
+          onToggleOpen={() => setIsAssetDrawerOpen((prev) => !prev)}
+          onClose={() => setIsAssetDrawerOpen(false)}
+          selectedAssetId={builderState.selectedObjectAssetId}
+          onSelectAssetId={(assetId) =>
+            dispatch({ type: 'SET_OBJECT_ASSET', assetId })
+          }
+        />
+      )}
+
       {/* ── 5. Bottom HUD Dock & Camera Widget ── */}
       {isHudVisible && (
         <div className="pointer-events-none absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-3">
@@ -2416,21 +2506,100 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
       {/* ── 3.10. Contextual Builder Shelf for Logistics & 3D Objects ── */}
       {builderState.activeTool === 'place_object' && (
-        <SpaceObjectBuilderShelf
-          selectedAssetId={builderState.selectedObjectAssetId}
-          onSelectAssetId={(assetId) =>
-            dispatch({ type: 'SET_OBJECT_ASSET', assetId })
-          }
-          rotationDeg={builderState.objectRotationDeg}
-          onChangeRotationDeg={(deg) =>
-            dispatch({ type: 'SET_OBJECT_ROTATION', rotationDeg: deg })
-          }
-          elevationM={builderState.objectElevationM}
-          onChangeElevationM={(elevationM) =>
-            dispatch({ type: 'SET_OBJECT_ELEVATION', elevationM })
-          }
-          onClose={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
-        />
+        <div
+          data-testid="space-object-placement-pill"
+          className="pointer-events-auto flex items-center flex-wrap justify-between gap-2.5 px-3.5 py-2 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-xl max-w-2xl w-full"
+        >
+          {/* Selected object thumbnail & title */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            {selectedObjectItem?.thumbnailUrl && (
+              <img
+                src={selectedObjectItem.thumbnailUrl}
+                alt={selectedObjectItem.label}
+                className="w-8 h-8 rounded-lg object-contain bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0"
+              />
+            )}
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate max-w-[130px] sm:max-w-[170px]">
+                {selectedObjectItem?.label ?? 'Objeto seleccionado'}
+              </div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                {selectedObjectItem?.dimensionsBadge ?? '3D Asset'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAssetDrawerOpen(true)}
+              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+            >
+              📐 Biblioteca
+            </button>
+          </div>
+
+          {/* Quick chips: Giro */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-slate-400 mr-0.5 flex items-center gap-0.5">
+              <RotateCw size={12} /> Giro:
+            </span>
+            {[0, 90, 180, 270].map((deg) => (
+              <button
+                key={deg}
+                type="button"
+                onClick={() =>
+                  dispatch({ type: 'SET_OBJECT_ROTATION', rotationDeg: deg })
+                }
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                  builderState.objectRotationDeg === deg
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {deg}°
+              </button>
+            ))}
+          </div>
+
+          {/* Quick chips: Altura */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-slate-400 mr-0.5 flex items-center gap-0.5">
+              <Layers size={12} /> Altura:
+            </span>
+            {[
+              { val: 0, label: 'Suelo' },
+              { val: 0.209, label: 'Palet' },
+              { val: 0.93, label: 'Mesa' },
+            ].map(({ val, label }) => {
+              const isSelected =
+                Math.abs(builderState.objectElevationM - val) < 0.05;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() =>
+                    dispatch({ type: 'SET_OBJECT_ELEVATION', elevationM: val })
+                  }
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                    isSelected
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Close placement tool */}
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
+            aria-label="Cerrar colocación de objetos"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X size={15} />
+          </button>
+        </div>
       )}
 
 

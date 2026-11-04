@@ -405,6 +405,9 @@ export interface TransientObjectDragData {
   objectId: string;
   xCm: number;
   yCm: number;
+  elevationM?: number;
+  isStacked?: boolean;
+  stackedOnLabel?: string;
   isValid: boolean;
   reasons: string[];
   footprint: Polygon2DCm;
@@ -437,6 +440,10 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
           const isDragging = transientObjectDrag?.objectId === obj.id;
           const posX = isDragging ? transientObjectDrag.xCm : obj.xCm;
           const posY = isDragging ? transientObjectDrag.yCm : obj.yCm;
+          const posElevationM =
+            isDragging && transientObjectDrag.elevationM !== undefined
+              ? transientObjectDrag.elevationM
+              : (obj.elevationM ?? 0);
           const dims = getObjectDimensionsCm(obj.assetId, obj.category);
           const w = obj.widthCm ?? dims.widthCm;
           const d = obj.depthCm ?? dims.depthCm;
@@ -455,7 +462,7 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
                 modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
                 positionCm={{ x: posX, y: posY }}
                 centerCm={centerCm}
-                elevationM={obj.elevationM ?? 0}
+                elevationM={posElevationM}
                 rotationDeg={rot}
                 onClick={(e) => {
                   (e as { stopPropagation?: () => void })?.stopPropagation?.();
@@ -473,7 +480,7 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
                       ? 'dragging-object-footprint-mesh'
                       : 'selected-object-footprint-outline'
                   }
-                  position={[0, (obj.elevationM ?? 0) + 0.006, 0]}
+                  position={[0, posElevationM + 0.006, 0]}
                   rotation={[-Math.PI / 2, 0, 0]}
                 >
                   <shapeGeometry args={[footprintShape]} />

@@ -183,12 +183,80 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
     // Initial 3D mode
     const placedObjects =
       useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId).placedObjects ?? [];
-    const targetObj = placedObjects.find((o) => o.assetId === 'pallet_standard_wood_a01')!;
+    expect(placedObjects.some((o) => o.assetId === 'pallet_standard_wood_a01')).toBe(true);
 
-    // Find the 3D model instance in the fiber tree
-    const modelInstance = screen.getByTestId ? null : null; // React Three Fiber DOM mesh
-    // Start drag directly via pointerdown on model mesh
-    const modelMesh = screen.getByText ? screen.getByRole('button', { name: /Cultivo/i }) : null;
-    expect(modelMesh).toBeInTheDocument();
+    const toggleButton = screen.getByRole('button', { name: /Cultivo/i });
+    expect(toggleButton).toBeInTheDocument();
+  });
+
+  it('automatically detects auto-stack elevation when dragging a crate over a euro-pallet in flight', () => {
+    // Setup space with a pallet and a harvest crate
+    const store = useSpaceLayoutStore.getState();
+    const crateId = store.placeObject(locationId, {
+      assetId: 'crate_harvest_plastic_green_a01',
+      label: 'Caja de Cosecha',
+      xCm: 600,
+      yCm: 600,
+      widthCm: 60,
+      depthCm: 40,
+      heightCm: 25,
+      elevationM: 0,
+    });
+
+    render(
+      <Space3DViewer
+        locationId={locationId}
+        locationName="Nave de Almacén"
+        locationType="warehouse"
+        initialMode="design"
+      />,
+    );
+
+    // Switch to 2D CAD view
+    const btn2D = screen.getByRole('button', { name: /2D|Plano 2D/i });
+    fireEvent.click(btn2D);
+
+    const svgCrate = screen.getByTestId(`svg-object-${crateId}`);
+    const svgPlane = screen.getByTestId('interactive-plane-1to1');
+
+    // Find the pallet position
+    const currentLayout = store.getOrCreateSpaceLayout(locationId);
+    const pallet = currentLayout.placedObjects?.find((o) => o.assetId === 'pallet_standard_wood_a01')!;
+
+    // 1. Start drag on crate
+    fireEvent.pointerDown(svgCrate);
+
+    // Mock SVG CTM transform so clientX/Y map 1:1 to cm coordinates in jsdom
+    const svgElem = svgPlane as unknown as SVGSVGElement;
+    svgElem.createSVGPoint = () =>
+      ({
+        x: 0,
+        y: 0,
+        matrixTransform(this: { x: number; y: number }) {
+          return { x: this.x, y: this.y };
+        },
+      }) as unknown as DOMPoint;
+    svgElem.getScreenCTM = () =>
+      ({
+        inverse: () => ({}),
+      }) as unknown as DOMMatrix;
+
+    // 2. Drag crate over the euro-pallet center
+    fireEvent.pointerMove(svgPlane, { clientX: pallet.xCm, clientY: pallet.yCm });
+
+    // Validation badge indicates auto-stacking on highest support surface (the existing crate on the pallet at +46 cm)
+    const badge = screen.getByTestId('object-drag-validation-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toContain('Apilado sobre');
+    expect(badge.textContent).toContain('+46 cm');
+
+    // 3. Drop crate on top of the stack
+    fireEvent.pointerUp(svgPlane);
+
+    // Check store persisted the auto-stack elevation (0.461-0.462 m)
+    const updatedCrate = store
+      .getOrCreateSpaceLayout(locationId)
+      .placedObjects?.find((o) => o.id === crateId)!;
+    expect(updatedCrate.elevationM).toBeCloseTo(0.462, 2);
   });
 });
