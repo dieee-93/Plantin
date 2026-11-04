@@ -1,4 +1,4 @@
-import simreadyRawCatalog from '../../../../public/models/simready/catalog.json';
+import simreadyRawCatalog from './simreadyCatalog.json';
 
 export interface FacilityCatalogItem {
   assetId: string;

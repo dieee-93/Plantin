@@ -170,7 +170,7 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
     expect(screen.queryByTestId('object-drag-validation-badge')).not.toBeInTheDocument();
   });
 
-  it('initiates 3D ground dragging and mounts active-3d-object-drag-plane with live validation feedback', () => {
+  it('mounts Space3DViewer in design mode with placed 3D objects and HUD controls', () => {
     render(
       <Space3DViewer
         locationId={locationId}

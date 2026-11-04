@@ -22,6 +22,7 @@ const OUTPUT_DIR = path.resolve('public/models/simready');
 const GLB_DIR = path.join(OUTPUT_DIR, 'glb');
 const THUMBS_DIR = path.join(OUTPUT_DIR, 'thumbs');
 const CATALOG_PATH = path.join(OUTPUT_DIR, 'catalog.json');
+const SRC_CATALOG_PATH = path.resolve('src/features/locations/space3d/simreadyCatalog.json');
 
 const CONCURRENCY = 8;
 
@@ -148,6 +149,7 @@ async function runBatchDownload() {
 
   // Guardar catálogo consolidado para uso instantáneo en el frontend
   fs.writeFileSync(CATALOG_PATH, JSON.stringify(catalogItems, null, 2), 'utf-8');
+  fs.writeFileSync(SRC_CATALOG_PATH, JSON.stringify(catalogItems, null, 2), 'utf-8');
 
   const totalTimeSec = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n=== DESCARGA COMPLETADA CON ÉXITO ===`);

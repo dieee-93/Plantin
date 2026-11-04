@@ -1740,7 +1740,6 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   dispatch({ type: 'SELECT_OBJECT', objectId: objId })
                 }
                 transientObjectDrag={transientObjectDrag}
-                onStartDragObject={handleStartDragObject}
                 onGizmoDragStart={handleGizmoDragStart}
                 onGizmoDragChange={handleGizmoDragChange}
                 onGizmoDragCommit={handleGizmoDragCommit}
@@ -1750,7 +1749,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 onGroundPointClickCm={handlePlanePointClick}
               />
               <ShaderWarmer />
-              {/* Active 3D ground drag capture plane (captures smooth drag across entire ground) */}
+              {/* Active 3D ground drag capture plane for boundary/wall vertices */}
               {draggingVertexIndex !== null ? (
                 <mesh
                   name="active-3d-vertex-drag-plane"
@@ -1771,30 +1770,6 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   onPointerUp={(e) => {
                     e.stopPropagation();
                     commitVertexDrag();
-                  }}
-                >
-                  <planeGeometry args={[200, 200]} />
-                  <meshBasicMaterial transparent opacity={0} />
-                </mesh>
-              ) : draggingObjectId !== null ? (
-                <mesh
-                  name="active-3d-object-drag-plane"
-                  rotation={[-Math.PI / 2, 0, 0]}
-                  position={[0, 0, 0]}
-                  onPointerMove={(e) => {
-                    e.stopPropagation();
-                    const fixedCenter =
-                      dragStartCenterCmRef.current ?? {
-                        x: bbox.centerXCm,
-                        y: bbox.centerYCm,
-                      };
-                    const rawX = e.point.x * 100 + fixedCenter.x;
-                    const rawY = e.point.z * 100 + fixedCenter.y;
-                    handleDragObjectMove({ x: rawX, y: rawY }, e.shiftKey);
-                  }}
-                  onPointerUp={(e) => {
-                    e.stopPropagation();
-                    commitObjectDrag();
                   }}
                 >
                   <planeGeometry args={[200, 200]} />

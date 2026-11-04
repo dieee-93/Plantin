@@ -71,7 +71,6 @@ export interface SpaceSceneGraphProps {
   onSelectPlant?: (plantId: string) => void;
   onSelectWall?: (wallId: string) => void;
   onSelectObject?: (objectId: string) => void;
-  onStartDragObject?: (objectId: string, pointCm: Point2DCm) => void;
   onSelectVertex?: (vertexIndex: number | null) => void;
   onStartDragVertex?: (vertexIndex: number) => void;
   onInsertVertexAtEdge?: (edgeIndex: number, pointCm: Point2DCm) => void;
@@ -428,7 +427,6 @@ export interface ObjectsLayerProps {
   activeTool?: string;
   transientObjectDrag?: TransientObjectDragData | null;
   onSelectObject?: (objectId: string) => void;
-  onStartDragObject?: (objectId: string, pointCm: Point2DCm) => void;
   onGroundPointClickCm?: (pointCm: Point2DCm) => void;
   onGizmoDragStart?: (objectId: string) => void;
   onGizmoDragChange?: (objectId: string, update: GizmoSpatialResult) => void;
@@ -443,7 +441,6 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
     activeTool,
     transientObjectDrag,
     onSelectObject,
-    onStartDragObject,
     onGroundPointClickCm,
     onGizmoDragStart,
     onGizmoDragChange,
@@ -519,8 +516,11 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
                   }}
                   onPointerDown={(e) => {
                     if (activeTool === 'place_object') return;
+                    // En modo 3D (Opción A): La manipulación de posición/rotación se realiza a través del Gizmo 3D.
+                    // Si ya está seleccionado, no interceptamos pointerDown ni detenemos propagación para que el Gizmo reciba eventos sin interferencias.
+                    if (isSelected) return;
                     (e as { stopPropagation?: () => void })?.stopPropagation?.();
-                    onStartDragObject?.(obj.id, { x: posX, y: posY });
+                    onSelectObject?.(obj.id);
                   }}
                 />
               </SpaceObjectGizmo>
@@ -1335,7 +1335,6 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   onSelectPlant,
   onSelectWall,
   onSelectObject,
-  onStartDragObject,
   onSelectVertex,
   onStartDragVertex,
   onInsertVertexAtEdge,
@@ -1594,7 +1593,6 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
             activeTool={activeTool}
             transientObjectDrag={transientObjectDrag}
             onSelectObject={onSelectObject}
-            onStartDragObject={onStartDragObject}
             onGroundPointClickCm={onGroundPointClickCm}
             onGizmoDragStart={onGizmoDragStart}
             onGizmoDragChange={onGizmoDragChange}
