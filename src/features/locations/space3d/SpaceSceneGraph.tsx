@@ -23,6 +23,7 @@ import {
   applyContinuousWallPrismUVs,
   applyMetricUVsToShapeGeometry,
   getFloorMaterialConfig,
+  getStructuralMaterialConfig,
   getWallMaterialConfig,
   SpaceStandardMaterial,
 } from './materials';
@@ -697,6 +698,7 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                           prismYBottomM: prism.yBottomM,
                           prismLengthM: pLenM,
                           prismHeightM: pHM,
+                          thicknessM,
                           metersPerTileX: wallConfig.metersPerTileX,
                           metersPerTileY: wallConfig.metersPerTileY,
                         })
@@ -732,6 +734,9 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                     );
                   }
 
+                  const metalFrameConfig = getStructuralMaterialConfig('metal_frame');
+                  const woodCarpentryConfig = getStructuralMaterialConfig('wood_carpentry');
+
                   if (op.kind === 'door') {
                     return (
                       <group
@@ -742,17 +747,17 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                         {/* Left jamb */}
                         <mesh position={[-opWidthM / 2 + 0.02, opHeightM / 2, 0]}>
                           <boxGeometry args={[0.04, opHeightM, thicknessM * 1.06]} />
-                          <meshStandardMaterial color="#334155" roughness={0.4} />
+                          <SpaceStandardMaterial config={metalFrameConfig} />
                         </mesh>
                         {/* Right jamb */}
                         <mesh position={[opWidthM / 2 - 0.02, opHeightM / 2, 0]}>
                           <boxGeometry args={[0.04, opHeightM, thicknessM * 1.06]} />
-                          <meshStandardMaterial color="#334155" roughness={0.4} />
+                          <SpaceStandardMaterial config={metalFrameConfig} />
                         </mesh>
                         {/* Top header */}
                         <mesh position={[0, opHeightM - 0.02, 0]}>
                           <boxGeometry args={[opWidthM, 0.04, thicknessM * 1.06]} />
-                          <meshStandardMaterial color="#334155" roughness={0.4} />
+                          <SpaceStandardMaterial config={metalFrameConfig} />
                         </mesh>
                         {/* Door leaf (warm wood, slightly ajar at 15°) */}
                         <mesh
@@ -760,7 +765,7 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                           rotation={[0, 0.25, 0]}
                         >
                           <boxGeometry args={[opWidthM * 0.92, opHeightM * 0.96, 0.04]} />
-                          <meshStandardMaterial color="#78350f" roughness={0.5} />
+                          <SpaceStandardMaterial config={woodCarpentryConfig} />
                         </mesh>
                       </group>
                     );
@@ -776,19 +781,19 @@ export const WallsLayer: React.FC<WallsLayerProps> = React.memo(
                       {/* Left & Right frame bars */}
                       <mesh position={[-opWidthM / 2 + 0.02, 0, 0]}>
                         <boxGeometry args={[0.04, opHeightM, thicknessM * 1.05]} />
-                        <meshStandardMaterial color="#334155" roughness={0.3} />
+                        <SpaceStandardMaterial config={metalFrameConfig} />
                       </mesh>
                       <mesh position={[opWidthM / 2 - 0.02, 0, 0]}>
                         <boxGeometry args={[0.04, opHeightM, thicknessM * 1.05]} />
-                        <meshStandardMaterial color="#334155" roughness={0.3} />
+                        <SpaceStandardMaterial config={metalFrameConfig} />
                       </mesh>
                       <mesh position={[0, -opHeightM / 2 + 0.02, 0]}>
                         <boxGeometry args={[opWidthM, 0.04, thicknessM * 1.05]} />
-                        <meshStandardMaterial color="#334155" roughness={0.3} />
+                        <SpaceStandardMaterial config={metalFrameConfig} />
                       </mesh>
                       <mesh position={[0, opHeightM / 2 - 0.02, 0]}>
                         <boxGeometry args={[opWidthM, 0.04, thicknessM * 1.05]} />
-                        <meshStandardMaterial color="#334155" roughness={0.3} />
+                        <SpaceStandardMaterial config={metalFrameConfig} />
                       </mesh>
                       {/* Glass pane */}
                       <mesh>
@@ -1274,6 +1279,7 @@ export const RoofLayer: React.FC<RoofLayerProps> = React.memo(
           const widthM = bbox.widthCm * CM_TO_M;
           const depthM = bbox.depthCm * CM_TO_M;
           const postHM = 2.3;
+          const woodCarpentryConfig = getStructuralMaterialConfig('wood_carpentry');
 
           return (
             <group name="shade-cloth-roof-group">
@@ -1286,7 +1292,7 @@ export const RoofLayer: React.FC<RoofLayerProps> = React.memo(
               ].map(([px, pz], pIdx) => (
                 <mesh key={`shade-post-${pIdx}`} position={[px, postHM / 2, pz]}>
                   <cylinderGeometry args={[0.06, 0.06, postHM, 8]} />
-                  <meshStandardMaterial color="#78350f" roughness={0.7} />
+                  <SpaceStandardMaterial config={woodCarpentryConfig} />
                 </mesh>
               ))}
 
@@ -1416,7 +1422,14 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
     () => getFloorMaterialConfig(layout.baseMaterial || 'soil'),
     [layout.baseMaterial],
   );
-  const walkableConfig = useMemo(() => getFloorMaterialConfig('concrete'), []);
+  const walkableMaterial =
+    layout.hardscapeZones?.find((z) => z.material)?.material ??
+    layout.paths?.find((p) => p.material)?.material ??
+    'concrete';
+  const walkableConfig = useMemo(
+    () => getFloorMaterialConfig(walkableMaterial),
+    [walkableMaterial],
+  );
 
   // Progressive Plant Population:
   // For massive rooms (>1000 plants like "dos asad" with 5000), defer plant mounting to the next tick / RAF.

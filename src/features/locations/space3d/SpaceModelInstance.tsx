@@ -40,6 +40,10 @@ function resolveModelUrl(url: string): string {
   return `${cleanBase}${cleanPath}`;
 }
 
+import { computeModelGroundingOffset } from './utils/modelGrounding';
+export { computeModelGroundingOffset };
+export type { ModelGroundingOffsetResult } from './utils/modelGrounding';
+
 export const SpaceModelInstance: React.FC<SpaceModelInstanceProps> = ({
   modelUrl,
   positionCm = { x: 0, y: 0 },
@@ -129,7 +133,8 @@ const SpaceModelContent: React.FC<SpaceModelContentProps> = ({
   const { scene } = useGLTF(resolvedUrl, true, true, configureGltfLoader);
 
   // Clonar la escena para permitir múltiples instancias independientes sin compartir matrices de nodo
-  const clonedScene = useMemo(() => {
+  // y calcular el desplazamiento de auto-grounding y centrado métrico
+  const { clonedScene, xOffset, yOffset, zOffset } = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -137,12 +142,18 @@ const SpaceModelContent: React.FC<SpaceModelContentProps> = ({
         child.receiveShadow = receiveShadow;
       }
     });
-    return clone;
+
+    const offset = computeModelGroundingOffset(clone);
+    return {
+      clonedScene: clone,
+      xOffset: offset.xOffset,
+      yOffset: offset.yOffset,
+      zOffset: offset.zOffset,
+    };
   }, [scene, castShadow, receiveShadow]);
 
   return (
-    <primitive
-      object={clonedScene}
+    <group
       position={[posX, posY, posZ]}
       rotation={[0, rotY, 0]}
       scale={[scaleMultiplier, scaleMultiplier, scaleMultiplier]}
@@ -150,6 +161,11 @@ const SpaceModelContent: React.FC<SpaceModelContentProps> = ({
       onPointerDown={onPointerDown}
       onPointerOver={onPointerOver}
       onPointerOut={onPointerOut}
-    />
+    >
+      <primitive
+        object={clonedScene}
+        position={[xOffset, yOffset, zOffset]}
+      />
+    </group>
   );
 };

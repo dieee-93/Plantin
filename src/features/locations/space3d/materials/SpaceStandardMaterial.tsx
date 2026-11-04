@@ -60,20 +60,79 @@ const TexturedMaterial: React.FC<TexturedMaterialProps> = ({
 }) => {
   const { gl } = useThree();
 
-  const texture = useTexture(url, (t) => {
-    if ('isTexture' in t) {
-      t.wrapS = THREE.RepeatWrapping;
-      t.wrapT = THREE.RepeatWrapping;
-      t.colorSpace = THREE.SRGBColorSpace;
-      if (gl?.capabilities) {
-        t.anisotropy = gl.capabilities.getMaxAnisotropy();
-      }
+  const textureInput = React.useMemo(() => {
+    const input: Record<string, string> = { map: url };
+    if (config.normalMapUrl) {
+      input.normalMap = config.normalMapUrl;
     }
-  });
+    if (config.armMapUrl) {
+      input.armMap = config.armMapUrl;
+    }
+    return input;
+  }, [url, config.normalMapUrl, config.armMapUrl]);
+
+  const loaded = useTexture(textureInput);
+
+  const { albedoMap, normalMap, armMap } = React.useMemo(() => {
+    const isSingleTexture = Boolean(loaded && 'isTexture' in (loaded as object));
+    const mapTex = isSingleTexture
+      ? (loaded as unknown as THREE.Texture)
+      : (loaded as Record<string, THREE.Texture | undefined>)?.map;
+    const normalTex = isSingleTexture
+      ? undefined
+      : (loaded as Record<string, THREE.Texture | undefined>)?.normalMap;
+    const armTex = isSingleTexture
+      ? undefined
+      : (loaded as Record<string, THREE.Texture | undefined>)?.armMap;
+
+    const maxAnisotropy = gl?.capabilities?.getMaxAnisotropy?.() ?? 1;
+
+    if (mapTex) {
+      mapTex.wrapS = THREE.RepeatWrapping;
+      mapTex.wrapT = THREE.RepeatWrapping;
+      mapTex.colorSpace = THREE.SRGBColorSpace;
+      mapTex.anisotropy = maxAnisotropy;
+      mapTex.needsUpdate = true;
+    }
+
+    if (normalTex) {
+      normalTex.wrapS = THREE.RepeatWrapping;
+      normalTex.wrapT = THREE.RepeatWrapping;
+      normalTex.colorSpace = THREE.NoColorSpace;
+      normalTex.anisotropy = maxAnisotropy;
+      normalTex.needsUpdate = true;
+    }
+
+    if (armTex) {
+      armTex.wrapS = THREE.RepeatWrapping;
+      armTex.wrapT = THREE.RepeatWrapping;
+      armTex.colorSpace = THREE.NoColorSpace;
+      armTex.anisotropy = maxAnisotropy;
+      armTex.needsUpdate = true;
+    }
+
+    return {
+      albedoMap: mapTex,
+      normalMap: normalTex,
+      armMap: armTex,
+    };
+  }, [loaded, gl]);
+
+  const scale = config.normalScale ?? 1.0;
+  const normalScaleVec = React.useMemo(
+    () => new THREE.Vector2(scale, scale),
+    [scale],
+  );
 
   return (
     <meshStandardMaterial
-      map={texture as THREE.Texture}
+      map={albedoMap}
+      normalMap={normalMap}
+      normalScale={normalScaleVec}
+      aoMap={armMap}
+      aoMapIntensity={config.aoMapIntensity ?? 0.6}
+      roughnessMap={armMap}
+      metalnessMap={armMap}
       color={displayColor}
       roughness={config.roughness}
       metalness={config.metalness ?? 0}

@@ -1290,51 +1290,200 @@ function inferDefaultDimensions(
 }
 
 /**
+ * Busca si existe un objeto válido de soporte debajo de un objeto dado.
+ * Un objeto sirve de soporte si:
+ * 1. Su elevación superior (elevationM + supportSurfaceHeightM) está por debajo (o en la base) del objeto.
+ * 2. Su huella 2D contiene el centro del objeto superior O solapa al menos el 25% del área.
+ * 3. Sus roles son compatibles (canStackRoles).
+ */
+export function findSupportingBaseUnder(
+  item: ExistingObjectSpatialSummary,
+  candidates: ExistingObjectSpatialSummary[],
+  visitedIds = new Set<string>(),
+): { base: ExistingObjectSpatialSummary; topM: number } | null {
+  const itemDefaults = inferDefaultDimensions(item.assetId, item.category);
+  const itemW = item.widthCm ?? itemDefaults.widthCm;
+  const itemD = item.depthCm ?? itemDefaults.depthCm;
+  const itemRot = item.rotationDeg ?? 0;
+  const itemFootprint = computeObjectFootprintPolygon({ x: item.xCm, y: item.yCm }, itemW, itemD, itemRot);
+  const itemFootprintPath = toPath64(itemFootprint);
+  const itemAreaCm2 = itemW * itemD;
+  const itemRole = item.stackRole ?? inferSpatialStackRole(item.assetId, item.category);
+
+  // Bases de soporte pesadas (como mesas y palets) nunca se consideran soportadas por otros
+  if (itemRole === 'support_base') return null;
+
+  const validBases: Array<{ base: ExistingObjectSpatialSummary; topM: number; interAreaCm2: number }> = [];
+
+  for (const cand of candidates) {
+    if (cand.id === item.id || visitedIds.has(cand.id)) continue;
+
+    const baseDefaults = inferDefaultDimensions(cand.assetId, cand.category);
+    const baseW = cand.widthCm ?? baseDefaults.widthCm;
+    const baseD = cand.depthCm ?? baseDefaults.depthCm;
+    const baseRot = cand.rotationDeg ?? 0;
+    const baseFootprint = computeObjectFootprintPolygon({ x: cand.xCm, y: cand.yCm }, baseW, baseD, baseRot);
+    const baseFootprintPath = toPath64(baseFootprint);
+
+    const centerInside = isPointInPolygonCm({ x: item.xCm, y: item.yCm }, baseFootprint);
+    const inter = intersect([itemFootprintPath], [baseFootprintPath], FillRule.NonZero);
+    const interAreaCm2 = Math.abs(areaPaths(inter));
+    const overlapRatio = itemAreaCm2 > 0 ? interAreaCm2 / itemAreaCm2 : 0;
+
+    if (centerInside || overlapRatio >= 0.25) {
+      const candElevationM = cand.elevationM ?? 0;
+      const itemElevationM = item.elevationM ?? 0;
+
+      // Un candidato no puede ser soporte si su base está por encima del ítem
+      // o a la misma altura (a menos que cand sea un support_base en el suelo)
+      if (candElevationM > itemElevationM) continue;
+      if (candElevationM === itemElevationM) {
+        if (candElevationM > 0) continue;
+        const candRole = cand.stackRole ?? inferSpatialStackRole(cand.assetId, cand.category);
+        if (candRole !== 'support_base') continue;
+      }
+
+      const baseRole = cand.stackRole ?? inferSpatialStackRole(cand.assetId, cand.category);
+      if (!canStackRoles(itemRole, baseRole)) continue;
+
+      const candSurfaceHeightM = (cand.supportSurfaceHeightCm ?? cand.heightCm ?? baseDefaults.heightCm) * 0.01;
+      const topM = Math.round((candElevationM + candSurfaceHeightM) * 1000) / 1000;
+
+      validBases.push({ base: cand, topM, interAreaCm2 });
+    }
+  }
+
+  if (validBases.length === 0) return null;
+
+  // Ordenar por la superficie de soporte más alta
+  validBases.sort((a, b) => {
+    if (Math.abs(b.topM - a.topM) > 0.01) {
+      return b.topM - a.topM;
+    }
+    return b.interAreaCm2 - a.interAreaCm2;
+  });
+
+  return validBases[0];
+}
+
+/**
+ * Verifica si un objeto está sólidamente apoyado en el suelo (elevationM <= 0.05)
+ * o si posee una cadena continua de objetos de soporte que llega hasta el suelo.
+ * Evita apilar sobre objetos que estén flotando en el aire.
+ */
+export function isObjectGrounded(
+  obj: ExistingObjectSpatialSummary,
+  allObjects: ExistingObjectSpatialSummary[],
+): boolean {
+  if ((obj.elevationM ?? 0) <= 0.05) return true;
+
+  let current = obj;
+  const visited = new Set<string>([obj.id]);
+
+  while ((current.elevationM ?? 0) > 0.05) {
+    const support = findSupportingBaseUnder(current, allObjects, visited);
+    if (!support) return false; // Vacío debajo -> suspendido en el aire
+
+    visited.add(support.base.id);
+    current = support.base;
+    if (visited.size > 10) return false;
+  }
+
+  return true;
+}
+
+export interface ReconcileStackElevationsOptions {
+  exemptObjectId?: string;
+}
+
+/**
+ * Reconcilia la elevación vertical de todos los objetos en el espacio para mantener
+ * la coherencia física gravitacional (cascada de soporte):
+ * 1. Para objetos en el suelo (elevationM <= 0.05):
+ *    - Si no tienen soporte o son 'support_base', su elevación es 0.
+ * 2. Para objetos elevados (elevationM > 0.05):
+ *    - Busca si existe un soporte válido debajo.
+ *    - Si lo encuentra y la base está anclada al suelo, su elevación se ajusta a la superficie de ese soporte.
+ *    - Si NO lo encuentra (porque la base fue movida o eliminada), la gravedad lo hace caer al suelo (elevationM = 0).
+ * 3. Ejecuta iterativamente hasta convergencia (máximo 6 iteraciones para cadenas profundas).
+ */
+export function reconcileStackElevations<T extends ExistingObjectSpatialSummary>(
+  objects: T[],
+  options?: ReconcileStackElevationsOptions,
+): T[] {
+  if (!objects || objects.length === 0) return [];
+
+  let currentList: T[] = objects.map((obj) => ({ ...obj }));
+  const exemptId = options?.exemptObjectId;
+  const MAX_PASSES = 6;
+
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    let changed = false;
+
+    // Procesar de menor a mayor elevación para que la cascada caiga en orden
+    const sortedIndices = currentList
+      .map((obj, idx) => ({ idx, elev: obj.elevationM ?? 0 }))
+      .sort((a, b) => a.elev - b.elev)
+      .map((item) => item.idx);
+
+    for (const idx of sortedIndices) {
+      const obj = currentList[idx];
+
+      // Si el objeto está exento por modificación explícita del usuario, preservar su elevación
+      if (exemptId && obj.id === exemptId) {
+        continue;
+      }
+
+      const role = obj.stackRole ?? inferSpatialStackRole(obj.assetId, obj.category);
+
+      if (role === 'support_base') {
+        if ((obj.elevationM ?? 0) !== 0) {
+          currentList[idx] = { ...obj, elevationM: 0 };
+          changed = true;
+        }
+        continue;
+      }
+
+      const support = findSupportingBaseUnder(obj, currentList);
+      let targetElevationM = 0;
+      if (support && isObjectGrounded(support.base, currentList)) {
+        targetElevationM = support.topM;
+      }
+
+      const currentElevationM = obj.elevationM ?? 0;
+      if (Math.abs(currentElevationM - targetElevationM) > 0.005) {
+        currentList[idx] = { ...obj, elevationM: targetElevationM };
+        changed = true;
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  return currentList;
+}
+
+/**
  * Calcula niveles de apilado transitivos debajo de un objeto base.
  */
 function countStackLevelsUnder(
   baseObj: ExistingObjectSpatialSummary,
   allObjects: ExistingObjectSpatialSummary[],
 ): number {
+  if (!isObjectGrounded(baseObj, allObjects)) {
+    return 999; // Base no anclada, inválida
+  }
+
   let count = 1;
   let current = baseObj;
   const visited = new Set<string>([baseObj.id]);
 
   while ((current.elevationM ?? 0) > 0.05) {
-    const currentElevation = current.elevationM ?? 0;
-    const currentDefaults = inferDefaultDimensions(current.assetId, current.category);
-    const currFootprint = computeObjectFootprintPolygon(
-      { x: current.xCm, y: current.yCm },
-      current.widthCm ?? currentDefaults.widthCm,
-      current.depthCm ?? currentDefaults.depthCm,
-      current.rotationDeg ?? 0,
-    );
-    const currFootprintPath = toPath64(currFootprint);
-
-    // Buscar un objeto por debajo cuya huella sostenga al actual
-    const under = allObjects.find((o) => {
-      if (visited.has(o.id)) return false;
-      const oElevation = o.elevationM ?? 0;
-      if (oElevation >= currentElevation - 0.02) return false;
-
-      const oDefaults = inferDefaultDimensions(o.assetId, o.category);
-      const poly = computeObjectFootprintPolygon(
-        { x: o.xCm, y: o.yCm },
-        o.widthCm ?? oDefaults.widthCm,
-        o.depthCm ?? oDefaults.depthCm,
-        o.rotationDeg ?? 0,
-      );
-
-      // Soportado si el centro está dentro o si intersectan con área significativa
-      if (isPointInPolygonCm({ x: current.xCm, y: current.yCm }, poly)) return true;
-      const inter = intersect([currFootprintPath], [toPath64(poly)], FillRule.NonZero);
-      return Math.abs(areaPaths(inter)) >= 100;
-    });
-
-    if (!under) break;
-    visited.add(under.id);
+    const support = findSupportingBaseUnder(current, allObjects, visited);
+    if (!support) break;
+    visited.add(support.base.id);
     count++;
-    current = under;
+    current = support.base;
     if (count > 10) break; // salvaguarda contra bucles infinitos
   }
 
@@ -1451,6 +1600,18 @@ export function detectAutoStackElevation(
   const bestCandidate = containingCandidates[0];
   const baseObj = bestCandidate.base;
 
+  // Validar que la base esté anclada al suelo o soporte continuo firme
+  if (!isObjectGrounded(baseObj, existingObjects)) {
+    return {
+      isStacked: false,
+      targetElevationM: 0,
+      baseObjectId: null,
+      baseObjectLabel: null,
+      stackLevels: 0,
+      rejectionReason: 'El objeto base no está apoyado sobre el suelo o soporte firme',
+    };
+  }
+
   const baseRole =
     baseObj.stackRole ?? inferSpatialStackRole(baseObj.assetId, baseObj.category);
 
@@ -1481,6 +1642,18 @@ export function detectAutoStackElevation(
 
   // Z_top = Z_base + H_base + 0.001 m (1mm de epsilon anti Z-fighting)
   const targetElevationM = Math.round((bestCandidate.topM + 0.001) * 1000) / 1000;
+
+  const MAX_ALLOWED_ELEVATION_M = 2.5;
+  if (targetElevationM > MAX_ALLOWED_ELEVATION_M) {
+    return {
+      isStacked: false,
+      targetElevationM: 0,
+      baseObjectId: null,
+      baseObjectLabel: null,
+      stackLevels: currentLevelsUnder,
+      rejectionReason: `Límite máximo de altura de apilado alcanzado (${MAX_ALLOWED_ELEVATION_M}m)`,
+    };
+  }
 
   return {
     isStacked: true,

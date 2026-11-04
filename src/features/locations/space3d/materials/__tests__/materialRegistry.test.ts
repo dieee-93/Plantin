@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   FLOOR_MATERIAL_CONFIGS,
   getFloorMaterialConfig,
+  getStructuralMaterialConfig,
   getWallMaterialConfig,
+  STRUCTURAL_MATERIAL_CONFIGS,
   WALL_MATERIAL_CONFIGS,
 } from '../materialRegistry';
 
@@ -26,6 +28,8 @@ describe('materialRegistry', () => {
       expect(config.metersPerTileY).toBeGreaterThan(0);
       expect(config.roughness).toBeGreaterThanOrEqual(0);
       expect(config.roughness).toBeLessThanOrEqual(1);
+      expect(config.normalScale).toBeGreaterThan(0);
+      expect(config.aoMapIntensity).toBeGreaterThan(0);
     }
   });
 
@@ -64,30 +68,52 @@ describe('materialRegistry', () => {
     expect(tintedBrick.fallbackColor).toBe('#78350f');
   });
 
-  it('defines valid, well-formed texture URLs for textured floor and wall materials', () => {
-    const expectedFloorTextures: Record<string, string> = {
-      soil: '/textures/floors/soil/albedo.webp',
-      grass: '/textures/floors/grass/albedo.webp',
-      concrete: '/textures/floors/concrete/albedo.webp',
-      gravel: '/textures/floors/gravel/albedo.webp',
-      tile: '/textures/floors/tile/albedo.webp',
-      wood: '/textures/floors/wood/albedo.webp',
-      mulch: '/textures/floors/mulch/albedo.webp',
-    };
+  it('defines valid, well-formed PBR texture URLs (albedo, normal, arm) for textured floor and wall materials', () => {
+    const expectedFloorTypes = [
+      'soil',
+      'grass',
+      'concrete',
+      'gravel',
+      'tile',
+      'wood',
+      'mulch',
+    ] as const;
 
-    for (const [key, expectedUrl] of Object.entries(expectedFloorTextures)) {
-      expect(FLOOR_MATERIAL_CONFIGS[key as keyof typeof FLOOR_MATERIAL_CONFIGS]?.textureUrl).toBe(expectedUrl);
+    for (const key of expectedFloorTypes) {
+      const config = FLOOR_MATERIAL_CONFIGS[key];
+      expect(config.textureUrl).toBe(`/textures/floors/${key}/albedo.webp`);
+      expect(config.normalMapUrl).toBe(`/textures/floors/${key}/normal.webp`);
+      expect(config.armMapUrl).toBe(`/textures/floors/${key}/arm.webp`);
     }
 
-    const expectedWallTextures: Record<string, string> = {
-      brick: '/textures/walls/brick/albedo.webp',
-      concrete: '/textures/walls/concrete/albedo.webp',
-      wood_fence: '/textures/walls/wood_fence/albedo.webp',
-      drywall: '/textures/walls/drywall/albedo.webp',
-    };
+    const expectedWallTypes = [
+      'brick',
+      'concrete',
+      'wood_fence',
+      'drywall',
+    ] as const;
 
-    for (const [key, expectedUrl] of Object.entries(expectedWallTextures)) {
-      expect(WALL_MATERIAL_CONFIGS[key as keyof typeof WALL_MATERIAL_CONFIGS]?.textureUrl).toBe(expectedUrl);
+    for (const key of expectedWallTypes) {
+      const config = WALL_MATERIAL_CONFIGS[key];
+      expect(config.textureUrl).toBe(`/textures/walls/${key}/albedo.webp`);
+      expect(config.normalMapUrl).toBe(`/textures/walls/${key}/normal.webp`);
+      expect(config.armMapUrl).toBe(`/textures/walls/${key}/arm.webp`);
+      expect(config.normalScale).toBeGreaterThan(0);
+      expect(config.aoMapIntensity).toBeGreaterThan(0);
     }
+  });
+
+  it('provides structural material configurations for wood_carpentry and metal_frame', () => {
+    const woodCarpentry = getStructuralMaterialConfig('wood_carpentry');
+    expect(woodCarpentry).toEqual(STRUCTURAL_MATERIAL_CONFIGS.wood_carpentry);
+    expect(woodCarpentry.textureUrl).toBe('/textures/floors/wood/albedo.webp');
+    expect(woodCarpentry.normalMapUrl).toBe('/textures/floors/wood/normal.webp');
+    expect(woodCarpentry.armMapUrl).toBe('/textures/floors/wood/arm.webp');
+    expect(woodCarpentry.tintColor).toBe('#b45309');
+
+    const metalFrame = getStructuralMaterialConfig('metal_frame');
+    expect(metalFrame).toEqual(STRUCTURAL_MATERIAL_CONFIGS.metal_frame);
+    expect(metalFrame.metalness).toBeGreaterThanOrEqual(0.7);
+    expect(metalFrame.roughness).toBeLessThanOrEqual(0.4);
   });
 });

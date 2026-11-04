@@ -6,12 +6,13 @@ import type { PlacedObjectSpatialCm } from '@/store/spaceLayoutStore';
 
 // Mock PivotControls for React Testing Library DOM rendering if needed or inspect props
 vi.mock('@react-three/drei', () => ({
-  PivotControls: ({ children, activeAxes, fixed, depthTest, onDragStart, onDrag, onDragEnd }: any) => (
+  PivotControls: ({ children, activeAxes, fixed, depthTest, disableRotations, onDragStart, onDrag, onDragEnd }: any) => (
     <div
       data-testid="mock-pivot-controls"
       data-active-axes={JSON.stringify(activeAxes)}
       data-fixed={String(fixed)}
       data-depth-test={String(depthTest)}
+      data-disable-rotations={String(disableRotations)}
       onClick={() => {
         onDragStart?.();
         const dummyMatrix = new THREE.Matrix4().makeTranslation(1, 0, 0);
@@ -67,6 +68,7 @@ describe('SpaceObjectGizmo - Declarative 3D Manipulator Wrapper', () => {
     expect(gizmo.getAttribute('data-active-axes')).toBe(JSON.stringify([true, false, true]));
     expect(gizmo.getAttribute('data-fixed')).toBe('true');
     expect(gizmo.getAttribute('data-depth-test')).toBe('false');
+    expect(gizmo.getAttribute('data-disable-rotations')).toBe('true');
   });
 
   it('invokes onTransformChange and onTransformCommit when dragging occurs', () => {

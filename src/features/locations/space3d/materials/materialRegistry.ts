@@ -1,5 +1,7 @@
 import type { FloorMaterialType, WallMaterialType } from '@/domain/spaceGeometry';
 
+export type StructuralMaterialType = 'wood_carpentry' | 'metal_frame';
+
 export interface SpaceMaterialConfig {
   id: string;
   label: string;
@@ -11,6 +13,10 @@ export interface SpaceMaterialConfig {
   metersPerTileX: number;
   metersPerTileY: number;
   textureUrl?: string;
+  normalMapUrl?: string;
+  armMapUrl?: string; // R = Ambient Occlusion, G = Roughness, B = Metalness
+  normalScale?: number;
+  aoMapIntensity?: number;
   tintColor?: string;
 }
 
@@ -24,6 +30,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 1.5,
     metersPerTileY: 1.5,
     textureUrl: '/textures/floors/soil/albedo.webp',
+    normalMapUrl: '/textures/floors/soil/normal.webp',
+    armMapUrl: '/textures/floors/soil/arm.webp',
+    normalScale: 0.85,
+    aoMapIntensity: 0.7,
   },
   grass: {
     id: 'grass',
@@ -34,6 +44,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 1.2,
     metersPerTileY: 1.2,
     textureUrl: '/textures/floors/grass/albedo.webp',
+    normalMapUrl: '/textures/floors/grass/normal.webp',
+    armMapUrl: '/textures/floors/grass/arm.webp',
+    normalScale: 0.7,
+    aoMapIntensity: 0.65,
   },
   concrete: {
     id: 'concrete',
@@ -44,6 +58,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 2.0,
     metersPerTileY: 2.0,
     textureUrl: '/textures/floors/concrete/albedo.webp',
+    normalMapUrl: '/textures/floors/concrete/normal.webp',
+    armMapUrl: '/textures/floors/concrete/arm.webp',
+    normalScale: 0.5,
+    aoMapIntensity: 0.55,
   },
   gravel: {
     id: 'gravel',
@@ -54,6 +72,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 1.0,
     metersPerTileY: 1.0,
     textureUrl: '/textures/floors/gravel/albedo.webp',
+    normalMapUrl: '/textures/floors/gravel/normal.webp',
+    armMapUrl: '/textures/floors/gravel/arm.webp',
+    normalScale: 1.0,
+    aoMapIntensity: 0.75,
   },
   tile: {
     id: 'tile',
@@ -64,6 +86,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 0.5,
     metersPerTileY: 0.5,
     textureUrl: '/textures/floors/tile/albedo.webp',
+    normalMapUrl: '/textures/floors/tile/normal.webp',
+    armMapUrl: '/textures/floors/tile/arm.webp',
+    normalScale: 0.45,
+    aoMapIntensity: 0.5,
   },
   wood: {
     id: 'wood',
@@ -74,6 +100,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 1.0,
     metersPerTileY: 0.2,
     textureUrl: '/textures/floors/wood/albedo.webp',
+    normalMapUrl: '/textures/floors/wood/normal.webp',
+    armMapUrl: '/textures/floors/wood/arm.webp',
+    normalScale: 0.65,
+    aoMapIntensity: 0.6,
   },
   mulch: {
     id: 'mulch',
@@ -84,6 +114,10 @@ export const FLOOR_MATERIAL_CONFIGS: Record<FloorMaterialType, SpaceMaterialConf
     metersPerTileX: 1.0,
     metersPerTileY: 1.0,
     textureUrl: '/textures/floors/mulch/albedo.webp',
+    normalMapUrl: '/textures/floors/mulch/normal.webp',
+    armMapUrl: '/textures/floors/mulch/arm.webp',
+    normalScale: 0.9,
+    aoMapIntensity: 0.75,
   },
 };
 
@@ -97,6 +131,10 @@ export const WALL_MATERIAL_CONFIGS: Record<WallMaterialType, SpaceMaterialConfig
     metersPerTileX: 0.5,
     metersPerTileY: 0.25,
     textureUrl: '/textures/walls/brick/albedo.webp',
+    normalMapUrl: '/textures/walls/brick/normal.webp',
+    armMapUrl: '/textures/walls/brick/arm.webp',
+    normalScale: 0.85,
+    aoMapIntensity: 0.7,
   },
   concrete: {
     id: 'concrete',
@@ -107,6 +145,10 @@ export const WALL_MATERIAL_CONFIGS: Record<WallMaterialType, SpaceMaterialConfig
     metersPerTileX: 1.5,
     metersPerTileY: 1.5,
     textureUrl: '/textures/walls/concrete/albedo.webp',
+    normalMapUrl: '/textures/walls/concrete/normal.webp',
+    armMapUrl: '/textures/walls/concrete/arm.webp',
+    normalScale: 0.6,
+    aoMapIntensity: 0.55,
   },
   glass_greenhouse: {
     id: 'glass_greenhouse',
@@ -139,6 +181,10 @@ export const WALL_MATERIAL_CONFIGS: Record<WallMaterialType, SpaceMaterialConfig
     metersPerTileX: 1.0,
     metersPerTileY: 0.2,
     textureUrl: '/textures/walls/wood_fence/albedo.webp',
+    normalMapUrl: '/textures/walls/wood_fence/normal.webp',
+    armMapUrl: '/textures/walls/wood_fence/arm.webp',
+    normalScale: 0.75,
+    aoMapIntensity: 0.65,
   },
   wire_fence: {
     id: 'wire_fence',
@@ -160,6 +206,37 @@ export const WALL_MATERIAL_CONFIGS: Record<WallMaterialType, SpaceMaterialConfig
     metersPerTileX: 1.2,
     metersPerTileY: 2.4,
     textureUrl: '/textures/walls/drywall/albedo.webp',
+    normalMapUrl: '/textures/walls/drywall/normal.webp',
+    armMapUrl: '/textures/walls/drywall/arm.webp',
+    normalScale: 0.35,
+    aoMapIntensity: 0.4,
+  },
+};
+
+export const STRUCTURAL_MATERIAL_CONFIGS: Record<StructuralMaterialType, SpaceMaterialConfig> = {
+  wood_carpentry: {
+    id: 'wood_carpentry',
+    label: 'Carpintería de madera',
+    fallbackColor: '#78350f',
+    tintColor: '#b45309',
+    roughness: 0.6,
+    metalness: 0.0,
+    metersPerTileX: 1.0,
+    metersPerTileY: 1.0,
+    textureUrl: '/textures/floors/wood/albedo.webp',
+    normalMapUrl: '/textures/floors/wood/normal.webp',
+    armMapUrl: '/textures/floors/wood/arm.webp',
+    normalScale: 0.5,
+    aoMapIntensity: 0.5,
+  },
+  metal_frame: {
+    id: 'metal_frame',
+    label: 'Marco metálico arquitectónico',
+    fallbackColor: '#334155',
+    roughness: 0.35,
+    metalness: 0.75,
+    metersPerTileX: 1.0,
+    metersPerTileY: 1.0,
   },
 };
 
@@ -180,3 +257,13 @@ export function getWallMaterialConfig(
   if (!tintColor) return base;
   return { ...base, tintColor, fallbackColor: tintColor };
 }
+
+export function getStructuralMaterialConfig(
+  type: StructuralMaterialType,
+  tintColor?: string,
+): SpaceMaterialConfig {
+  const base = STRUCTURAL_MATERIAL_CONFIGS[type] ?? STRUCTURAL_MATERIAL_CONFIGS.metal_frame;
+  if (!tintColor) return base;
+  return { ...base, tintColor, fallbackColor: tintColor };
+}
+

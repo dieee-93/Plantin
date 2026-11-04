@@ -14,6 +14,7 @@ import {
   scalePolygonFromCenter,
   syncWallsWithBoundary,
   wouldPolygonSelfIntersect,
+  reconcileStackElevations,
   type FloorMaterialType,
   type HardscapeZoneCm,
   type PathStrokeCm,
@@ -1182,13 +1183,14 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
           ...objectData,
           id,
         };
+        const nextList = reconcileStackElevations([...(current.placedObjects ?? []), newObj]);
         set((state) => ({
           history: pushStructuralSnapshot(locationId, current, state.history, true),
           layouts: {
             ...state.layouts,
             [locationId]: {
               ...current,
-              placedObjects: [...(current.placedObjects ?? []), newObj],
+              placedObjects: nextList,
             },
           },
         }));
@@ -1203,13 +1205,16 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         const updated = { ...current.placedObjects[targetIndex], ...patch };
         const nextList = current.placedObjects.slice();
         nextList[targetIndex] = updated;
+        const reconciledList = reconcileStackElevations(nextList, {
+          exemptObjectId: patch.elevationM !== undefined ? objectId : undefined,
+        });
         set((state) => ({
           history: pushStructuralSnapshot(locationId, current, state.history, true),
           layouts: {
             ...state.layouts,
             [locationId]: {
               ...current,
-              placedObjects: nextList,
+              placedObjects: reconciledList,
             },
           },
         }));
@@ -1218,13 +1223,15 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
       removeObject: (locationId, objectId) => {
         const current = get().getOrCreateSpaceLayout(locationId);
         if (!current.placedObjects) return;
+        const remaining = (current.placedObjects ?? []).filter((o) => o.id !== objectId);
+        const reconciledList = reconcileStackElevations(remaining);
         set((state) => ({
           history: pushStructuralSnapshot(locationId, current, state.history, true),
           layouts: {
             ...state.layouts,
             [locationId]: {
               ...current,
-              placedObjects: (current.placedObjects ?? []).filter((o) => o.id !== objectId),
+              placedObjects: reconciledList,
             },
           },
         }));

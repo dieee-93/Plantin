@@ -1,0 +1,218 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-11-04T17:23:47.870Z",
+  "source": "Poly Haven / MatSynth (CC0-1.0)",
+  "license": "CC0-1.0",
+  "resolution": 1024,
+  "materials": [
+    {
+      "id": "soil",
+      "category": "floors",
+      "polyhavenId": "brown_mud_02",
+      "source": "https://polyhaven.com/a/brown_mud_02",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/soil/albedo.webp",
+        "normal": "/textures/floors/soil/normal.webp",
+        "arm": "/textures/floors/soil/arm.webp"
+      },
+      "sizes": {
+        "albedo": 278308,
+        "normal": 526796,
+        "arm": 209718
+      },
+      "sizeBytes": 1014822
+    },
+    {
+      "id": "grass",
+      "category": "floors",
+      "polyhavenId": "leafy_grass",
+      "source": "https://polyhaven.com/a/leafy_grass",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/grass/albedo.webp",
+        "normal": "/textures/floors/grass/normal.webp",
+        "arm": "/textures/floors/grass/arm.webp"
+      },
+      "sizes": {
+        "albedo": 440754,
+        "normal": 562246,
+        "arm": 262516
+      },
+      "sizeBytes": 1265516
+    },
+    {
+      "id": "concrete",
+      "category": "floors",
+      "polyhavenId": "concrete_floor_worn_001",
+      "source": "https://polyhaven.com/a/concrete_floor_worn_001",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/concrete/albedo.webp",
+        "normal": "/textures/floors/concrete/normal.webp",
+        "arm": "/textures/floors/concrete/arm.webp"
+      },
+      "sizes": {
+        "albedo": 73506,
+        "normal": 71682,
+        "arm": 84554
+      },
+      "sizeBytes": 229742
+    },
+    {
+      "id": "gravel",
+      "category": "floors",
+      "polyhavenId": "gravel_floor_02",
+      "source": "https://polyhaven.com/a/gravel_floor_02",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/gravel/albedo.webp",
+        "normal": "/textures/floors/gravel/normal.webp",
+        "arm": "/textures/floors/gravel/arm.webp"
+      },
+      "sizes": {
+        "albedo": 499484,
+        "normal": 604342,
+        "arm": 314422
+      },
+      "sizeBytes": 1418248
+    },
+    {
+      "id": "tile",
+      "category": "floors",
+      "polyhavenId": "floor_tiles_06",
+      "source": "https://polyhaven.com/a/floor_tiles_06",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/tile/albedo.webp",
+        "normal": "/textures/floors/tile/normal.webp",
+        "arm": "/textures/floors/tile/arm.webp"
+      },
+      "sizes": {
+        "albedo": 122270,
+        "normal": 9390,
+        "arm": 18696
+      },
+      "sizeBytes": 150356
+    },
+    {
+      "id": "wood",
+      "category": "floors",
+      "polyhavenId": "wood_floor_deck",
+      "source": "https://polyhaven.com/a/wood_floor_deck",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/wood/albedo.webp",
+        "normal": "/textures/floors/wood/normal.webp",
+        "arm": "/textures/floors/wood/arm.webp"
+      },
+      "sizes": {
+        "albedo": 287852,
+        "normal": 105018,
+        "arm": 101282
+      },
+      "sizeBytes": 494152
+    },
+    {
+      "id": "mulch",
+      "category": "floors",
+      "polyhavenId": "bark_brown_02",
+      "source": "https://polyhaven.com/a/bark_brown_02",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/floors/mulch/albedo.webp",
+        "normal": "/textures/floors/mulch/normal.webp",
+        "arm": "/textures/floors/mulch/arm.webp"
+      },
+      "sizes": {
+        "albedo": 363058,
+        "normal": 388220,
+        "arm": 163212
+      },
+      "sizeBytes": 914490
+    },
+    {
+      "id": "brick",
+      "category": "walls",
+      "polyhavenId": "red_brick",
+      "source": "https://polyhaven.com/a/red_brick",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/walls/brick/albedo.webp",
+        "normal": "/textures/walls/brick/normal.webp",
+        "arm": "/textures/walls/brick/arm.webp"
+      },
+      "sizes": {
+        "albedo": 188756,
+        "normal": 354632,
+        "arm": 94380
+      },
+      "sizeBytes": 637768
+    },
+    {
+      "id": "concrete",
+      "category": "walls",
+      "polyhavenId": "concrete_wall_008",
+      "source": "https://polyhaven.com/a/concrete_wall_008",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/walls/concrete/albedo.webp",
+        "normal": "/textures/walls/concrete/normal.webp",
+        "arm": "/textures/walls/concrete/arm.webp"
+      },
+      "sizes": {
+        "albedo": 158578,
+        "normal": 44894,
+        "arm": 72738
+      },
+      "sizeBytes": 276210
+    },
+    {
+      "id": "wood_fence",
+      "category": "walls",
+      "polyhavenId": "weathered_planks",
+      "source": "https://polyhaven.com/a/weathered_planks",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/walls/wood_fence/albedo.webp",
+        "normal": "/textures/walls/wood_fence/normal.webp",
+        "arm": "/textures/walls/wood_fence/arm.webp"
+      },
+      "sizes": {
+        "albedo": 115534,
+        "normal": 120576,
+        "arm": 37916
+      },
+      "sizeBytes": 274026
+    },
+    {
+      "id": "drywall",
+      "category": "walls",
+      "polyhavenId": "painted_plaster_wall",
+      "source": "https://polyhaven.com/a/painted_plaster_wall",
+      "license": "CC0-1.0",
+      "resolution": 1024,
+      "maps": {
+        "albedo": "/textures/walls/drywall/albedo.webp",
+        "normal": "/textures/walls/drywall/normal.webp",
+        "arm": "/textures/walls/drywall/arm.webp"
+      },
+      "sizes": {
+        "albedo": 228248,
+        "normal": 273680,
+        "arm": 15884
+      },
+      "sizeBytes": 517812
+    }
+  ]
+}

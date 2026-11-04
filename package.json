@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "assets:prompts": "tsx scripts/assets/make-prompts.ts"
+    "assets:prompts": "tsx scripts/assets/make-prompts.ts",
+    "assets:textures": "tsx scripts/assets/fetch-pbr-textures.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

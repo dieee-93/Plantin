@@ -21,9 +21,11 @@ import {
   inferSpatialStackRole,
   inflatePathToPolygon,
   insertPolygonVertex,
+  isObjectGrounded,
   isPointInPolygonCm,
   isRectangularPolygon,
   movePolygonVertex,
+  reconcileStackElevations,
   removePolygonVertex,
   sanitizeAndWeldPolygon,
   scalePolygonFromCenter,
@@ -33,6 +35,7 @@ import {
   validateObjectPlacement,
   wouldPolygonSelfIntersect,
   type HardscapeZoneCm,
+  type ExistingObjectSpatialSummary,
   type PathStrokeCm,
   type Polygon2DCm,
   type WallSegmentCm,
@@ -1100,6 +1103,151 @@ describe('spaceGeometry - Slice 9: Object Footprint & Collision Validation (Clip
       expect(result.isBlockingOpening).toBe(true);
       expect(result.openingKind).toBe('door');
       expect(result.warning).toBe('⚠️ Obstruye puerta de acceso');
+    });
+  });
+
+  describe('Gravitational Stack Cascade Reconciler & Grounding Verification', () => {
+    it('maintains grounded object at floor level (elevation 0)', () => {
+      const objects: ExistingObjectSpatialSummary[] = [
+        {
+          id: 'table-1',
+          assetId: 'table_metal_stainless_a03',
+          xCm: 500,
+          yCm: 300,
+          widthCm: 180,
+          depthCm: 70,
+          heightCm: 85,
+          supportSurfaceHeightCm: 85,
+          elevationM: 0,
+        },
+      ];
+
+      const reconciled = reconcileStackElevations(objects);
+      expect(reconciled[0].elevationM).toBe(0);
+    });
+
+    it('reconciles multi-tier stack and cascades down when supporting base is removed or moved away', () => {
+      // Caso: Mesa en (500, 300) con Crate 1 y Crate 2 apilados
+      // Al mover la mesa a (100, 100), los cajones quedan huérfanos en (500, 300).
+      // Deben colapsar ordenadamente: Crate 1 cae al suelo (0m) y Crate 2 cae sobre Crate 1 (0.25m).
+      const objects: ExistingObjectSpatialSummary[] = [
+        {
+          id: 'table-1',
+          assetId: 'table_metal_stainless_a03',
+          xCm: 100, // La mesa fue movida lejos
+          yCm: 100,
+          widthCm: 180,
+          depthCm: 70,
+          heightCm: 85,
+          supportSurfaceHeightCm: 85,
+          elevationM: 0,
+          stackRole: 'support_base',
+        },
+        {
+          id: 'crate-1',
+          assetId: 'crate_harvest_plastic_green_a01',
+          xCm: 500,
+          yCm: 300,
+          widthCm: 60,
+          depthCm: 40,
+          heightCm: 25,
+          supportSurfaceHeightCm: 25,
+          elevationM: 0.85, // antes estaba sobre la mesa
+          stackRole: 'stackable_item',
+        },
+        {
+          id: 'crate-2',
+          assetId: 'crate_harvest_plastic_green_a01',
+          xCm: 500,
+          yCm: 300,
+          widthCm: 60,
+          depthCm: 40,
+          heightCm: 25,
+          supportSurfaceHeightCm: 25,
+          elevationM: 1.10, // antes estaba sobre crate-1
+          stackRole: 'stackable_item',
+        },
+      ];
+
+      const reconciled = reconcileStackElevations(objects);
+
+      const table = reconciled.find((o) => o.id === 'table-1')!;
+      const crate1 = reconciled.find((o) => o.id === 'crate-1')!;
+      const crate2 = reconciled.find((o) => o.id === 'crate-2')!;
+
+      expect(table.elevationM).toBe(0);
+      // Crate 1 cae al suelo porque ya no tiene mesa debajo
+      expect(crate1.elevationM).toBe(0);
+      // Crate 2 cae sobre Crate 1 a su nueva altura (0 + 0.25 = 0.25m)
+      expect(crate2.elevationM).toBeCloseTo(0.25, 2);
+    });
+
+    it('drops floating ungrounded objects (leapfrog bug) to ground level', () => {
+      // Simula el escenario del usuario con 2 cajones a 2.0m y 2.25m en el aire sin nada abajo
+      const floatingCrates: ExistingObjectSpatialSummary[] = [
+        {
+          id: 'floating-1',
+          assetId: 'crate_harvest_plastic_green_a01',
+          xCm: 400,
+          yCm: 400,
+          widthCm: 60,
+          depthCm: 40,
+          heightCm: 25,
+          supportSurfaceHeightCm: 25,
+          elevationM: 2.0,
+          stackRole: 'stackable_item',
+        },
+        {
+          id: 'floating-2',
+          assetId: 'crate_harvest_plastic_green_a01',
+          xCm: 400,
+          yCm: 400,
+          widthCm: 60,
+          depthCm: 40,
+          heightCm: 25,
+          supportSurfaceHeightCm: 25,
+          elevationM: 2.25,
+          stackRole: 'stackable_item',
+        },
+      ];
+
+      const reconciled = reconcileStackElevations(floatingCrates);
+      const c1 = reconciled.find((o) => o.id === 'floating-1')!;
+      const c2 = reconciled.find((o) => o.id === 'floating-2')!;
+
+      // El inferior cae al suelo
+      expect(c1.elevationM).toBe(0);
+      // El superior queda apoyado sobre el inferior
+      expect(c2.elevationM).toBeCloseTo(0.25, 2);
+    });
+
+    it('detectAutoStackElevation blocks stacking on ungrounded/floating objects', () => {
+      // Objeto base flotando en el aire sin nada debajo
+      const floatingBase: ExistingObjectSpatialSummary = {
+        id: 'floating-crate',
+        assetId: 'crate_harvest_plastic_green_a01',
+        xCm: 400,
+        yCm: 400,
+        widthCm: 60,
+        depthCm: 40,
+        heightCm: 25,
+        supportSurfaceHeightCm: 25,
+        elevationM: 1.50, // suspendido en el aire
+        stackRole: 'stackable_item',
+      };
+
+      expect(isObjectGrounded(floatingBase, [floatingBase])).toBe(false);
+
+      const result = detectAutoStackElevation({
+        centerCm: { x: 400, y: 400 },
+        widthCm: 60,
+        depthCm: 40,
+        itemAssetId: 'crate_harvest_plastic_green_a01',
+        existingObjects: [floatingBase],
+      });
+
+      expect(result.isStacked).toBe(false);
+      expect(result.rejectionReason).toContain('apoyado');
     });
   });
 });

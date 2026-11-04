@@ -38,6 +38,8 @@ describe('metricUVs utilities', () => {
 
       expect(minU).toBeCloseTo(0, 4);
       expect(maxU).toBeCloseTo(4, 4);
+      expect(geom.getAttribute('uv1')).toBe(uvAttr);
+      expect(geom.getAttribute('uv2')).toBe(uvAttr);
     });
 
     it('respects custom tile scale in meters', () => {
@@ -127,6 +129,30 @@ describe('metricUVs utilities', () => {
       // Top of header: vTop = (1.0 + 1.5) / 0.5 = 5.0
       expect(uv.getY(16)).toBeCloseTo(5.0, 4);
       expect(uv.getY(17)).toBeCloseTo(5.0, 4);
+      expect(headerGeom.getAttribute('uv1')).toBe(uv);
+      expect(headerGeom.getAttribute('uv2')).toBe(uv);
+    });
+
+    it('maps side jamb caps (+X and -X faces) using thicknessM', () => {
+      const prismGeom = new THREE.BoxGeometry(2, 1.5, 0.3);
+      applyContinuousWallPrismUVs(prismGeom, {
+        prismXStartM: 0,
+        prismYBottomM: 0,
+        prismLengthM: 2,
+        prismHeightM: 1.5,
+        thicknessM: 0.3,
+        metersPerTileX: 0.5,
+        metersPerTileY: 0.25,
+      });
+
+      const uv = prismGeom.attributes.uv;
+      // uThickness = 0.3 / 0.5 = 0.6, vTop = 1.5 / 0.25 = 6.0
+      expect(uv.getX(0)).toBeCloseTo(0, 4);
+      expect(uv.getY(0)).toBeCloseTo(6.0, 4);
+      expect(uv.getX(1)).toBeCloseTo(0.6, 4);
+      expect(uv.getY(1)).toBeCloseTo(6.0, 4);
+      expect(uv.getX(5)).toBeCloseTo(0.6, 4);
+      expect(uv.getY(5)).toBeCloseTo(6.0, 4);
     });
   });
 });

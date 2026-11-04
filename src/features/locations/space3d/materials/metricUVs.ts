@@ -49,6 +49,8 @@ export function applyMetricUVsToShapeGeometry(
   }
 
   uvAttr.needsUpdate = true;
+  geometry.setAttribute('uv1', uvAttr);
+  geometry.setAttribute('uv2', uvAttr);
   return geometry;
 }
 
@@ -71,6 +73,7 @@ export function applyContinuousWallPrismUVs(
     prismYBottomM,
     prismLengthM,
     prismHeightM,
+    thicknessM = 0.2,
     metersPerTileX = DEFAULT_METERS_PER_TILE_X,
     metersPerTileY = DEFAULT_METERS_PER_TILE_Y,
   } = options;
@@ -82,6 +85,19 @@ export function applyContinuousWallPrismUVs(
   const uEnd = (prismXStartM + prismLengthM) / metersPerTileX;
   const vBottom = prismYBottomM / metersPerTileY;
   const vTop = (prismYBottomM + prismHeightM) / metersPerTileY;
+  const uThickness = thicknessM / metersPerTileX;
+
+  // Face +X (Right jamb / side cap)
+  uvAttr.setXY(0, 0, vTop);
+  uvAttr.setXY(1, uThickness, vTop);
+  uvAttr.setXY(2, 0, vBottom);
+  uvAttr.setXY(3, uThickness, vBottom);
+
+  // Face -X (Left jamb / side cap)
+  uvAttr.setXY(4, 0, vTop);
+  uvAttr.setXY(5, uThickness, vTop);
+  uvAttr.setXY(6, 0, vBottom);
+  uvAttr.setXY(7, uThickness, vBottom);
 
   // Face +Z (Front face of the wall)
   // Vertex 16: Top-Left (-x, +y)
@@ -106,5 +122,7 @@ export function applyContinuousWallPrismUVs(
   uvAttr.setXY(11, uEnd, 1);
 
   uvAttr.needsUpdate = true;
+  geometry.setAttribute('uv1', uvAttr);
+  geometry.setAttribute('uv2', uvAttr);
   return geometry;
 }

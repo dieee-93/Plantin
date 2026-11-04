@@ -649,6 +649,14 @@ export const KNOWN_OBJECT_DIMENSIONS: Record<string, ObjectDimensionsCm> = {
     stackRole: 'support_base',
     maxStackLevels: 1,
   },
+  table_metal_stainless_a03: {
+    widthCm: 180,
+    depthCm: 70,
+    heightCm: 85,
+    supportSurfaceHeightCm: 85,
+    stackRole: 'support_base',
+    maxStackLevels: 1,
+  },
   produce_bocchoy_leafy_a03: {
     widthCm: 30,
     depthCm: 30,

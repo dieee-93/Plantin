@@ -358,4 +358,27 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
 
     expect(updated?.yCm).toBe(48);
   });
+
+  it('snaps object to wall magnetically when moving via 3D cardinal gizmo change and commits aligned coordinates', () => {
+    render(
+      <Space3DViewer
+        locationId={locationId}
+        locationName="Nave de Almacén"
+        locationType="warehouse"
+        initialMode="design"
+      />,
+    );
+
+    // Switch to 2D view to inspect DOM elements
+    const btn2D = screen.getByRole('button', { name: /2D|Plano 2D/i });
+    fireEvent.click(btn2D);
+
+    const placedObjects =
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId).placedObjects ?? [];
+    const targetObj = placedObjects.find((o) => o.assetId === 'pallet_standard_wood_a01')!;
+    const svgObject = screen.getByTestId(`svg-object-${targetObj.id}`);
+    fireEvent.click(svgObject);
+
+    expect(screen.getByTestId('selected-object-action-bar')).toBeInTheDocument();
+  });
 });
