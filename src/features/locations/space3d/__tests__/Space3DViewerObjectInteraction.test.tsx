@@ -359,6 +359,64 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
     expect(updated?.yCm).toBe(48);
   });
 
+  it('bypasses magnetic wall snap and maintains precise metric position when dragging with Shift key pressed (free movement)', () => {
+    render(
+      <Space3DViewer
+        locationId={locationId}
+        locationName="Nave de Almacén"
+        locationType="warehouse"
+        initialMode="design"
+      />,
+    );
+
+    // Switch to 2D CAD view
+    const btn2D = screen.getByRole('button', { name: /2D|Plano 2D/i });
+    fireEvent.click(btn2D);
+
+    const placedObjects =
+      useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId).placedObjects ?? [];
+    const targetObj = placedObjects.find((o) => o.assetId === 'pallet_standard_wood_a01')!;
+    const svgObject = screen.getByTestId(`svg-object-${targetObj.id}`);
+    const svgPlane = screen.getByTestId('interactive-plane-1to1');
+
+    // Mock SVG CTM transform
+    const svgElem = svgPlane as unknown as SVGSVGElement;
+    svgElem.createSVGPoint = () =>
+      ({
+        x: 0,
+        y: 0,
+        matrixTransform(this: { x: number; y: number }) {
+          return { x: this.x, y: this.y };
+        },
+      }) as unknown as DOMPoint;
+    svgElem.getScreenCTM = () =>
+      ({
+        inverse: () => ({}),
+      }) as unknown as DOMMatrix;
+
+    // 1. Start drag on object
+    fireEvent.pointerDown(svgObject);
+
+    // 2. Drag near wall with shiftKey = true (e.g. y = 52 cm, within the 25cm snap threshold)
+    fireEvent.pointerMove(svgPlane, { clientX: 400, clientY: 52, shiftKey: true });
+
+    // Badge reflects free placement without "Pegado a Muro"
+    const badge = screen.getByTestId('object-drag-validation-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).not.toContain('Pegado a Muro');
+
+    // 3. Drop object with shift
+    fireEvent.pointerUp(svgPlane);
+
+    // Verify store updated coordinates to exact 1 cm grid (y = 52 cm) instead of snapped wall (y = 48 cm)
+    const updated = useSpaceLayoutStore
+      .getState()
+      .getOrCreateSpaceLayout(locationId)
+      .placedObjects?.find((o) => o.id === targetObj.id);
+
+    expect(updated?.yCm).toBe(52);
+  });
+
   it('snaps object to wall magnetically when moving via 3D cardinal gizmo change and commits aligned coordinates', () => {
     render(
       <Space3DViewer

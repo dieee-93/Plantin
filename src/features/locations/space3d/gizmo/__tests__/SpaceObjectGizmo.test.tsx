@@ -100,4 +100,41 @@ describe('SpaceObjectGizmo - Declarative 3D Manipulator Wrapper', () => {
       }),
     );
   });
+
+  it('propagates Shift key state to onTransformChange to enable free precision placement', () => {
+    const onTransformChange = vi.fn();
+    const onTransformCommit = vi.fn();
+
+    const { getByTestId } = render(
+      <SpaceObjectGizmo
+        object={mockObject}
+        centerCm={centerCm}
+        isSelected={true}
+        onTransformChange={onTransformChange}
+        onTransformCommit={onTransformCommit}
+      >
+        <span>Contenido 3D</span>
+      </SpaceObjectGizmo>,
+    );
+
+    // Press Shift before/during interaction
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift' }));
+
+    const gizmo = getByTestId('mock-pivot-controls');
+    gizmo.click();
+
+    expect(onTransformChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isShiftKey: true,
+      }),
+    );
+    expect(onTransformCommit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isShiftKey: true,
+      }),
+    );
+
+    // Release Shift
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' }));
+  });
 });

@@ -19,6 +19,7 @@ describe('calculateGizmoSpatialUpdate - 3D World Matrix to 2D Metric CAD Coordin
     expect(result.yCm).toBe(300);
     expect(result.elevationM).toBe(0.21);
     expect(result.rotationDeg).toBe(0);
+    expect(result.isShiftKey).toBe(false);
   });
 
   it('translates meters to centimeters relative to centerCm with default 10 cm snapping', () => {
@@ -52,6 +53,7 @@ describe('calculateGizmoSpatialUpdate - 3D World Matrix to 2D Metric CAD Coordin
 
     expect(result.xCm).toBe(605);
     expect(result.yCm).toBe(247);
+    expect(result.isShiftKey).toBe(true);
   });
 
   it('extracts Yaw rotation around Y axis with default 15° snapping', () => {

@@ -14,6 +14,7 @@ export interface GizmoSpatialResult {
   yCm: number;
   elevationM: number;
   rotationDeg: number;
+  isShiftKey?: boolean;
 }
 
 const M_TO_CM = 100;
@@ -62,5 +63,6 @@ export function calculateGizmoSpatialUpdate({
     yCm: snappedPt.y,
     elevationM: initialElevationM,
     rotationDeg: snappedRotationDeg,
+    isShiftKey,
   };
 }

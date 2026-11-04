@@ -30,16 +30,44 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
   children,
 }) => {
   const isShiftPressedRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const lastWorldMatrixRef = useRef<THREE.Matrix4 | null>(null);
   const pendingUpdateRef = useRef<GizmoSpatialResult | null>(null);
   const dragStartRotationRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') isShiftPressedRef.current = true;
+      if (e.key === 'Shift') {
+        isShiftPressedRef.current = true;
+        if (isDraggingRef.current && lastWorldMatrixRef.current) {
+          const update = calculateGizmoSpatialUpdate({
+            worldMatrix: lastWorldMatrixRef.current,
+            centerCm,
+            initialElevationM: object.elevationM ?? 0,
+            initialRotationDeg: dragStartRotationRef.current,
+            isShiftKey: true,
+          });
+          pendingUpdateRef.current = update;
+          onTransformChange?.(update);
+        }
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') isShiftPressedRef.current = false;
+      if (e.key === 'Shift') {
+        isShiftPressedRef.current = false;
+        if (isDraggingRef.current && lastWorldMatrixRef.current) {
+          const update = calculateGizmoSpatialUpdate({
+            worldMatrix: lastWorldMatrixRef.current,
+            centerCm,
+            initialElevationM: object.elevationM ?? 0,
+            initialRotationDeg: dragStartRotationRef.current,
+            isShiftKey: false,
+          });
+          pendingUpdateRef.current = update;
+          onTransformChange?.(update);
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -47,21 +75,24 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [centerCm, object.elevationM, onTransformChange]);
 
   const handleDragStart = useCallback(() => {
+    isDraggingRef.current = true;
     dragStartRotationRef.current = object.rotationDeg ?? 0;
     pendingUpdateRef.current = {
       xCm: object.xCm,
       yCm: object.yCm,
       elevationM: object.elevationM ?? 0,
       rotationDeg: object.rotationDeg ?? 0,
+      isShiftKey: isShiftPressedRef.current,
     };
     onDragStart?.();
   }, [object.xCm, object.yCm, object.elevationM, object.rotationDeg, onDragStart]);
 
   const handleDrag = useCallback(
     (_l: THREE.Matrix4, _deltaL: THREE.Matrix4, w: THREE.Matrix4) => {
+      lastWorldMatrixRef.current = w;
       const update = calculateGizmoSpatialUpdate({
         worldMatrix: w,
         centerCm,
@@ -77,6 +108,8 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
   );
 
   const handleDragEnd = useCallback(() => {
+    isDraggingRef.current = false;
+    lastWorldMatrixRef.current = null;
     if (pendingUpdateRef.current) {
       onTransformCommit?.(pendingUpdateRef.current);
     }

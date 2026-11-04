@@ -764,6 +764,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       const h = target.heightCm ?? dims.heightCm;
       const rot = target.rotationDeg ?? 0;
       const candidateCm = { x: update.xCm, y: update.yCm };
+      const isShiftKey = Boolean(update.isShiftKey);
 
       let activePos = candidateCm;
       let activeRot = rot;
@@ -771,25 +772,29 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       let wallSnapWarning: string | undefined;
       let isBlockingDoor = false;
 
-      // Snap magnético inteligente a muros perimetrales con histéresis (eje plano XZ)
-      const wallSnap = findMagneticWallSnap({
-        candidateCenterCm: candidateCm,
-        widthCm: w,
-        depthCm: d,
-        currentRotationDeg: rot,
-        baseBoundary: layout.baseBoundary,
-        walls: layout.walls,
-        currentlySnappedWallId: lastSnappedWallIdRef.current,
-      });
+      // Snap magnético inteligente a muros perimetrales con histéresis (Shift anula snap)
+      if (!isShiftKey) {
+        const wallSnap = findMagneticWallSnap({
+          candidateCenterCm: candidateCm,
+          widthCm: w,
+          depthCm: d,
+          currentRotationDeg: rot,
+          baseBoundary: layout.baseBoundary,
+          walls: layout.walls,
+          currentlySnappedWallId: lastSnappedWallIdRef.current,
+        });
 
-      if (wallSnap.isSnapped) {
-        activePos = wallSnap.snappedCenterCm;
-        activeRot = wallSnap.snappedRotationDeg;
-        isWallSnapped = true;
-        wallSnapWarning = wallSnap.warning;
-        isBlockingDoor =
-          wallSnap.isBlockingOpening && wallSnap.openingKind === 'door';
-        lastSnappedWallIdRef.current = wallSnap.wallId;
+        if (wallSnap.isSnapped) {
+          activePos = wallSnap.snappedCenterCm;
+          activeRot = wallSnap.snappedRotationDeg;
+          isWallSnapped = true;
+          wallSnapWarning = wallSnap.warning;
+          isBlockingDoor =
+            wallSnap.isBlockingOpening && wallSnap.openingKind === 'door';
+          lastSnappedWallIdRef.current = wallSnap.wallId;
+        } else {
+          lastSnappedWallIdRef.current = null;
+        }
       } else {
         lastSnappedWallIdRef.current = null;
       }
