@@ -23,6 +23,8 @@ import {
   removePolygonVertex,
   sanitizeAndWeldPolygon,
   scalePolygonFromCenter,
+  snapPointToMetricGrid,
+  snapToMetricGrid,
   syncWallsWithBoundary,
   validateObjectPlacement,
   wouldPolygonSelfIntersect,
@@ -708,6 +710,18 @@ describe('spaceGeometry - Slice 9: Object Footprint & Collision Validation (Clip
 
     expect(stackedPlacement.isValid).toBe(true);
     expect(stackedPlacement.collidingObjectIds).toHaveLength(0);
+  });
+
+  it('snaps coordinates to metric grid with customizable step (5 cm, 10 cm, 25 cm)', () => {
+    expect(snapToMetricGrid(123, 5)).toBe(125);
+    expect(snapToMetricGrid(122, 5)).toBe(120);
+    expect(snapToMetricGrid(127, 10)).toBe(130);
+    expect(snapToMetricGrid(123, 10)).toBe(120);
+    expect(snapToMetricGrid(138, 25)).toBe(150);
+    expect(snapToMetricGrid(112, 25)).toBe(100);
+
+    const snapped = snapPointToMetricGrid({ x: 234.6, y: 588.2 }, 10);
+    expect(snapped).toEqual({ x: 230, y: 590 });
   });
 });
 

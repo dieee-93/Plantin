@@ -56,6 +56,7 @@ export interface SpaceSceneGraphProps {
   selectedPlantId?: string | null;
   selectedWallId?: string | null;
   selectedObjectId?: string | null;
+  transientObjectDrag?: TransientObjectDragData | null;
   selectedVertexIndex?: number | null;
   isBoundaryEditMode?: boolean;
   fixedCenterCm?: Point2DCm;
@@ -67,6 +68,7 @@ export interface SpaceSceneGraphProps {
   onSelectPlant?: (plantId: string) => void;
   onSelectWall?: (wallId: string) => void;
   onSelectObject?: (objectId: string) => void;
+  onStartDragObject?: (objectId: string, pointCm: Point2DCm) => void;
   onSelectVertex?: (vertexIndex: number | null) => void;
   onStartDragVertex?: (vertexIndex: number) => void;
   onInsertVertexAtEdge?: (edgeIndex: number, pointCm: Point2DCm) => void;
@@ -399,33 +401,59 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
 );
 PlantsLayer.displayName = 'PlantsLayer';
 
+export interface TransientObjectDragData {
+  objectId: string;
+  xCm: number;
+  yCm: number;
+  isValid: boolean;
+  reasons: string[];
+  footprint: Polygon2DCm;
+}
+
 export interface ObjectsLayerProps {
   placedObjects?: PlacedObjectSpatialCm[];
   centerCm: Point2DCm;
   selectedObjectId?: string | null;
+  transientObjectDrag?: TransientObjectDragData | null;
   onSelectObject?: (objectId: string) => void;
+  onStartDragObject?: (objectId: string, pointCm: Point2DCm) => void;
 }
 
 export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
-  ({ placedObjects = [], centerCm, selectedObjectId, onSelectObject }) => {
+  ({
+    placedObjects = [],
+    centerCm,
+    selectedObjectId,
+    transientObjectDrag,
+    onSelectObject,
+    onStartDragObject,
+  }) => {
     if (!placedObjects || placedObjects.length === 0) return null;
 
     return (
       <group name="objects-layer">
         {placedObjects.map((obj) => {
           const isSelected = selectedObjectId === obj.id;
+          const isDragging = transientObjectDrag?.objectId === obj.id;
+          const posX = isDragging ? transientObjectDrag.xCm : obj.xCm;
+          const posY = isDragging ? transientObjectDrag.yCm : obj.yCm;
           const dims = getObjectDimensionsCm(obj.assetId, obj.category);
           const w = obj.widthCm ?? dims.widthCm;
           const d = obj.depthCm ?? dims.depthCm;
           const rot = obj.rotationDeg ?? 0;
-          const footprint = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
-          const footprintShape = isSelected ? buildShapeFromPolygonCm(footprint, centerCm) : null;
+          const footprint = isDragging
+            ? transientObjectDrag.footprint
+            : computeObjectFootprintPolygon({ x: posX, y: posY }, w, d, rot);
+          const footprintShape =
+            isSelected || isDragging
+              ? buildShapeFromPolygonCm(footprint, centerCm)
+              : null;
 
           return (
             <group key={obj.id} name={`object-node-${obj.id}`}>
               <SpaceModelInstance
                 modelUrl={obj.modelUrl || `/models/${obj.assetId}.glb`}
-                positionCm={{ x: obj.xCm, y: obj.yCm }}
+                positionCm={{ x: posX, y: posY }}
                 centerCm={centerCm}
                 elevationM={obj.elevationM ?? 0}
                 rotationDeg={rot}
@@ -433,17 +461,37 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
                   (e as { stopPropagation?: () => void })?.stopPropagation?.();
                   onSelectObject?.(obj.id);
                 }}
+                onPointerDown={(e) => {
+                  (e as { stopPropagation?: () => void })?.stopPropagation?.();
+                  onStartDragObject?.(obj.id, { x: posX, y: posY });
+                }}
               />
-              {isSelected && footprintShape && (
+              {footprintShape && (
                 <mesh
-                  name="selected-object-footprint-outline"
+                  name={
+                    isDragging
+                      ? 'dragging-object-footprint-mesh'
+                      : 'selected-object-footprint-outline'
+                  }
                   position={[0, (obj.elevationM ?? 0) + 0.006, 0]}
                   rotation={[-Math.PI / 2, 0, 0]}
                 >
                   <shapeGeometry args={[footprintShape]} />
                   <meshBasicMaterial
-                    color="#0284c7"
-                    opacity={0.45}
+                    color={
+                      isDragging
+                        ? transientObjectDrag.isValid
+                          ? '#10b981'
+                          : '#ef4444'
+                        : '#0284c7'
+                    }
+                    opacity={
+                      isDragging
+                        ? transientObjectDrag.isValid
+                          ? 0.45
+                          : 0.65
+                        : 0.45
+                    }
                     transparent
                     depthWrite={false}
                   />
@@ -1216,6 +1264,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   selectedPlantId,
   selectedWallId,
   selectedObjectId,
+  transientObjectDrag,
   selectedVertexIndex,
   isBoundaryEditMode = false,
   fixedCenterCm,
@@ -1227,6 +1276,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   onSelectPlant,
   onSelectWall,
   onSelectObject,
+  onStartDragObject,
   onSelectVertex,
   onStartDragVertex,
   onInsertVertexAtEdge,
@@ -1479,7 +1529,9 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
             placedObjects={layout.placedObjects}
             centerCm={centerCm}
             selectedObjectId={selectedObjectId}
+            transientObjectDrag={transientObjectDrag}
             onSelectObject={onSelectObject}
+            onStartDragObject={onStartDragObject}
           />
         </React.Suspense>
       )}

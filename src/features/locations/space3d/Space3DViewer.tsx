@@ -14,6 +14,7 @@ import {
   isRectangularPolygon,
   movePolygonVertex,
   computeObjectFootprintPolygon,
+  snapPointToMetricGrid,
   validateObjectPlacement,
   type Point2DCm,
   type Polygon2DCm,
@@ -29,6 +30,7 @@ import {
   SpaceSceneGraph,
   computeBoundingCenterCm,
   type SpaceViewMode,
+  type TransientObjectDragData,
 } from './SpaceSceneGraph';
 import { ShaderWarmer } from './ShaderWarmer';
 import { SpaceHeaderNav } from './SpaceHeaderNav';
@@ -478,6 +480,135 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       window.removeEventListener('mouseup', handleGlobalPointerUp);
     };
   }, [draggingVertexIndex, commitVertexDrag]);
+
+  // ── High-Performance 3D & 2D Object Dragging ──
+  const [draggingObjectId, setDraggingObjectId] = useState<string | null>(null);
+  const [transientObjectDrag, setTransientObjectDrag] =
+    useState<TransientObjectDragData | null>(null);
+  const dragObjectOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+
+  const handleStartDragObject = useCallback(
+    (objectId: string, pointCm?: Point2DCm) => {
+      const obj = layout.placedObjects?.find((o) => o.id === objectId);
+      if (!obj) return;
+      dispatch({ type: 'SELECT_OBJECT', objectId });
+      setDraggingObjectId(objectId);
+      if (pointCm) {
+        dragObjectOffsetRef.current = {
+          dx: obj.xCm - pointCm.x,
+          dy: obj.yCm - pointCm.y,
+        };
+      } else {
+        dragObjectOffsetRef.current = { dx: 0, dy: 0 };
+      }
+      dragStartCenterCmRef.current = {
+        x: bbox.centerXCm,
+        y: bbox.centerYCm,
+      };
+    },
+    [layout.placedObjects, bbox.centerXCm, bbox.centerYCm],
+  );
+
+  const handleDragObjectMove = useCallback(
+    (rawPt: Point2DCm, isShiftKey: boolean = false) => {
+      if (!draggingObjectId) return;
+      const target = layout.placedObjects?.find((o) => o.id === draggingObjectId);
+      if (!target) return;
+
+      const candidateCm = {
+        x: rawPt.x + dragObjectOffsetRef.current.dx,
+        y: rawPt.y + dragObjectOffsetRef.current.dy,
+      };
+      const snapped = snapPointToMetricGrid(candidateCm, isShiftKey ? 1 : 10);
+
+      const dims = getObjectDimensionsCm(target.assetId, target.category);
+      const w = target.widthCm ?? dims.widthCm;
+      const d = target.depthCm ?? dims.depthCm;
+      const h = target.heightCm ?? dims.heightCm;
+      const rot = target.rotationDeg ?? 0;
+
+      const validation = validateObjectPlacement({
+        centerCm: snapped,
+        widthCm: w,
+        depthCm: d,
+        heightCm: h,
+        rotationDeg: rot,
+        elevationM: target.elevationM ?? 0,
+        baseBoundary: layout.baseBoundary,
+        walls: layout.walls,
+        existingObjects: (layout.placedObjects ?? []).filter(
+          (o) => o.id !== draggingObjectId,
+        ),
+      });
+
+      setTransientObjectDrag({
+        objectId: draggingObjectId,
+        xCm: snapped.x,
+        yCm: snapped.y,
+        isValid: validation.isValid,
+        reasons: validation.reasons,
+        footprint: validation.footprint,
+      });
+    },
+    [
+      draggingObjectId,
+      layout.placedObjects,
+      layout.baseBoundary,
+      layout.walls,
+    ],
+  );
+
+  const commitObjectDrag = useCallback(() => {
+    if (!draggingObjectId) return;
+    const dragData = transientObjectDrag;
+    const target = layout.placedObjects?.find((o) => o.id === draggingObjectId);
+
+    if (dragData && dragData.isValid && target) {
+      const deltaX = Math.abs(dragData.xCm - target.xCm);
+      const deltaY = Math.abs(dragData.yCm - target.yCm);
+      if (deltaX >= 1 || deltaY >= 1) {
+        updateObject(locationId, draggingObjectId, {
+          xCm: dragData.xCm,
+          yCm: dragData.yCm,
+        });
+        if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+        setFillToast({
+          type: 'success',
+          message: `Objeto reubicado en (${dragData.xCm}, ${dragData.yCm} cm)`,
+        });
+        fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2500);
+      }
+    } else if (dragData && !dragData.isValid) {
+      if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+      setFillToast({
+        type: 'info',
+        message: `No se puede colocar aquí: ${dragData.reasons.join(', ')}`,
+      });
+      fillToastTimerRef.current = setTimeout(() => setFillToast(null), 3000);
+    }
+
+    setDraggingObjectId(null);
+    setTransientObjectDrag(null);
+  }, [
+    draggingObjectId,
+    transientObjectDrag,
+    layout.placedObjects,
+    locationId,
+    updateObject,
+  ]);
+
+  useEffect(() => {
+    if (draggingObjectId === null) return;
+    const handleGlobalPointerUp = () => {
+      commitObjectDrag();
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('mouseup', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('mouseup', handleGlobalPointerUp);
+    };
+  }, [draggingObjectId, commitObjectDrag]);
 
   const lastDispatchedCursorRef = useRef<Point2DCm | null>(null);
   const cursorRafIdRef = useRef<number | null>(null);
@@ -1255,8 +1386,16 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               <OrbitControls
                 ref={orbitControlsRef}
                 makeDefault
-                enabled={viewMode === '3d' && draggingVertexIndex === null}
-                enableRotate={viewMode === '3d' && draggingVertexIndex === null}
+                enabled={
+                  viewMode === '3d' &&
+                  draggingVertexIndex === null &&
+                  draggingObjectId === null
+                }
+                enableRotate={
+                  viewMode === '3d' &&
+                  draggingVertexIndex === null &&
+                  draggingObjectId === null
+                }
                 target={[0, 0, 0]}
                 maxPolarAngle={Math.PI / 2 - 0.05}
                 minPolarAngle={0.05}
@@ -1310,6 +1449,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 onSelectObject={(objId) =>
                   dispatch({ type: 'SELECT_OBJECT', objectId: objId })
                 }
+                transientObjectDrag={transientObjectDrag}
+                onStartDragObject={handleStartDragObject}
                 onSelectVertex={handleSelectVertex}
                 onStartDragVertex={handleStartDragVertex}
                 onInsertVertexAtEdge={handleInsertVertexAtEdge}
@@ -1319,6 +1460,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               {/* Active 3D ground drag capture plane (captures smooth drag across entire ground) */}
               {draggingVertexIndex !== null ? (
                 <mesh
+                  name="active-3d-vertex-drag-plane"
                   rotation={[-Math.PI / 2, 0, 0]}
                   position={[0, 0, 0]}
                   onPointerMove={(e) => {
@@ -1336,6 +1478,30 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   onPointerUp={(e) => {
                     e.stopPropagation();
                     commitVertexDrag();
+                  }}
+                >
+                  <planeGeometry args={[200, 200]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              ) : draggingObjectId !== null ? (
+                <mesh
+                  name="active-3d-object-drag-plane"
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  position={[0, 0, 0]}
+                  onPointerMove={(e) => {
+                    e.stopPropagation();
+                    const fixedCenter =
+                      dragStartCenterCmRef.current ?? {
+                        x: bbox.centerXCm,
+                        y: bbox.centerYCm,
+                      };
+                    const rawX = e.point.x * 100 + fixedCenter.x;
+                    const rawY = e.point.z * 100 + fixedCenter.y;
+                    handleDragObjectMove({ x: rawX, y: rawY }, e.shiftKey);
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    commitObjectDrag();
                   }}
                 >
                   <planeGeometry args={[200, 200]} />
@@ -1412,6 +1578,28 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               </div>
             )}
 
+            {transientObjectDrag && (
+              <div
+                data-testid="object-drag-validation-badge"
+                className={`absolute top-16 left-6 z-20 flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] font-bold shadow-sm backdrop-blur-sm ${
+                  transientObjectDrag.isValid
+                    ? 'border-emerald-300 bg-emerald-50/95 text-emerald-800'
+                    : 'border-rose-300 bg-rose-50/95 text-rose-800'
+                }`}
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    transientObjectDrag.isValid
+                      ? 'bg-emerald-500'
+                      : 'bg-rose-500 animate-pulse'
+                  }`}
+                />
+                {transientObjectDrag.isValid
+                  ? `Mover a (${transientObjectDrag.xCm}, ${transientObjectDrag.yCm} cm) · Soltar para ubicar`
+                  : `⚠️ ${transientObjectDrag.reasons.join(' · ')}`}
+              </div>
+            )}
+
             <svg
               data-testid="interactive-plane-1to1"
               viewBox={`${canvasViewBox.minX} ${canvasViewBox.minY} ${canvasViewBox.width} ${canvasViewBox.height}`}
@@ -1421,6 +1609,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 const pt = resolveEventPointCm(e);
                 if (draggingVertexIndex !== null) {
                   handleDragVertexMove(pt);
+                } else if (draggingObjectId !== null) {
+                  handleDragObjectMove(pt, e.shiftKey);
                 }
                 dispatchThrottledCursor(pt);
               }}
@@ -1429,6 +1619,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 const pt = resolveEventPointCm(e);
                 if (draggingVertexIndex !== null) {
                   handleDragVertexMove(pt);
+                } else if (draggingObjectId !== null) {
+                  handleDragObjectMove(pt, e.shiftKey);
                 }
                 dispatchThrottledCursor(pt);
               }}
@@ -1436,16 +1628,20 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 lastSvgPointerTimeRef.current = Date.now();
                 if (draggingVertexIndex !== null) {
                   commitVertexDrag();
+                } else if (draggingObjectId !== null) {
+                  commitObjectDrag();
                 }
               }}
               onMouseUp={() => {
                 if (Date.now() - lastSvgPointerTimeRef.current < 50) return;
                 if (draggingVertexIndex !== null) {
                   commitVertexDrag();
+                } else if (draggingObjectId !== null) {
+                  commitObjectDrag();
                 }
               }}
               onClick={(e) => {
-                if (draggingVertexIndex !== null) return;
+                if (draggingVertexIndex !== null || draggingObjectId !== null) return;
                 const pt = resolveEventPointCm(e);
                 handlePlanePointClick(pt);
               }}
@@ -1781,11 +1977,33 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             {/* Placed objects in 2D CAD floor plan */}
             {layout.placedObjects?.map((obj) => {
               const isSelected = builderState.selectedObjectId === obj.id;
+              const isDragging = transientObjectDrag?.objectId === obj.id;
+              const posX = isDragging ? transientObjectDrag.xCm : obj.xCm;
+              const posY = isDragging ? transientObjectDrag.yCm : obj.yCm;
               const dims = getObjectDimensionsCm(obj.assetId, obj.category);
               const w = obj.widthCm ?? dims.widthCm;
               const d = obj.depthCm ?? dims.depthCm;
               const rot = obj.rotationDeg ?? 0;
-              const poly = computeObjectFootprintPolygon({ x: obj.xCm, y: obj.yCm }, w, d, rot);
+              const poly = isDragging
+                ? transientObjectDrag.footprint
+                : computeObjectFootprintPolygon({ x: posX, y: posY }, w, d, rot);
+
+              const strokeColor = isDragging
+                ? transientObjectDrag.isValid
+                  ? '#10b981'
+                  : '#ef4444'
+                : isSelected
+                  ? '#0369a1'
+                  : '#0284c7';
+
+              const fillColor = isDragging
+                ? transientObjectDrag.isValid
+                  ? 'rgba(16, 185, 129, 0.4)'
+                  : 'rgba(239, 68, 68, 0.5)'
+                : isSelected
+                  ? 'rgba(14, 165, 233, 0.45)'
+                  : 'rgba(56, 189, 248, 0.2)';
+
               return (
                 <g
                   key={obj.id}
@@ -1795,34 +2013,48 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     e.stopPropagation();
                     dispatch({ type: 'SELECT_OBJECT', objectId: obj.id });
                   }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    handleStartDragObject(obj.id, { x: obj.xCm, y: obj.yCm });
+                  }}
                 >
                   <polygon
                     points={poly.map((p) => `${p.x},${p.y}`).join(' ')}
-                    fill={
-                      isSelected
-                        ? 'rgba(14, 165, 233, 0.45)'
-                        : 'rgba(56, 189, 248, 0.2)'
+                    fill={fillColor}
+                    stroke={strokeColor}
+                    strokeWidth={isSelected || isDragging ? 3 : 1.5}
+                    strokeDasharray={
+                      isDragging && !transientObjectDrag.isValid
+                        ? '6,4'
+                        : isSelected
+                          ? '6,3'
+                          : undefined
                     }
-                    stroke={isSelected ? '#0369a1' : '#0284c7'}
-                    strokeWidth={isSelected ? 3 : 1.5}
-                    strokeDasharray={isSelected ? '6,3' : undefined}
                   />
-                  {isSelected && (
+                  {(isSelected || isDragging) && (
                     <circle
-                      cx={obj.xCm}
-                      cy={obj.yCm}
-                      r={4}
-                      fill="#0284c7"
+                      cx={posX}
+                      cy={posY}
+                      r={5}
+                      fill={strokeColor}
                     />
                   )}
                   <text
-                    x={obj.xCm}
-                    y={obj.yCm}
+                    x={posX}
+                    y={posY + 14}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fontSize={10}
                     fontWeight="bold"
-                    fill={isSelected ? '#0c4a6e' : '#0369a1'}
+                    fill={
+                      isDragging
+                        ? transientObjectDrag.isValid
+                          ? '#065f46'
+                          : '#991b1b'
+                        : isSelected
+                          ? '#0c4a6e'
+                          : '#0369a1'
+                    }
                     className="pointer-events-none select-none font-sans"
                   >
                     {obj.label}

@@ -13,6 +13,7 @@ export interface SpaceModelInstanceProps {
   castShadow?: boolean;
   receiveShadow?: boolean;
   onClick?: (e: THREE.Event) => void;
+  onPointerDown?: (e: THREE.Event) => void;
   onPointerOver?: () => void;
   onPointerOut?: () => void;
 }
@@ -49,6 +50,7 @@ export const SpaceModelInstance: React.FC<SpaceModelInstanceProps> = ({
   castShadow = true,
   receiveShadow = true,
   onClick,
+  onPointerDown,
   onPointerOver,
   onPointerOut,
 }) => {
@@ -67,6 +69,7 @@ export const SpaceModelInstance: React.FC<SpaceModelInstanceProps> = ({
         rotation={[0, rotY, 0]}
         scale={[scaleMultiplier, scaleMultiplier, scaleMultiplier]}
         onClick={onClick}
+        onPointerDown={onPointerDown}
       >
         <boxGeometry args={[0.5, 0.5, 0.5]} />
         <meshBasicMaterial color="#64748b" />
@@ -85,6 +88,7 @@ export const SpaceModelInstance: React.FC<SpaceModelInstanceProps> = ({
       castShadow={castShadow}
       receiveShadow={receiveShadow}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       onPointerOver={onPointerOver}
       onPointerOut={onPointerOut}
     />
@@ -101,6 +105,7 @@ interface SpaceModelContentProps {
   castShadow: boolean;
   receiveShadow: boolean;
   onClick?: (e: THREE.Event) => void;
+  onPointerDown?: (e: THREE.Event) => void;
   onPointerOver?: () => void;
   onPointerOut?: () => void;
 }
@@ -115,6 +120,7 @@ const SpaceModelContent: React.FC<SpaceModelContentProps> = ({
   castShadow,
   receiveShadow,
   onClick,
+  onPointerDown,
   onPointerOver,
   onPointerOut,
 }) => {
@@ -141,6 +147,7 @@ const SpaceModelContent: React.FC<SpaceModelContentProps> = ({
       rotation={[0, rotY, 0]}
       scale={[scaleMultiplier, scaleMultiplier, scaleMultiplier]}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       onPointerOver={onPointerOver}
       onPointerOut={onPointerOut}
     />

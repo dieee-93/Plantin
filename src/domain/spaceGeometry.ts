@@ -1158,3 +1158,25 @@ export function validateObjectPlacement(
     reasons,
   };
 }
+
+/**
+ * Snaps a metric centimeter value to the nearest grid step.
+ * e.g. snapToMetricGrid(123, 10) => 120, snapToMetricGrid(128, 10) => 130
+ */
+export function snapToMetricGrid(valCm: number, stepCm: number = 5): number {
+  if (stepCm <= 1) return Math.round(valCm);
+  return Math.round(valCm / stepCm) * stepCm;
+}
+
+/**
+ * Snaps a 2D coordinate in centimeters to a metric grid step (default 5 cm).
+ */
+export function snapPointToMetricGrid(
+  pointCm: Point2DCm,
+  stepCm: number = 5,
+): Point2DCm {
+  return {
+    x: snapToMetricGrid(pointCm.x, stepCm),
+    y: snapToMetricGrid(pointCm.y, stepCm),
+  };
+}

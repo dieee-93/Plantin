@@ -80,4 +80,56 @@ describe('SpaceModelInstance & ObjectsLayer - 3D Logistics & Facility Assets', (
 
     await renderer.unmount();
   });
+
+  it('renders ObjectsLayer during drag showing updated transient position and live footprint mesh', async () => {
+    const placedObjects: PlacedObjectSpatialCm[] = [
+      {
+        id: 'obj-pallet-1',
+        assetId: 'pallet_standard_wood_a01',
+        label: 'Palet de Madera',
+        xCm: 500,
+        yCm: 300,
+        elevationM: 0,
+        rotationDeg: 0,
+        category: 'logistics',
+      },
+    ];
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <ObjectsLayer
+        placedObjects={placedObjects}
+        centerCm={{ x: 500, y: 300 }}
+        selectedObjectId="obj-pallet-1"
+        transientObjectDrag={{
+          objectId: 'obj-pallet-1',
+          xCm: 600,
+          yCm: 400,
+          isValid: true,
+          reasons: [],
+          footprint: [
+            { x: 540, y: 360 },
+            { x: 660, y: 360 },
+            { x: 660, y: 440 },
+            { x: 540, y: 440 },
+          ],
+        }}
+      />,
+    );
+
+    const palletMesh = renderer.scene.findAllByProps({
+      name: 'model-instance-/models/pallet_standard_wood_a01.glb',
+    });
+    expect(palletMesh).toHaveLength(1);
+    // Transient X = (600 - 500) * 0.01 = 1.0 m
+    expect(palletMesh[0].props.position[0]).toBeCloseTo(1.0, 3);
+    // Transient Z = (400 - 300) * 0.01 = 1.0 m
+    expect(palletMesh[0].props.position[2]).toBeCloseTo(1.0, 3);
+
+    const footprintMesh = renderer.scene.findAllByProps({
+      name: 'dragging-object-footprint-mesh',
+    });
+    expect(footprintMesh).toHaveLength(1);
+
+    await renderer.unmount();
+  });
 });
