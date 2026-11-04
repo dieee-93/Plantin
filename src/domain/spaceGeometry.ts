@@ -84,9 +84,15 @@ export interface CultivableSectorCm {
   areaM2: number;
 }
 
+export interface WalkableMaterialRegionCm {
+  material: FloorMaterialType;
+  polygons: Polygon2DCm[];
+}
+
 export interface ComputedSpaceRegions {
   baseAreaM2: number;
   walkablePolygons: Polygon2DCm[];
+  walkableRegionsByMaterial: WalkableMaterialRegionCm[];
   walkableAreaM2: number;
   cultivablePolygons: Polygon2DCm[];
   cultivableSectors: CultivableSectorCm[];
@@ -289,6 +295,7 @@ export function computeSpaceRegions(
     return {
       baseAreaM2: 0,
       walkablePolygons: [],
+      walkableRegionsByMaterial: [],
       walkableAreaM2: 0,
       cultivablePolygons: [],
       cultivableSectors: [],
@@ -301,20 +308,55 @@ export function computeSpaceRegions(
   const baseAreaM2 = Math.abs(area(basePath64)) / CM2_PER_M2;
 
   const rawWalkablePaths: Paths64 = [];
+  const materialLayers = new Map<FloorMaterialType, Paths64>();
+
+  const applyWalkableMaterialLayer = (
+    material: FloorMaterialType,
+    itemPaths64: Paths64,
+  ) => {
+    if (itemPaths64.length === 0) return;
+    const clippedItem = intersect(
+      union(itemPaths64, FillRule.NonZero),
+      basePaths64,
+      FillRule.NonZero,
+    );
+    if (clippedItem.length === 0) return;
+
+    for (const [otherMat, existingPaths] of materialLayers.entries()) {
+      if (otherMat !== material && existingPaths.length > 0) {
+        materialLayers.set(
+          otherMat,
+          difference(existingPaths, clippedItem, FillRule.NonZero),
+        );
+      }
+    }
+
+    const sameMatPaths = materialLayers.get(material) ?? [];
+    materialLayers.set(
+      material,
+      union([...sameMatPaths, ...clippedItem], FillRule.NonZero),
+    );
+  };
 
   for (const zone of hardscapeZones) {
     if (zone.polygon.length >= 3) {
-      rawWalkablePaths.push(toPath64(zone.polygon));
+      const p64 = toPath64(zone.polygon);
+      rawWalkablePaths.push(p64);
+      applyWalkableMaterialLayer(zone.material || 'concrete', [p64]);
     }
   }
 
   for (const stroke of paths) {
     const inflatedPolys = inflatePathToPolygon(stroke.points, stroke.widthCm);
+    const strokePaths64: Paths64 = [];
     for (const poly of inflatedPolys) {
       if (poly.length >= 3) {
-        rawWalkablePaths.push(toPath64(poly));
+        const p64 = toPath64(poly);
+        rawWalkablePaths.push(p64);
+        strokePaths64.push(p64);
       }
     }
+    applyWalkableMaterialLayer(stroke.material || 'concrete', strokePaths64);
   }
 
   const walkablePaths64: Paths64 =
@@ -338,11 +380,20 @@ export function computeSpaceRegions(
     return {
       baseAreaM2,
       walkablePolygons: [],
+      walkableRegionsByMaterial: [],
       walkableAreaM2: 0,
       cultivablePolygons: [baseBoundary],
       cultivableSectors: [singleSector],
       cultivableAreaM2: baseAreaM2,
     };
+  }
+
+  const walkableRegionsByMaterial: WalkableMaterialRegionCm[] = [];
+  for (const [material, matPaths64] of materialLayers.entries()) {
+    const polygons = fromPaths64(matPaths64).filter((p) => p.length >= 3);
+    if (polygons.length > 0) {
+      walkableRegionsByMaterial.push({ material, polygons });
+    }
   }
 
   const polytree = new PolyTree64();
@@ -364,6 +415,7 @@ export function computeSpaceRegions(
   return {
     baseAreaM2,
     walkablePolygons: fromPaths64(walkablePaths64),
+    walkableRegionsByMaterial,
     walkableAreaM2,
     cultivablePolygons,
     cultivableSectors,

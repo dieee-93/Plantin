@@ -139,7 +139,7 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
           {
             id: 'camino-diagonal',
             label: 'Camino diagonal',
-            material: 'concrete',
+            material: 'gravel',
             points: [
               { x: 350, y: 120 },
               { x: 1000, y: 600 },
@@ -149,7 +149,7 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
           {
             id: 'camino-horizontal-izq',
             label: 'Camino horizontal izquierdo',
-            material: 'concrete',
+            material: 'gravel',
             points: [
               { x: 0, y: 380 },
               { x: 720, y: 380 },
@@ -494,6 +494,11 @@ export interface SpaceLayoutStoreState {
   addPathStroke: (
     locationId: string,
     path: Omit<PathStrokeCm, 'id'> & { id?: string },
+  ) => void;
+  updatePathStroke: (
+    locationId: string,
+    pathId: string,
+    patch: Partial<Pick<PathStrokeCm, 'material' | 'widthCm' | 'label'>>,
   ) => void;
   removePathStroke: (locationId: string, pathId: string) => void;
   addHardscapeZone: (
@@ -1085,6 +1090,22 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
             [locationId]: {
               ...current,
               paths: [...current.paths, newPath],
+            },
+          },
+        }));
+      },
+
+      updatePathStroke: (locationId, pathId, patch) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        set((state) => ({
+          history: pushStructuralSnapshot(locationId, current, state.history),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              paths: current.paths.map((p) =>
+                p.id === pathId ? { ...p, ...patch } : p,
+              ),
             },
           },
         }));

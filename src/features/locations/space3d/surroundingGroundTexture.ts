@@ -21,14 +21,14 @@ export function createSurroundingGroundTexture(): THREE.CanvasTexture | null {
     ctx.clearRect(0, 0, 512, 512);
 
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    // Center core: solid ground #e5eae0
-    grad.addColorStop(0, '#e5eae0');
-    grad.addColorStop(0.35, '#e5eae0');
+    // Center core: warm sage/meadow ground #dce3c8
+    grad.addColorStop(0, '#dce3c8');
+    grad.addColorStop(0.35, '#dce3c8');
     // Gentle radial fade
-    grad.addColorStop(0.65, 'rgba(235, 238, 230, 0.65)');
-    grad.addColorStop(0.85, 'rgba(244, 242, 234, 0.25)');
-    // Seamless blend into background #f7f3e8 with zero alpha
-    grad.addColorStop(1.0, 'rgba(247, 243, 232, 0)');
+    grad.addColorStop(0.65, 'rgba(228, 233, 212, 0.7)');
+    grad.addColorStop(0.85, 'rgba(242, 239, 226, 0.3)');
+    // Seamless blend into warm background #f7f4ea with zero alpha
+    grad.addColorStop(1.0, 'rgba(247, 244, 234, 0)');
 
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 512);

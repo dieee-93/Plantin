@@ -14,8 +14,14 @@ export interface SpacePathBuilderShelfProps {
   onChangePathWidth: (widthCm: number) => void;
   pathMaterial: FloorMaterialType;
   onChangePathMaterial: (mat: FloorMaterialType) => void;
-  paths: Array<{ id: string; label?: string; widthCm: number }>;
+  paths: Array<{
+    id: string;
+    label?: string;
+    widthCm: number;
+    material?: FloorMaterialType;
+  }>;
   onRemovePath: (pathId: string) => void;
+  onUpdatePathMaterial?: (pathId: string, material: FloorMaterialType) => void;
   draftStartCm?: { x: number; y: number } | null;
   onCancelDraft?: () => void;
   onClose?: () => void;
@@ -103,6 +109,7 @@ export const SpacePathBuilderShelf: React.FC<SpacePathBuilderShelfProps> = ({
   onChangePathMaterial,
   paths,
   onRemovePath,
+  onUpdatePathMaterial,
   draftStartCm,
   onCancelDraft,
   onClose,
@@ -217,7 +224,7 @@ export const SpacePathBuilderShelf: React.FC<SpacePathBuilderShelfProps> = ({
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Senderos ({paths.length})
             </span>
-            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+            <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
               {paths.map((p) => (
                 <span
                   key={p.id}
@@ -226,6 +233,22 @@ export const SpacePathBuilderShelf: React.FC<SpacePathBuilderShelfProps> = ({
                   <Route size={10} className="text-emerald-600" />
                   <span>{p.label || 'Sendero'}</span>
                   <span className="font-mono text-[9px] text-slate-400">({p.widthCm} cm)</span>
+                  {onUpdatePathMaterial && (
+                    <select
+                      aria-label={`Material de ${p.label || 'sendero'}`}
+                      value={p.material ?? 'concrete'}
+                      onChange={(e) =>
+                        onUpdatePathMaterial(p.id, e.target.value as FloorMaterialType)
+                      }
+                      className="rounded border border-slate-200 bg-white px-1 py-0 text-[9px] font-semibold text-slate-600 cursor-pointer"
+                    >
+                      {PATH_MATERIALS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.iconText} {m.badge}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     type="button"
                     aria-label={`Eliminar ${p.label || 'sendero'}`}

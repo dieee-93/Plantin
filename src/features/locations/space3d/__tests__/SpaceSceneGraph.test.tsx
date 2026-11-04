@@ -31,7 +31,11 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
     });
 
     expect(cultivableMeshes).toHaveLength(3);
-    expect(walkableMeshes).toHaveLength(1);
+    expect(walkableMeshes).toHaveLength(2);
+    expect(walkableMeshes.map((m) => m.props.userData?.material)).toEqual([
+      'concrete',
+      'gravel',
+    ]);
     expect(walkableMeshes[0].props.position[1]).toBeCloseTo(0.015, 3);
     // 1 single instanced mesh for all 3 canopy rings
     expect(canopyRingMeshes).toHaveLength(1);
@@ -70,6 +74,12 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
     expect(noonY).toBeGreaterThan(18);
     expect(Math.abs(noonX)).toBeLessThan(0.5);
     expect(noonZ).toBeLessThan(-3);
+    expect(sunLightNoon.props.color).toBe('#fff3d1');
+
+    const hemiLight = renderer.scene.findByProps({
+      name: 'cozy-hemisphere-light',
+    });
+    expect(hemiLight.props.args).toEqual(['#fffbeb', '#8ca870', 0.65]);
 
     // Update to winter morning (8:00 AM)
     const winterMorningLayout = {

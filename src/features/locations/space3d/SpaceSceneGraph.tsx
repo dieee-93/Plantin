@@ -4,6 +4,7 @@ import {
   computeObjectFootprintPolygon,
   computeSpaceRegions,
   decomposeWallIntoPrisms,
+  type FloorMaterialType,
   type Point2DCm,
   type Polygon2DCm,
   type WallSegmentCm,
@@ -26,8 +27,8 @@ import {
   getStructuralMaterialConfig,
   getWallMaterialConfig,
   SpaceStandardMaterial,
+  type SpaceMaterialConfig,
 } from './materials';
-import { SpacePlantSprite } from './SpacePlantSprite';
 import { SpaceModelInstance } from './SpaceModelInstance';
 import { SpaceObjectGizmo } from './gizmo/SpaceObjectGizmo';
 import type { GizmoSpatialResult } from './gizmo/calculateGizmoSpatialUpdate';
@@ -190,65 +191,6 @@ function buildShapeWithHolesFromPolygonCm(
 // ─────────────────────────────────────────────────────────────
 // Subcomponents memoizados con React.memo
 // ─────────────────────────────────────────────────────────────
-
-export interface PlantItemNodeProps {
-  plant: PlacedPlantSpatialCm;
-  centerCm: Point2DCm;
-  isSelected: boolean;
-  isCrowded: boolean;
-  onSelectPlant?: (plantId: string) => void;
-}
-
-export const PlantItemNode: React.FC<PlantItemNodeProps> = React.memo(
-  ({ plant, centerCm, isSelected, isCrowded, onSelectPlant }) => {
-    const xM = (plant.xCm - centerCm.x) * CM_TO_M;
-    const zM = (plant.yCm - centerCm.y) * CM_TO_M;
-    const radiusM = Math.max(0.08, plant.canopyRadiusCm * CM_TO_M);
-    const bodyHeightM = Math.max(0.25, radiusM * 1.6);
-
-    const ringColor = isCrowded ? '#ef4444' : isSelected ? '#38bdf8' : '#22c55e';
-
-    return (
-      <group
-        key={plant.id}
-        name="placed-plant-node"
-        position={[xM, 0.02, zM]}
-        userData={{
-          plantId: plant.id,
-          label: plant.label,
-          isCrowded,
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelectPlant?.(plant.id);
-        }}
-      >
-        <mesh
-          name="plant-canopy-ring"
-          rotation={[-Math.PI / 2, 0, 0]}
-          userData={{ isCrowded, ringColor }}
-        >
-          <ringGeometry args={[radiusM * 0.82, radiusM, 24]} />
-          <meshBasicMaterial
-            color={ringColor}
-            side={THREE.DoubleSide}
-            transparent
-            opacity={0.85}
-          />
-        </mesh>
-
-        <SpacePlantSprite
-          cropCode={plant.cropCode}
-          label={plant.label}
-          radiusM={radiusM}
-          bodyHeightM={bodyHeightM}
-          isCrowded={isCrowded}
-        />
-      </group>
-    );
-  },
-);
-PlantItemNode.displayName = 'PlantItemNode';
 
 export interface PlantsLayerProps {
   placedPlants: PlacedPlantSpatialCm[];
@@ -1395,16 +1337,47 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
     [regions.cultivableSectors, regions.cultivablePolygons, centerCm],
   );
 
-  const walkableShapes = useMemo(
-    () =>
-      regions.walkablePolygons
-        .map((poly, index) => ({
-          id: `walkable-${index}`,
-          shape: buildShapeFromPolygonCm(poly, centerCm),
-        }))
-        .filter((item): item is { id: string; shape: THREE.Shape } => item.shape !== null),
-    [regions.walkablePolygons, centerCm],
-  );
+  const walkableShapes = useMemo(() => {
+    const byMat = regions.walkableRegionsByMaterial;
+    if (byMat && byMat.length > 0) {
+      const items: Array<{
+        id: string;
+        material: FloorMaterialType;
+        config: SpaceMaterialConfig;
+        shape: THREE.Shape;
+      }> = [];
+      byMat.forEach((group) => {
+        const config = getFloorMaterialConfig(group.material);
+        group.polygons.forEach((poly, idx) => {
+          const shape = buildShapeFromPolygonCm(poly, centerCm);
+          if (shape) {
+            items.push({
+              id: `walkable-${group.material}-${idx}`,
+              material: group.material,
+              config,
+              shape,
+            });
+          }
+        });
+      });
+      return items;
+    }
+
+    const fallbackConfig = getFloorMaterialConfig('concrete');
+    return regions.walkablePolygons
+      .map((poly, index) => {
+        const shape = buildShapeFromPolygonCm(poly, centerCm);
+        return shape
+          ? {
+              id: `walkable-concrete-${index}`,
+              material: 'concrete' as FloorMaterialType,
+              config: fallbackConfig,
+              shape,
+            }
+          : null;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  }, [regions.walkableRegionsByMaterial, regions.walkablePolygons, centerCm]);
 
   const objectCursorShape = useMemo(() => {
     if (!objectCursorPreview || objectCursorPreview.footprint.length < 3) return null;
@@ -1421,14 +1394,6 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   const baseFloorConfig = useMemo(
     () => getFloorMaterialConfig(layout.baseMaterial || 'soil'),
     [layout.baseMaterial],
-  );
-  const walkableMaterial =
-    layout.hardscapeZones?.find((z) => z.material)?.material ??
-    layout.paths?.find((p) => p.material)?.material ??
-    'concrete';
-  const walkableConfig = useMemo(
-    () => getFloorMaterialConfig(walkableMaterial),
-    [walkableMaterial],
   );
 
   // Progressive Plant Population:
@@ -1473,18 +1438,27 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
   const isIndoorClosed = layout.roofConfig?.kind === 'flat_ceiling';
   const maxDimensionM = Math.max(bbox.widthCm, bbox.depthCm) * CM_TO_M;
   const shadowCamSize = Math.max(10, maxDimensionM * 0.8);
+  const solarLightColor = sun.intensity > 0.6 ? '#fff3d1' : '#ffd591';
 
   return (
     <group name="space-scene-root">
       {/* Surrounding landscape ground plane blending seamlessly into the horizon fog */}
       <SurroundingGround />
 
-      <ambientLight intensity={isIndoorClosed ? 0.45 : sun.isDaylight ? 0.55 : 0.2} />
+      <hemisphereLight
+        name="cozy-hemisphere-light"
+        args={['#fffbeb', '#8ca870', isIndoorClosed ? 0.35 : 0.65]}
+      />
+      <ambientLight
+        color="#fff8eb"
+        intensity={isIndoorClosed ? 0.45 : sun.isDaylight ? 0.45 : 0.25}
+      />
       <directionalLight
         name="solar-directional-light"
         castShadow={!isIndoorClosed}
         position={sunPosition}
-        intensity={isIndoorClosed ? 0.15 : sun.intensity * 2.2}
+        color={solarLightColor}
+        intensity={isIndoorClosed ? 0.15 : sun.intensity * 1.5}
         shadow-bias={-0.0005}
         shadow-normalBias={0.02}
         shadow-mapSize={[2048, 2048]}
@@ -1513,6 +1487,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
           }}
         >
           <shapeGeometry
+            key={`${sector.id}-${baseFloorConfig.metersPerTileX}-${baseFloorConfig.metersPerTileY}`}
             args={[sector.shape]}
             onUpdate={(self) =>
               applyMetricUVsToShapeGeometry(self, {
@@ -1533,6 +1508,7 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
           receiveShadow
           position={[0, WALKABLE_ELEVATION_M, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
+          userData={{ material: surface.material }}
           onClick={(e) => {
             e.stopPropagation();
             onGroundPointClickCm?.({
@@ -1542,15 +1518,16 @@ export const SpaceSceneGraph: React.FC<SpaceSceneGraphProps> = React.memo(({
           }}
         >
           <shapeGeometry
+            key={`${surface.id}-${surface.config.metersPerTileX}-${surface.config.metersPerTileY}`}
             args={[surface.shape]}
             onUpdate={(self) =>
               applyMetricUVsToShapeGeometry(self, {
-                metersPerTileX: walkableConfig.metersPerTileX,
-                metersPerTileY: walkableConfig.metersPerTileY,
+                metersPerTileX: surface.config.metersPerTileX,
+                metersPerTileY: surface.config.metersPerTileY,
               })
             }
           />
-          <SpaceStandardMaterial config={walkableConfig} />
+          <SpaceStandardMaterial config={surface.config} />
         </mesh>
       ))}
 

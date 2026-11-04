@@ -116,4 +116,37 @@ describe('materialRegistry', () => {
     expect(metalFrame.metalness).toBeGreaterThanOrEqual(0.7);
     expect(metalFrame.roughness).toBeLessThanOrEqual(0.4);
   });
+
+  it('enables stochastic antiTile on continuous/organic materials and disables it on geometric jointed materials', () => {
+    expect(FLOOR_MATERIAL_CONFIGS.soil.antiTile).toBe(true);
+    expect(FLOOR_MATERIAL_CONFIGS.grass.antiTile).toBe(true);
+    expect(FLOOR_MATERIAL_CONFIGS.concrete.antiTile).toBe(true);
+    expect(FLOOR_MATERIAL_CONFIGS.gravel.antiTile).toBe(true);
+    expect(FLOOR_MATERIAL_CONFIGS.mulch.antiTile).toBe(true);
+    expect(FLOOR_MATERIAL_CONFIGS.tile.antiTile).toBe(false);
+    expect(FLOOR_MATERIAL_CONFIGS.wood.antiTile).toBe(false);
+
+    expect(WALL_MATERIAL_CONFIGS.concrete.antiTile).toBe(true);
+    expect(WALL_MATERIAL_CONFIGS.drywall.antiTile).toBe(true);
+    expect(WALL_MATERIAL_CONFIGS.brick.antiTile).toBe(false);
+    expect(WALL_MATERIAL_CONFIGS.wood_fence.antiTile).toBe(false);
+  });
+
+  it('enforces 1:1 square UV aspect ratio and high dielectric roughness (>= 0.88, metalness 0) on all floor and textured wall materials to prevent orthographic glare and stretching', () => {
+    const floorTypes = ['soil', 'grass', 'concrete', 'gravel', 'tile', 'wood', 'mulch'] as const;
+    for (const key of floorTypes) {
+      const cfg = FLOOR_MATERIAL_CONFIGS[key];
+      expect(cfg.metersPerTileX).toBe(cfg.metersPerTileY);
+      expect(cfg.roughness).toBeGreaterThanOrEqual(0.88);
+      expect(cfg.metalness).toBe(0);
+    }
+
+    const texturedWalls = ['brick', 'concrete', 'wood_fence', 'drywall'] as const;
+    for (const key of texturedWalls) {
+      const cfg = WALL_MATERIAL_CONFIGS[key];
+      expect(cfg.metersPerTileX).toBe(cfg.metersPerTileY);
+      expect(cfg.roughness).toBeGreaterThanOrEqual(0.88);
+      expect(cfg.metalness).toBe(0);
+    }
+  });
 });

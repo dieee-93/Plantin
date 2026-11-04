@@ -29,7 +29,7 @@ export const SurroundingGround: React.FC<SurroundingGroundProps> = ({ sizeM = 35
       <planeGeometry args={[sizeM, sizeM]} />
       <meshBasicMaterial
         map={texture ?? undefined}
-        color={texture ? '#ffffff' : '#e5eae0'}
+        color={texture ? '#ffffff' : '#dce3c8'}
         transparent
         depthWrite={false}
       />

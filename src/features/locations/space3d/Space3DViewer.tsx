@@ -165,6 +165,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const applyPreset = useSpaceLayoutStore((state) => state.applyPreset);
   const updateSolarConfig = useSpaceLayoutStore((state) => state.updateSolarConfig);
   const addPathStroke = useSpaceLayoutStore((state) => state.addPathStroke);
+  const updatePathStroke = useSpaceLayoutStore((state) => state.updatePathStroke);
   const removePathStroke = useSpaceLayoutStore((state) => state.removePathStroke);
   const setBaseBoundary = useSpaceLayoutStore((state) => state.setBaseBoundary);
   const setBaseMaterial = useSpaceLayoutStore((state) => state.setBaseMaterial);
@@ -1722,7 +1723,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 }
               }}
             >
-              <color attach="background" args={['#f8fafc']} />
+              <color attach="background" args={['#f7f4ea']} />
               <OrthographicCamera
                 makeDefault
                 position={INITIAL_CAMERA_POSITION_3D}
@@ -2045,16 +2046,47 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               />
             ))}
 
-            {/* Welded walkable surface */}
-            {regions.walkablePolygons.map((poly, idx) => (
-              <polygon
-                key={`svg-walkable-${idx}`}
-                points={polygonToSvgPoints(poly)}
-                fill="#e2e8f0"
-                stroke="#cbd5e1"
-                strokeWidth={2}
-              />
-            ))}
+            {/* Welded walkable surface by material */}
+            {(regions.walkableRegionsByMaterial && regions.walkableRegionsByMaterial.length > 0
+              ? regions.walkableRegionsByMaterial.flatMap((group) =>
+                  group.polygons.map((poly, idx) => ({
+                    key: `svg-walkable-${group.material}-${idx}`,
+                    poly,
+                    material: group.material,
+                  })),
+                )
+              : regions.walkablePolygons.map((poly, idx) => ({
+                  key: `svg-walkable-${idx}`,
+                  poly,
+                  material: 'concrete' as const,
+                }))
+            ).map((item) => {
+              const fillByMat =
+                item.material === 'gravel'
+                  ? '#d6d3d1'
+                  : item.material === 'wood'
+                    ? '#fde68a'
+                    : item.material === 'tile'
+                      ? '#bae6fd'
+                      : '#e2e8f0';
+              const strokeByMat =
+                item.material === 'gravel'
+                  ? '#a8a29e'
+                  : item.material === 'wood'
+                    ? '#d97706'
+                    : item.material === 'tile'
+                      ? '#38bdf8'
+                      : '#cbd5e1';
+              return (
+                <polygon
+                  key={item.key}
+                  points={polygonToSvgPoints(item.poly)}
+                  fill={fillByMat}
+                  stroke={strokeByMat}
+                  strokeWidth={2}
+                />
+              );
+            })}
 
             {/* 1:1 Perimeter Walls & Openings on 2D CAD Plane */}
             {layout.walls.map((wall) => {
@@ -2735,6 +2767,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             }
             paths={layout.paths}
             onRemovePath={(pathId) => removePathStroke(locationId, pathId)}
+            onUpdatePathMaterial={(pathId, mat) =>
+              updatePathStroke(locationId, pathId, { material: mat })
+            }
             draftStartCm={builderState.draftStartCm}
             onCancelDraft={() =>
               dispatch({ type: 'SET_DRAFT_START', pointCm: null })

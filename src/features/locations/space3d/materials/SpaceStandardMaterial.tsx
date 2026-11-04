@@ -2,6 +2,11 @@ import React from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
+import {
+  getSpaceMaterialProgramCacheKey,
+  injectAntiTilingShader,
+  injectOrthographicRoughnessFloor,
+} from './antiTilingShader';
 import type { SpaceMaterialConfig } from './materialRegistry';
 
 export interface SpaceStandardMaterialProps {
@@ -51,6 +56,46 @@ interface TexturedMaterialProps {
   displayEmissiveIntensity: number;
 }
 
+function configureTextureMap(
+  tex: THREE.Texture | undefined,
+  colorSpace: THREE.ColorSpace,
+  maxAnisotropy: number,
+): THREE.Texture | undefined {
+  if (!tex) return undefined;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = colorSpace;
+  tex.anisotropy = maxAnisotropy;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function extractAndConfigurePbrMaps(
+  loaded: unknown,
+  maxAnisotropy: number,
+): {
+  albedoMap?: THREE.Texture;
+  normalMap?: THREE.Texture;
+  armMap?: THREE.Texture;
+} {
+  const isSingleTexture = Boolean(loaded && 'isTexture' in (loaded as object));
+  const rawAlbedo = isSingleTexture
+    ? (loaded as THREE.Texture)
+    : (loaded as Record<string, THREE.Texture | undefined>)?.map;
+  const rawNormal = isSingleTexture
+    ? undefined
+    : (loaded as Record<string, THREE.Texture | undefined>)?.normalMap;
+  const rawArm = isSingleTexture
+    ? undefined
+    : (loaded as Record<string, THREE.Texture | undefined>)?.armMap;
+
+  return {
+    albedoMap: configureTextureMap(rawAlbedo, THREE.SRGBColorSpace, maxAnisotropy),
+    normalMap: configureTextureMap(rawNormal, THREE.NoColorSpace, maxAnisotropy),
+    armMap: configureTextureMap(rawArm, THREE.NoColorSpace, maxAnisotropy),
+  };
+}
+
 const TexturedMaterial: React.FC<TexturedMaterialProps> = ({
   url,
   config,
@@ -74,48 +119,8 @@ const TexturedMaterial: React.FC<TexturedMaterialProps> = ({
   const loaded = useTexture(textureInput);
 
   const { albedoMap, normalMap, armMap } = React.useMemo(() => {
-    const isSingleTexture = Boolean(loaded && 'isTexture' in (loaded as object));
-    const mapTex = isSingleTexture
-      ? (loaded as unknown as THREE.Texture)
-      : (loaded as Record<string, THREE.Texture | undefined>)?.map;
-    const normalTex = isSingleTexture
-      ? undefined
-      : (loaded as Record<string, THREE.Texture | undefined>)?.normalMap;
-    const armTex = isSingleTexture
-      ? undefined
-      : (loaded as Record<string, THREE.Texture | undefined>)?.armMap;
-
     const maxAnisotropy = gl?.capabilities?.getMaxAnisotropy?.() ?? 1;
-
-    if (mapTex) {
-      mapTex.wrapS = THREE.RepeatWrapping;
-      mapTex.wrapT = THREE.RepeatWrapping;
-      mapTex.colorSpace = THREE.SRGBColorSpace;
-      mapTex.anisotropy = maxAnisotropy;
-      mapTex.needsUpdate = true;
-    }
-
-    if (normalTex) {
-      normalTex.wrapS = THREE.RepeatWrapping;
-      normalTex.wrapT = THREE.RepeatWrapping;
-      normalTex.colorSpace = THREE.NoColorSpace;
-      normalTex.anisotropy = maxAnisotropy;
-      normalTex.needsUpdate = true;
-    }
-
-    if (armTex) {
-      armTex.wrapS = THREE.RepeatWrapping;
-      armTex.wrapT = THREE.RepeatWrapping;
-      armTex.colorSpace = THREE.NoColorSpace;
-      armTex.anisotropy = maxAnisotropy;
-      armTex.needsUpdate = true;
-    }
-
-    return {
-      albedoMap: mapTex,
-      normalMap: normalTex,
-      armMap: armTex,
-    };
+    return extractAndConfigurePbrMaps(loaded, maxAnisotropy);
   }, [loaded, gl]);
 
   const scale = config.normalScale ?? 1.0;
@@ -124,8 +129,27 @@ const TexturedMaterial: React.FC<TexturedMaterialProps> = ({
     [scale],
   );
 
+  const isAntiTile = Boolean(config.antiTile);
+  const isDielectric = (config.metalness ?? 0) === 0;
+  const customProgramCacheKey = React.useCallback(
+    () => getSpaceMaterialProgramCacheKey(isAntiTile),
+    [isAntiTile],
+  );
+
+  const onBeforeCompile = React.useCallback(
+    (shader: { fragmentShader: string }) => {
+      if (isAntiTile) {
+        injectAntiTilingShader(shader);
+      } else if (isDielectric) {
+        injectOrthographicRoughnessFloor(shader);
+      }
+    },
+    [isAntiTile, isDielectric],
+  );
+
   return (
     <meshStandardMaterial
+      key={getSpaceMaterialProgramCacheKey(isAntiTile)}
       map={albedoMap}
       normalMap={normalMap}
       normalScale={normalScaleVec}
@@ -136,10 +160,13 @@ const TexturedMaterial: React.FC<TexturedMaterialProps> = ({
       color={displayColor}
       roughness={config.roughness}
       metalness={config.metalness ?? 0}
+      envMapIntensity={0.3}
       transparent={config.transparent ?? false}
       opacity={config.opacity ?? 1}
       emissive={displayEmissive}
       emissiveIntensity={displayEmissiveIntensity}
+      customProgramCacheKey={customProgramCacheKey}
+      onBeforeCompile={onBeforeCompile}
     />
   );
 };
@@ -163,6 +190,7 @@ export const SpaceStandardMaterial: React.FC<SpaceStandardMaterialProps> = ({
       color={isSelected ? '#38bdf8' : (config.tintColor ?? config.fallbackColor)}
       roughness={config.roughness}
       metalness={config.metalness ?? 0}
+      envMapIntensity={0.3}
       transparent={config.transparent ?? false}
       opacity={config.opacity ?? 1}
       emissive={displayEmissive}

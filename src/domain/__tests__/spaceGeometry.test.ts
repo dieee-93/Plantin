@@ -173,6 +173,62 @@ describe('spaceGeometry - Slice 3: Boolean Union & Difference (User Patio Sketch
     expect(regions.cultivableAreaM2).toBeGreaterThan(30);
     expect(regions.walkableAreaM2 + regions.cultivableAreaM2).toBeCloseTo(60, 1);
   });
+
+  it('partitions walkableRegionsByMaterial by material and subtracts later overlapping paths to prevent 3D z-fighting', () => {
+    const baseBoundary = createRectPolygon(1000, 600);
+
+    const hardscapeZones: HardscapeZoneCm[] = [
+      {
+        id: 'playon-superior',
+        material: 'concrete',
+        polygon: [
+          { x: 0, y: 0 },
+          { x: 1000, y: 0 },
+          { x: 1000, y: 200 },
+          { x: 0, y: 200 },
+        ],
+      },
+    ];
+
+    const paths: PathStrokeCm[] = [
+      {
+        id: 'camino-grava',
+        material: 'gravel',
+        points: [
+          { x: 300, y: 100 },
+          { x: 300, y: 550 },
+        ],
+        widthCm: 80,
+      },
+      {
+        id: 'camino-madera',
+        material: 'wood',
+        points: [
+          { x: 100, y: 400 },
+          { x: 800, y: 400 },
+        ],
+        widthCm: 80,
+      },
+    ];
+
+    const regions = computeSpaceRegions(baseBoundary, hardscapeZones, paths);
+
+    expect(regions.walkableRegionsByMaterial.map((r) => r.material)).toEqual([
+      'concrete',
+      'gravel',
+      'wood',
+    ]);
+
+    const sumMaterialAreasM2 = regions.walkableRegionsByMaterial.reduce(
+      (acc, group) =>
+        acc +
+        group.polygons.reduce((sum, poly) => sum + calculatePolygonAreaM2(poly), 0),
+      0,
+    );
+
+    // Since later paths subtract their overlap from earlier materials, the sum of all per-material areas equals total walkableAreaM2
+    expect(sumMaterialAreasM2).toBeCloseTo(regions.walkableAreaM2, 2);
+  });
 });
 
 describe('spaceGeometry - Slice 4: Point-in-Polygon & Region Classification', () => {
