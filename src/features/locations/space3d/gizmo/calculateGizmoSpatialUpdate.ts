@@ -5,6 +5,7 @@ export interface CalculateGizmoSpatialUpdateParams {
   worldMatrix: THREE.Matrix4;
   centerCm: Point2DCm;
   initialElevationM?: number;
+  initialRotationDeg?: number;
   isShiftKey?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function calculateGizmoSpatialUpdate({
   worldMatrix,
   centerCm,
   initialElevationM = 0,
+  initialRotationDeg = 0,
   isShiftKey = false,
 }: CalculateGizmoSpatialUpdateParams): GizmoSpatialResult {
   const pos = new THREE.Vector3();
@@ -40,12 +42,20 @@ export function calculateGizmoSpatialUpdate({
 
   // Extracción de ángulo de rotación Yaw (alrededor de Y)
   const euler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
-  const rawDeg = THREE.MathUtils.radToDeg(euler.y);
-  const normalizedDeg = ((Math.round(rawDeg) % 360) + 360) % 360;
+  const deltaDeg = THREE.MathUtils.radToDeg(euler.y);
 
-  // Snapping angular: 5° con Shift, 15° por defecto
-  const angularSnap = isShiftKey ? 5 : 15;
-  const snappedRotationDeg = Math.round(normalizedDeg / angularSnap) * angularSnap % 360;
+  let snappedRotationDeg: number;
+  // Si no hay delta de rotación (solo traslación en X/Z), preservar rotación inicial sin alterar
+  if (Math.abs(deltaDeg) < 0.001) {
+    snappedRotationDeg = initialRotationDeg;
+  } else {
+    const rawDeg = initialRotationDeg + deltaDeg;
+    const normalizedDeg = ((Math.round(rawDeg) % 360) + 360) % 360;
+
+    // Snapping angular: 5° con Shift, 15° por defecto
+    const angularSnap = isShiftKey ? 5 : 15;
+    snappedRotationDeg = (Math.round(normalizedDeg / angularSnap) * angularSnap) % 360;
+  }
 
   return {
     xCm: snappedPt.x,

@@ -18,6 +18,8 @@ export interface SpaceObjectGizmoProps {
   children: React.ReactNode;
 }
 
+const CM_TO_M = 0.01;
+
 export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
   object,
   centerCm,
@@ -29,6 +31,7 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
 }) => {
   const isShiftPressedRef = useRef(false);
   const pendingUpdateRef = useRef<GizmoSpatialResult | null>(null);
+  const dragStartRotationRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -47,6 +50,7 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
   }, []);
 
   const handleDragStart = useCallback(() => {
+    dragStartRotationRef.current = object.rotationDeg ?? 0;
     pendingUpdateRef.current = {
       xCm: object.xCm,
       yCm: object.yCm,
@@ -62,6 +66,7 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
         worldMatrix: w,
         centerCm,
         initialElevationM: object.elevationM ?? 0,
+        initialRotationDeg: dragStartRotationRef.current,
         isShiftKey: isShiftPressedRef.current,
       });
 
@@ -82,29 +87,33 @@ export const SpaceObjectGizmo: React.FC<SpaceObjectGizmoProps> = ({
     return <>{children}</>;
   }
 
+  const posX = (object.xCm - centerCm.x) * CM_TO_M;
+  const posY = object.elevationM ?? 0;
+  const posZ = (object.yCm - centerCm.y) * CM_TO_M;
+
   return (
     <group name={`object-gizmo-${object.id}`}>
-      <PivotControls
-        activeAxes={[true, false, true]} // X (Three.X) y Z (Three.Z) activos. Y (vertical) bloqueado.
-        disableAxes={false}
-        disableSliders={false}
-        disableRotations={false}
-        disableScaling={true}
-        depthTest={false}
-        renderOrder={1000}
-        fixed={true}
-        scale={75}
-        lineWidth={3}
-        anchor={[0, -1, 0]} // Base inferior del objeto apoyada en el suelo
-        axisColors={['#ef4444', '#10b981', '#3b82f6']}
-        hoveredColor="#f59e0b"
-        autoTransform={false}
-        onDragStart={handleDragStart}
-        onDrag={handleDrag}
-        onDragEnd={handleDragEnd}
-      >
-        {children}
-      </PivotControls>
+      {children}
+      <group position={[posX, posY, posZ]}>
+        <PivotControls
+          activeAxes={[true, false, true]} // X (Three.X) y Z (Three.Z) activos. Y (vertical) bloqueado.
+          disableAxes={false}
+          disableSliders={false}
+          disableRotations={false}
+          disableScaling={true}
+          depthTest={false}
+          renderOrder={1000}
+          fixed={true}
+          scale={75}
+          lineWidth={3}
+          axisColors={['#ef4444', '#10b981', '#3b82f6']}
+          hoveredColor="#f59e0b"
+          autoTransform={false}
+          onDragStart={handleDragStart}
+          onDrag={handleDrag}
+          onDragEnd={handleDragEnd}
+        />
+      </group>
     </group>
   );
 };

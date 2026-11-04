@@ -83,4 +83,64 @@ describe('calculateGizmoSpatialUpdate - 3D World Matrix to 2D Metric CAD Coordin
 
     expect(result.rotationDeg).toBe(340);
   });
+
+  it('preserves in-place position invariance when rotating around Y axis', () => {
+    // Position at X=700cm (2m), Y=200cm (-1m), with 45 deg rotation applied in-place
+    const posX = (700 - centerCm.x) * 0.01; // 2m
+    const posZ = (200 - centerCm.y) * 0.01; // -1m
+    const bi = new THREE.Matrix4().setPosition(posX, 0, posZ);
+
+    const origin = new THREE.Vector3(posX, 0, posZ);
+    const normal = new THREE.Vector3(0, 1, 0);
+    const angle = Math.PI / 4; // 45 deg
+
+    const ii = new THREE.Matrix4().makeRotationAxis(normal, angle);
+    const si = origin.clone().applyMatrix4(ii).sub(origin).negate();
+    ii.setPosition(si);
+
+    const Si = bi.clone().premultiply(ii);
+
+    const result = calculateGizmoSpatialUpdate({
+      worldMatrix: Si,
+      centerCm,
+      initialElevationM: 0,
+      initialRotationDeg: 0,
+      isShiftKey: false,
+    });
+
+    expect(result.xCm).toBe(700);
+    expect(result.yCm).toBe(200);
+    expect(result.rotationDeg).toBe(45);
+  });
+
+  it('accumulates delta yaw rotation onto initialRotationDeg with snapping', () => {
+    // Initial rotation 45°, delta rotation 30° -> 75°
+    const rad = (30 * Math.PI) / 180;
+    const matrix = new THREE.Matrix4().makeRotationY(rad);
+
+    const result = calculateGizmoSpatialUpdate({
+      worldMatrix: matrix,
+      centerCm,
+      initialElevationM: 0,
+      initialRotationDeg: 45,
+      isShiftKey: false,
+    });
+
+    expect(result.rotationDeg).toBe(75);
+  });
+
+  it('preserves custom initialRotationDeg when dragging purely translation (no rotation delta)', () => {
+    // Custom non-multiple angle (e.g. 37°) should not be rounded to 30° or 45° if user only translates
+    const matrix = new THREE.Matrix4().makeTranslation(1, 0, 0);
+
+    const result = calculateGizmoSpatialUpdate({
+      worldMatrix: matrix,
+      centerCm,
+      initialElevationM: 0,
+      initialRotationDeg: 37,
+      isShiftKey: false,
+    });
+
+    expect(result.rotationDeg).toBe(37);
+  });
 });

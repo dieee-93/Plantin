@@ -477,10 +477,20 @@ export const ObjectsLayer: React.FC<ObjectsLayerProps> = React.memo(
               ? buildShapeFromPolygonCm(footprint, centerCm)
               : null;
 
+          const currentSpatial: PlacedObjectSpatialCm = isDragging
+            ? {
+                ...obj,
+                xCm: posX,
+                yCm: posY,
+                elevationM: posElevationM,
+                rotationDeg: rot,
+              }
+            : obj;
+
           return (
             <group key={obj.id} name={`object-node-${obj.id}`}>
               <SpaceObjectGizmo
-                object={obj}
+                object={currentSpatial}
                 centerCm={centerCm}
                 isSelected={isSelected}
                 onDragStart={() => onGizmoDragStart?.(obj.id)}
