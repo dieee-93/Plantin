@@ -20,7 +20,6 @@ import type { SpaceBuilderTool, SpacePrimaryMode, SpaceBuildSubMode } from './sp
 import {
   HudRail,
   HudRailButton,
-  HudRailDivider,
   HudStatusLine,
   HudTooltip,
 } from '@/components/hud';
@@ -437,47 +436,12 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
                 </div>
               )}
             </div>
-
-            <HudRailDivider orientation="vertical" />
-
-            <div className="relative flex items-center">
-              <HudRailButton
-                icon={<Undo2 size={18} />}
-                title="Deshacer"
-                description="Deshacer la última acción (Ctrl+Z)"
-                shortcut="Ctrl+Z"
-                aria-label="Deshacer (Undo)"
-                disabled={!canUndo}
-                onClick={onUndo}
-              />
-              {showRailHints && (
-                <span className="pointer-events-none absolute left-full ml-2 z-40 whitespace-nowrap rounded-md bg-slate-900/85 px-2 py-0.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-xs transition-opacity duration-300">
-                  Deshacer
-                </span>
-              )}
-            </div>
-            <div className="relative flex items-center">
-              <HudRailButton
-                icon={<Redo2 size={18} />}
-                title="Rehacer"
-                description="Rehacer la última acción deshecha (Ctrl+Y)"
-                shortcut="Ctrl+Y"
-                aria-label="Rehacer (Redo)"
-                disabled={!canRedo}
-                onClick={onRedo}
-              />
-              {showRailHints && (
-                <span className="pointer-events-none absolute left-full ml-2 z-40 whitespace-nowrap rounded-md bg-slate-900/85 px-2 py-0.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-xs transition-opacity duration-300">
-                  Rehacer
-                </span>
-              )}
-            </div>
           </HudRail>
         </div>
       )}
 
       {/* ── Bottom HUD Dock (Fine Status Line & Mode Toggle) ── */}
-      <div className="absolute bottom-3 inset-x-0 pointer-events-none flex flex-col items-center gap-1 z-30">
+      <div className="relative w-full pointer-events-none flex flex-col items-center gap-1.5 z-30">
         {(mode === 'design' || effectivePrimaryMode !== 'live') && (
           <div
             onMouseEnter={() => setIsStatusVisible(true)}
@@ -497,10 +461,13 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
           </div>
         )}
 
-        {/* Main Glassmorphism Command Dock (Height ≤ 44px) */}
-        <div className="pointer-events-auto flex h-10 max-h-10 items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-2.5 py-1 shadow-xl backdrop-blur-md">
-          {/* Segmented Mode Toggle (3 Modes) */}
-          <div className="flex h-7 items-center rounded-full bg-slate-100 p-0.5">
+        {/* Main Glassmorphism Command Dock */}
+        <div
+          data-testid="space-command-dock-bar"
+          className="pointer-events-auto flex items-center justify-between gap-2.5 rounded-full border border-slate-200/90 bg-white/95 px-3 py-1.5 shadow-xl backdrop-blur-md"
+        >
+          {/* Segmented Mode Medallions (3 Modes) */}
+          <div className="flex items-center gap-1.5">
             {/* 1. Live Mode */}
             <button
               type="button"
@@ -511,13 +478,13 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
                 onChangeMode('crop');
                 onChangePrimaryMode?.('live');
               }}
-              className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 text-xs transition cursor-pointer ${
                 effectivePrimaryMode === 'live'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25 ring-2 ring-emerald-500/30 px-3.5 py-1.5 rounded-full'
+                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-semibold border border-slate-200/80 px-3 py-1.5 rounded-full'
               }`}
             >
-              <Sprout size={12} />
+              <Sprout size={13} />
               <span>🌿 Cultivo</span>
             </button>
 
@@ -531,13 +498,13 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
                 onChangeMode('design');
                 onChangePrimaryMode?.('build');
               }}
-              className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 text-xs transition cursor-pointer ${
                 effectivePrimaryMode === 'build'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25 ring-2 ring-emerald-500/30 px-3.5 py-1.5 rounded-full'
+                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-semibold border border-slate-200/80 px-3 py-1.5 rounded-full'
               }`}
             >
-              <Wrench size={12} />
+              <Wrench size={13} />
               <span>🏗️ Construcción</span>
             </button>
 
@@ -551,10 +518,10 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
                 onChangeMode('design');
                 onChangePrimaryMode?.('planting');
               }}
-              className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 text-xs transition cursor-pointer ${
                 effectivePrimaryMode === 'planting'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-600/25 ring-2 ring-emerald-500/30 px-3.5 py-1.5 rounded-full'
+                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-semibold border border-slate-200/80 px-3 py-1.5 rounded-full'
               }`}
             >
               <span>🌱 Plantación</span>
@@ -595,38 +562,82 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
             </div>
           )}
 
-          {/* Primary + Sembrar Button */}
-          <button
-            type="button"
-            onClick={onOpenSowModalOrDrawer}
-            className="flex h-7 items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 active:scale-95 cursor-pointer"
-          >
-            <Plus size={13} />
-            <span>+ Sembrar</span>
-          </button>
-
-          {/* Tray Toggle Button as Icon with Tooltip */}
-          <HudTooltip
-            title="Bandeja"
-            description="Bandeja inferior de semillas y plantas"
-            side="top"
-          >
+          {/* Right section: Sembrar, Tray & Undo/Redo */}
+          <div className="flex items-center gap-2">
+            {/* Primary + Sembrar Button */}
             <button
               type="button"
-              aria-label="Bandeja"
-              aria-pressed={isTrayOpen}
-              onClick={onToggleTray}
-              className={`flex h-7 w-7 items-center justify-center rounded-full transition cursor-pointer ${
-                isTrayOpen
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-              title="Abrir bandeja inferior de semillas y plantas"
+              onClick={onOpenSowModalOrDrawer}
+              className="flex h-7 items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 active:scale-95 cursor-pointer"
             >
-              <ChevronUp size={13} className={`transition ${isTrayOpen ? 'rotate-180' : ''}`} />
-              <span className="sr-only">Bandeja</span>
+              <Plus size={13} />
+              <span>+ Sembrar</span>
             </button>
-          </HudTooltip>
+
+            {/* Tray Toggle Button as Icon with Tooltip */}
+            <HudTooltip
+              title="Bandeja"
+              description="Bandeja inferior de semillas y plantas"
+              side="top"
+            >
+              <button
+                type="button"
+                aria-label="Bandeja"
+                aria-pressed={isTrayOpen}
+                onClick={onToggleTray}
+                className={`flex h-7 w-7 items-center justify-center rounded-full transition cursor-pointer ${
+                  isTrayOpen
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+                title="Abrir bandeja inferior de semillas y plantas"
+              >
+                <ChevronUp size={13} className={`transition ${isTrayOpen ? 'rotate-180' : ''}`} />
+                <span className="sr-only">Bandeja</span>
+              </button>
+            </HudTooltip>
+
+            {/* Undo & Redo buttons in design/build/planting modes */}
+            {(mode === 'design' || effectivePrimaryMode !== 'live') && (
+              <div className="flex items-center gap-1 border-l border-slate-200/80 pl-2">
+                <HudTooltip
+                  title="Deshacer"
+                  description="Deshacer la última acción (Ctrl+Z)"
+                  shortcut="Ctrl+Z"
+                  side="top"
+                >
+                  <button
+                    type="button"
+                    aria-label="Deshacer (Undo)"
+                    title="Deshacer la última acción (Ctrl+Z)"
+                    disabled={!canUndo}
+                    onClick={onUndo}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                  >
+                    <Undo2 size={13} />
+                  </button>
+                </HudTooltip>
+
+                <HudTooltip
+                  title="Rehacer"
+                  description="Rehacer la última acción deshecha (Ctrl+Y)"
+                  shortcut="Ctrl+Y"
+                  side="top"
+                >
+                  <button
+                    type="button"
+                    aria-label="Rehacer (Redo)"
+                    title="Rehacer la última acción deshecha (Ctrl+Y)"
+                    disabled={!canRedo}
+                    onClick={onRedo}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                  >
+                    <Redo2 size={13} />
+                  </button>
+                </HudTooltip>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>

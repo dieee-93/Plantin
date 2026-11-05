@@ -322,4 +322,68 @@ describe('SpaceCommandDock - Left Vertical HudRail & Bottom Command Dock', () =>
 
     unmount();
   });
+
+  it('renders bottom command dock bar with relative flex flow (no absolute positioning) and luminous medallion styling', () => {
+    render(
+      <SpaceCommandDock
+        mode="design"
+        primaryMode="build"
+        onChangeMode={vi.fn()}
+        onOpenSowModalOrDrawer={vi.fn()}
+        isTrayOpen={false}
+        onToggleTray={vi.fn()}
+        activeTool="inspect"
+        onChangeTool={vi.fn()}
+        pathWidthCm={80}
+        onChangePathWidth={vi.fn()}
+        pathMaterial="concrete"
+        onChangePathMaterial={vi.fn()}
+        paths={[]}
+        onRemovePath={vi.fn()}
+        plantCropCode="tomato"
+        onChangePlantCropCode={vi.fn()}
+        plantSpacingCm={30}
+        onChangePlantSpacing={vi.fn()}
+        cultivableSectorCount={2}
+        onFillSector={vi.fn()}
+        customWidthM="10"
+        setCustomWidthM={vi.fn()}
+        customDepthM="6"
+        setCustomDepthM={vi.fn()}
+        onApplyDimensions={vi.fn()}
+        onInsertVertex={vi.fn()}
+        vertexCount={4}
+        canUndo={true}
+        canRedo={false}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+      />,
+    );
+
+    const dockBar = screen.getByTestId('space-command-dock-bar');
+    expect(dockBar).toBeInTheDocument();
+    expect(dockBar.className).toContain('rounded-full');
+    expect(dockBar.className).toContain('border-slate-200/90');
+    expect(dockBar.className).toContain('bg-white/95');
+
+    // Check parent wrapper has relative w-full and NOT absolute bottom-3
+    const dockWrapper = dockBar.parentElement;
+    expect(dockWrapper).toBeInTheDocument();
+    expect(dockWrapper?.className).toContain('relative');
+    expect(dockWrapper?.className).toContain('w-full');
+    expect(dockWrapper?.className).not.toContain('absolute bottom-3');
+
+    // Build button should be active medallion
+    const buildBtn = screen.getByTestId('mode-btn-build');
+    expect(buildBtn.className).toContain('bg-emerald-600');
+    expect(buildBtn.className).toContain('text-white');
+    expect(buildBtn.className).toContain('rounded-full');
+
+    // Live button should be inactive medallion
+    const liveBtn = screen.getByTestId('mode-btn-live');
+    expect(liveBtn.className).toContain('bg-slate-100');
+    expect(liveBtn.className).toContain('text-slate-700');
+    expect(liveBtn.className).toContain('rounded-full');
+  });
 });
+

@@ -715,13 +715,13 @@ export const BOTANICAL_CATALOG_ITEMS: FacilityCatalogItem[] = [
     variantCode: 'A01',
     category: 'botanical',
     subcategory: 'fruiting_crops',
-    triangles: 14200,
-    drawCalls: 6,
-    sizeMb: 0.56,
+    triangles: 25000,
+    drawCalls: 1,
+    sizeMb: 17.5,
     glbUrl: '/models/plants/plant_tomato_clay_a01.glb',
     thumbnailUrl: '/models/plants/plant_tomato_clay_a01.webp',
-    badge: '66 × 85 × 58 cm',
-    dimensionsBadge: '66 × 85 cm',
+    badge: '72 × 98 × 79 cm',
+    dimensionsBadge: '72 × 98 cm',
     defaultElevationM: 0,
     placementMode: 'build_props',
   },
@@ -982,9 +982,9 @@ export function getObjectDimensionsCm(
     };
   if (assetId === 'plant_tomato_clay_a01' || idLower.includes('tomato_clay'))
     return {
-      widthCm: 66,
-      depthCm: 58,
-      heightCm: 85,
+      widthCm: 72,
+      depthCm: 79,
+      heightCm: 98,
       stackRole: 'top_only',
     };
   if (category === 'botanical')
