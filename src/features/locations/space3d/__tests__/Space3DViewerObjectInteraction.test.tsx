@@ -439,4 +439,50 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
 
     expect(screen.getByTestId('selected-object-action-bar')).toBeInTheDocument();
   });
+
+  it('updates placed object asset dynamically when user switches asset in SpaceAssetDrawer (no stale closure)', () => {
+    render(
+      <Space3DViewer
+        locationId={locationId}
+        locationName="Nave de Almacén"
+        locationType="warehouse"
+        initialMode="design"
+      />,
+    );
+
+    // Switch to 2D view
+    const btn2D = screen.getByRole('button', { name: /2D|Plano 2D/i });
+    fireEvent.click(btn2D);
+
+    const plane = screen.getByTestId('interactive-plane-1to1');
+
+    // Switch to Build mode, then props submode -> activeTool: 'place_object'
+    fireEvent.click(screen.getByTestId('mode-btn-build'));
+    fireEvent.click(screen.getByTestId('submode-btn-props'));
+
+    // Asset drawer should be present
+    expect(screen.getByTestId('space-asset-drawer')).toBeInTheDocument();
+
+    // 1. Select Tomato Clay in the drawer (first item)
+    const tomatoClayTile = screen.getByTestId('asset-tile-plant_tomato_clay_a01');
+    fireEvent.click(tomatoClayTile);
+
+    // Click to place at (150, 150)
+    fireEvent.click(plane, { clientX: 150, clientY: 150 });
+
+    const layoutAfterFirst = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId);
+    const placedClay = layoutAfterFirst.placedObjects?.find((o) => o.assetId === 'plant_tomato_clay_a01');
+    expect(placedClay).toBeDefined();
+
+    // 2. Select Tomato Star in the drawer (second item)
+    const tomatoStarTile = screen.getByTestId('asset-tile-plant_tomato_star_a01');
+    fireEvent.click(tomatoStarTile);
+
+    // Click to place second object at (250, 250)
+    fireEvent.click(plane, { clientX: 250, clientY: 250 });
+
+    const layoutAfterSecond = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId);
+    const placedStar = layoutAfterSecond.placedObjects?.find((o) => o.assetId === 'plant_tomato_star_a01');
+    expect(placedStar).toBeDefined();
+  });
 });

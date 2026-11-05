@@ -1574,10 +1574,17 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       builderState.pathMaterial,
       builderState.pathWidthCm,
       builderState.plantTemplate,
+      builderState.selectedObjectAssetId,
+      builderState.objectRotationDeg,
+      builderState.objectElevationM,
       layout.paths.length,
+      layout.placedObjects,
+      layout.walls,
+      layout.baseBoundary,
       locationId,
       regions,
       addPathStroke,
+      placeObject,
       placePlant,
       placePlantLine,
     ],
@@ -2821,28 +2828,28 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         </div>
       )}
 
-      {/* ── 3.10a. 3D Asset Drawer & Taxonomy (Left-docked CAD Library) ── */}
-      {isHudVisible && builderState.activeTool === 'place_object' && (
-        <SpaceAssetDrawer
-          isOpen={isAssetDrawerOpen}
-          onToggleOpen={() => setIsAssetDrawerOpen((prev) => !prev)}
-          onClose={() => setIsAssetDrawerOpen(false)}
-          selectedAssetId={builderState.selectedObjectAssetId}
-          onSelectAssetId={(assetId) =>
-            dispatch({ type: 'SET_OBJECT_ASSET', assetId })
-          }
-          placementMode={builderState.primaryMode === 'planting' ? 'planting_utility' : 'build_props'}
-        />
-      )}
-
       {/* ── 5. Bottom HUD Dock & Camera Widget ── */}
       {isHudVisible && (
         <div className="pointer-events-none absolute bottom-3 inset-x-3 z-30 flex items-end justify-between gap-3">
         {/* Invisible spacer to center the command dock */}
-        <div className="w-48 hidden md:block" />
+        <div className="w-40 hidden lg:block" />
 
         {/* Bottom-Center Command Dock with Integrated Builder Shelf (Cities: Skylines 2 / Planet Zoo Style) */}
-        <div className="pointer-events-auto flex flex-col items-center gap-1.5 max-w-2xl w-full z-40">
+        <div className="pointer-events-auto flex flex-col items-center gap-1.5 max-w-4xl w-full z-40">
+        {/* ── 3.10a. 3D Asset Drawer & Taxonomy (Horizontal Console Shelf) ── */}
+        {builderState.activeTool === 'place_object' && (
+          <SpaceAssetDrawer
+            isOpen={isAssetDrawerOpen}
+            onToggleOpen={() => setIsAssetDrawerOpen((prev) => !prev)}
+            onClose={() => setIsAssetDrawerOpen(false)}
+            selectedAssetId={builderState.selectedObjectAssetId}
+            onSelectAssetId={(assetId) =>
+              dispatch({ type: 'SET_OBJECT_ASSET', assetId })
+            }
+            placementMode={builderState.primaryMode === 'planting' ? 'planting_utility' : 'build_props'}
+            className="relative bottom-auto left-auto translate-x-0 w-full max-w-4xl"
+          />
+        )}
         {/* ── 3.4b. Staging Bar for Planting Mode ── */}
         {builderState.stagedPlants.length > 0 && (
           <SpacePlantingStagingBar
@@ -2960,7 +2967,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       {builderState.activeTool === 'place_object' && (
         <div
           data-testid="space-object-placement-pill"
-          className="pointer-events-auto flex items-center flex-wrap justify-between gap-2.5 px-3.5 py-2 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-xl max-w-2xl w-full"
+          className="pointer-events-auto flex items-center flex-wrap justify-between gap-2.5 px-3.5 py-2 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-900 shadow-xl max-w-4xl w-full"
         >
           {/* Selected object thumbnail & title */}
           <div className="flex items-center gap-2.5 min-w-0">
@@ -2968,21 +2975,21 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               <img
                 src={selectedObjectItem.thumbnailUrl}
                 alt={selectedObjectItem.label}
-                className="w-8 h-8 rounded-lg object-contain bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0"
+                className="w-8 h-8 rounded-lg object-contain bg-slate-100 border border-slate-200 shrink-0"
               />
             )}
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate max-w-[130px] sm:max-w-[170px]">
+              <div className="text-xs font-semibold text-slate-800 truncate max-w-[130px] sm:max-w-[170px]">
                 {selectedObjectItem?.label ?? 'Objeto seleccionado'}
               </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+              <div className="text-[10px] text-slate-500">
                 {selectedObjectItem?.dimensionsBadge ?? '3D Asset'}
               </div>
             </div>
             <button
               type="button"
               onClick={() => setIsAssetDrawerOpen(true)}
-              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
             >
               📐 Biblioteca
             </button>
@@ -2990,7 +2997,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
           {/* Quick chips: Giro */}
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-slate-400 mr-0.5 flex items-center gap-0.5">
+            <span className="text-[11px] text-slate-500 mr-0.5 flex items-center gap-0.5">
               <RotateCw size={12} /> Giro:
             </span>
             {[0, 90, 180, 270].map((deg) => (
@@ -3000,10 +3007,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 onClick={() =>
                   dispatch({ type: 'SET_OBJECT_ROTATION', rotationDeg: deg })
                 }
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                   builderState.objectRotationDeg === deg
                     ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 {deg}°
@@ -3013,7 +3020,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
           {/* Quick chips: Altura */}
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-slate-400 mr-0.5 flex items-center gap-0.5">
+            <span className="text-[11px] text-slate-500 mr-0.5 flex items-center gap-0.5">
               <Layers size={12} /> Altura:
             </span>
             {[
@@ -3031,10 +3038,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                   onClick={() =>
                     dispatch({ type: 'SET_OBJECT_ELEVATION', elevationM: val })
                   }
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                     isSelected
                       ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
                   {label}
@@ -3048,7 +3055,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             type="button"
             onClick={() => dispatch({ type: 'SET_TOOL', tool: 'inspect' })}
             aria-label="Cerrar colocación de objetos"
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X size={15} />
           </button>
