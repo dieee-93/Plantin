@@ -4,12 +4,9 @@ import {
   createInitialBuilderState,
   spaceBuilderReducer,
   type SpaceBuilderState,
-  type SpacePrimaryMode,
-  type SpaceBuildSubMode,
 } from '../spaceBuilderReducer';
 import {
   resolveSpaceKeyCommand,
-  type SpaceKeyCommand,
 } from '../spaceKeyboardShortcuts';
 
 describe('Fase 1 - Máquina de Estados de 3 Modos y Buffer de Staging', () => {

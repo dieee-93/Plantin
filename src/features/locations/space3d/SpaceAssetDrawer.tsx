@@ -64,7 +64,7 @@ export const SpaceAssetDrawer: React.FC<SpaceAssetDrawerProps> = ({
     if (!placementMode) {
       return FACILITY_OBJECTS_CATALOG;
     }
-    return getCatalogItemsForMode(placementMode);
+    return getCatalogItemsForMode(placementMode, FACILITY_OBJECTS_CATALOG);
   }, [placementMode]);
 
   const subcategories = useMemo(() => {

@@ -57,6 +57,7 @@ export interface CatalogCategoryDef {
 
 export const CATALOG_CATEGORIES: readonly CatalogCategoryDef[] = [
   { id: 'all', label: 'Todos (999)', emoji: '✨' },
+  { id: 'botanical', label: 'Plantas 3D', emoji: '🌿' },
   { id: 'logistics', label: 'Logística', emoji: '📦' },
   { id: 'mep_climate', label: 'Clima / MEP', emoji: '⚡' },
   { id: 'workbench_furniture', label: 'Mobiliario', emoji: '🪑' },
@@ -75,6 +76,10 @@ export interface CatalogSubcategoryDef {
 
 export const CATALOG_SUBCATEGORIES: Record<string, CatalogSubcategoryDef[]> = {
   all: [{ id: 'all', label: 'Todos', emoji: '✨' }],
+  botanical: [
+    { id: 'all', label: 'Todos', emoji: '🌿' },
+    { id: 'fruiting_crops', label: 'Hortalizas y Frutos', emoji: '🍅' },
+  ],
   logistics: [
     { id: 'all', label: 'Todos', emoji: '📦' },
     { id: 'pallets', label: 'Palets y Zorras', emoji: '🪵' },
@@ -132,8 +137,9 @@ export function inferAssetPlacementAndSpec(
   const idLower = assetId.toLowerCase();
   const subcat = subcategory ?? inferSubcategory(assetId, category);
 
-  // Todo harvest_produce, hand_tools y safety pasan a build_props
+  // Todo harvest_produce, botanical, hand_tools y safety pasan a build_props
   if (
+    category === 'botanical' ||
     category === 'harvest_produce' ||
     category === 'hand_tools' ||
     category === 'safety'
@@ -701,10 +707,36 @@ export const SIMREADY_CATALOG: FacilityCatalogItem[] = (
   };
 });
 
+export const BOTANICAL_CATALOG_ITEMS: FacilityCatalogItem[] = [
+  {
+    assetId: 'plant_tomato_clay_a01',
+    label: 'Tomatera en Producción (3D Clay)',
+    originalLabel: 'Tomate 3D Clay Estilizado',
+    variantCode: 'A01',
+    category: 'botanical',
+    subcategory: 'fruiting_crops',
+    triangles: 14200,
+    drawCalls: 6,
+    sizeMb: 0.56,
+    glbUrl: '/models/plants/plant_tomato_clay_a01.glb',
+    thumbnailUrl: '/models/plants/plant_tomato_clay_a01.webp',
+    badge: '66 × 85 × 58 cm',
+    dimensionsBadge: '66 × 85 cm',
+    defaultElevationM: 0,
+    placementMode: 'build_props',
+  },
+];
+
+export const FACILITY_OBJECTS_CATALOG: FacilityCatalogItem[] = [
+  ...BOTANICAL_CATALOG_ITEMS,
+  ...SIMREADY_CATALOG,
+];
+
 export function getCatalogItemsForMode(
   mode: AssetPlacementMode,
+  catalog: FacilityCatalogItem[] = SIMREADY_CATALOG,
 ): FacilityCatalogItem[] {
-  return SIMREADY_CATALOG.filter((item) => item.placementMode === mode);
+  return catalog.filter((item) => item.placementMode === mode);
 }
 
 export interface RoomTechnicalSummary {
@@ -786,8 +818,6 @@ export function computeRoomTechnicalSummary(
   };
 }
 
-// Fallback compatibility alias
-export const FACILITY_OBJECTS_CATALOG = SIMREADY_CATALOG;
 
 export type StackingRole = 'support_base' | 'stackable_item' | 'top_only';
 
@@ -947,6 +977,20 @@ export function getObjectDimensionsCm(
     return {
       widthCm: 50,
       depthCm: 50,
+      heightCm: 80,
+      stackRole: 'top_only',
+    };
+  if (assetId === 'plant_tomato_clay_a01' || idLower.includes('tomato_clay'))
+    return {
+      widthCm: 66,
+      depthCm: 58,
+      heightCm: 85,
+      stackRole: 'top_only',
+    };
+  if (category === 'botanical')
+    return {
+      widthCm: 60,
+      depthCm: 60,
       heightCm: 80,
       stackRole: 'top_only',
     };

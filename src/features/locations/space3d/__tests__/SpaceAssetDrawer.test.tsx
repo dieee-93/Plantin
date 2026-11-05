@@ -18,10 +18,11 @@ describe('SpaceAssetDrawer - 3D Asset Drawer & Taxonomy', () => {
     // Header & Search
     expect(screen.getByText('Biblioteca de Objetos')).toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText(/Buscar entre 999 modelos/i),
+      screen.getByPlaceholderText(/Buscar entre \d+ modelos/i),
     ).toBeInTheDocument();
 
     // Primary categories
+    expect(screen.getByText('Plantas 3D')).toBeInTheDocument();
     expect(screen.getByText('Logística')).toBeInTheDocument();
     expect(screen.getByText('Clima / MEP')).toBeInTheDocument();
     expect(screen.getByText('Mobiliario')).toBeInTheDocument();
@@ -156,6 +157,6 @@ describe('SpaceAssetDrawer - 3D Asset Drawer & Taxonomy', () => {
     fireEvent.click(loadMoreBtn);
 
     // Expecting next batch
-    expect(screen.getByText(/Mostrando 48 de 999/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mostrando 48 de \d+/i)).toBeInTheDocument();
   });
 });

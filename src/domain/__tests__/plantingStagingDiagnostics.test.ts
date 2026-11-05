@@ -3,8 +3,6 @@ import {
   evaluatePlantingStagingDiagnostics,
   commitPlantingSessionToStores,
   type PlantingStagingEvaluationInput,
-  type PlantingDiagnosticIssue,
-  type PlantingValidationReport,
 } from '../plantingStagingDiagnostics';
 import {
   computeSpaceRegions,

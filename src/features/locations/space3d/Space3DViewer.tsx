@@ -28,6 +28,7 @@ import {
   type PlacedPlantSpatialCm,
 } from '@/domain/solarAndPlantSpatial';
 import type { Individual } from '@/domain/individual';
+import type { LocationType } from '@/domain/location';
 import { flushSpaceLayoutStorage, useSpaceLayoutStore } from '@/store/spaceLayoutStore';
 import { useIndividualStore } from '@/store/individualStore';
 import { useSeedLotStore } from '@/store/seedLotStore';
@@ -576,7 +577,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           break;
         }
         case 'reset_selected_wall':
-          updateWall(locationId, cmd.wallId, { heightCm: 0, openings: [] });
+          updateWall(locationId, cmd.wallId, { heightCm: 0 });
           dispatch({ type: 'SELECT_WALL', wallId: null });
           break;
         case 'delete_selected_vertex':
@@ -632,7 +633,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       regions,
       walls: layout.walls,
       solarConfig: layout.solarConfig,
-      locationType,
+      locationType: locationType as LocationType | undefined,
     });
   }, [
     builderState.stagedPlants,
@@ -2735,7 +2736,8 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             onSelectPlantToPlace={(indId) => {
               const ind = individuals.find((i) => i.id === indId);
               if (ind) {
-                const normCrop = normalizeCropCode(ind.cropCode || ind.species || ind.label);
+                const indAny = ind as unknown as { cropCode?: string; species?: string };
+                const normCrop = normalizeCropCode(indAny.cropCode || indAny.species || ind.label || '');
                 if (normCrop in PLANT_BUILDER_PRESETS) {
                   dispatch({
                     type: 'SET_PLANT_PRESET',

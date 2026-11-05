@@ -5,8 +5,6 @@ import {
   getCatalogItemsForMode,
   computeRoomTechnicalSummary,
   inferAssetPlacementAndSpec,
-  type FunctionalAssetRole,
-  type TechnicalSpecLevel1,
 } from '../objectsCatalog';
 
 describe('objectsCatalogClassification - Fase 2: Reclasificación de Assets y Metadatos Técnicos', () => {
