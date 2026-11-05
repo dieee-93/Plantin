@@ -725,6 +725,23 @@ export const BOTANICAL_CATALOG_ITEMS: FacilityCatalogItem[] = [
     defaultElevationM: 0,
     placementMode: 'build_props',
   },
+  {
+    assetId: 'plant_tomato_star_a01',
+    label: 'Tomatera en Producción (3D Star Quads)',
+    originalLabel: 'Tomate 3D Star Planos Cruzados',
+    variantCode: 'S01',
+    category: 'botanical',
+    subcategory: 'fruiting_crops',
+    triangles: 12,
+    drawCalls: 1,
+    sizeMb: 0.8,
+    glbUrl: '/models/plants/plant_tomato_star_a01.glb',
+    thumbnailUrl: '/models/plants/plant_tomato_star_a01.webp',
+    badge: '68 × 86 × 68 cm',
+    dimensionsBadge: '68 × 86 cm',
+    defaultElevationM: 0,
+    placementMode: 'build_props',
+  },
 ];
 
 export const FACILITY_OBJECTS_CATALOG: FacilityCatalogItem[] = [
@@ -978,6 +995,13 @@ export function getObjectDimensionsCm(
       widthCm: 50,
       depthCm: 50,
       heightCm: 80,
+      stackRole: 'top_only',
+    };
+  if (assetId === 'plant_tomato_star_a01' || idLower.includes('tomato_star'))
+    return {
+      widthCm: 68,
+      depthCm: 68,
+      heightCm: 86,
       stackRole: 'top_only',
     };
   if (assetId === 'plant_tomato_clay_a01' || idLower.includes('tomato_clay'))
