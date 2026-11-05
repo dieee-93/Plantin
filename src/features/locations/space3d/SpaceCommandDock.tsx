@@ -16,7 +16,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { FloorMaterialType } from '@/domain/spaceGeometry';
-import type { SpaceBuilderTool } from './spaceBuilderReducer';
+import type { SpaceBuilderTool, SpacePrimaryMode, SpaceBuildSubMode } from './spaceBuilderReducer';
 import {
   HudRail,
   HudRailButton,
@@ -28,6 +28,10 @@ import {
 export interface SpaceCommandDockProps {
   mode: 'crop' | 'design';
   onChangeMode: (mode: 'crop' | 'design') => void;
+  primaryMode?: SpacePrimaryMode;
+  onChangePrimaryMode?: (mode: SpacePrimaryMode) => void;
+  buildSubMode?: SpaceBuildSubMode;
+  onChangeBuildSubMode?: (sub: SpaceBuildSubMode) => void;
   onOpenSowModalOrDrawer: () => void;
   isTrayOpen: boolean;
   onToggleTray: () => void;
@@ -79,21 +83,21 @@ const BASE_TOOL_ITEMS: ToolItemConfig[] = [
     label: 'Inspeccionar',
     icon: MousePointer2,
     description: 'Selecciona e inspecciona plantas, muros y cotas',
-    shortcut: 'I',
+    shortcut: 'V',
   },
   {
     tool: 'draw_path',
     label: 'Trazar Camino',
     icon: Route,
     description: 'Diseña senderos y vías de circulación 1:1',
-    shortcut: 'C',
+    shortcut: 'E',
   },
   {
     tool: 'walls',
     label: 'Muros',
     icon: BrickWall,
     description: 'Cerramientos perimetrales, medianeras y aberturas',
-    shortcut: 'M',
+    shortcut: 'W',
   },
   {
     tool: 'roof',
@@ -107,7 +111,7 @@ const BASE_TOOL_ITEMS: ToolItemConfig[] = [
     label: 'Editar Contorno',
     icon: Spline,
     description: 'Edita vértices, cotas y sustrato del terreno',
-    shortcut: 'E',
+    shortcut: 'Q',
   },
   {
     tool: 'place_object',
@@ -124,21 +128,21 @@ const PLANT_SUBTOOLS: ToolItemConfig[] = [
     label: 'Plantar Individual',
     icon: Sprout,
     description: 'Siembra manual de una planta individual',
-    shortcut: 'P',
+    shortcut: 'Q',
   },
   {
     tool: 'plant_line',
     label: 'Surco/Fila',
     icon: Rows3,
     description: 'Traza una hilera o surco lineal de cultivo',
-    shortcut: 'F',
+    shortcut: 'W',
   },
   {
     tool: 'plant_fill_sector',
     label: 'Rellenar Sector',
     icon: Grid3x3,
     description: 'Siembra masiva densa en sector cultivable',
-    shortcut: 'R',
+    shortcut: 'E',
   },
 ];
 
@@ -147,6 +151,10 @@ const PATH_WIDTH_OPTIONS_CM = [60, 80, 100, 120];
 export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   mode,
   onChangeMode,
+  primaryMode,
+  onChangePrimaryMode,
+  buildSubMode,
+  onChangeBuildSubMode,
   onOpenSowModalOrDrawer,
   isTrayOpen,
   onToggleTray,
@@ -174,7 +182,7 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   vertexCount,
   baseMaterial: _baseMaterial,
   onChangeBaseMaterial: _onChangeBaseMaterial,
-  onSetAllWallsHeight,
+  onSetAllWallsHeight: _onSetAllWallsHeight,
   selectedVertexIndex: _selectedVertexIndex,
   onRemoveSelectedVertex: _onRemoveSelectedVertex,
   onSanitizeBoundary: _onSanitizeBoundary,
@@ -183,6 +191,10 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   onUndo,
   onRedo,
 }) => {
+  const effectivePrimaryMode: SpacePrimaryMode =
+    primaryMode ?? (mode === 'crop' ? 'live' : 'build');
+  const effectiveBuildSubMode: SpaceBuildSubMode = buildSubMode ?? 'architecture';
+
   const isPlantActive =
     activeTool === 'plant_single' ||
     activeTool === 'plant_line' ||
@@ -278,26 +290,7 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
         return {
           icon: <BrickWall size={14} className="text-emerald-600" />,
           tag: 'Muros',
-          message: 'Cerramiento perimetral:',
-          actions: onSetAllWallsHeight && (
-            <div className="flex items-center gap-1">
-              {[
-                { label: '0m (Abierto)', h: 0 },
-                { label: '1.2m (Cerco)', h: 120 },
-                { label: '2.0m (Medianera)', h: 200 },
-                { label: '2.5m (Pared)', h: 250 },
-              ].map((p) => (
-                <button
-                  key={p.h}
-                  type="button"
-                  onClick={() => onSetAllWallsHeight(p.h)}
-                  className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          ),
+          message: 'Cerramiento perimetral: Configuración de alturas y acabados en el panel superior',
         };
 
       case 'roof':
@@ -357,7 +350,7 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
   return (
     <>
       {/* ── Left HUD Rail for Design Mode (Planet Zoo / Cities Skylines 2 Style) ── */}
-      {mode === 'design' && (
+      {(mode === 'design' || effectivePrimaryMode !== 'live') && (
         <div
           data-testid="hud-left-rail"
           className="absolute left-3.5 top-1/2 -translate-y-1/2 z-30 pointer-events-auto flex flex-col items-center"
@@ -485,7 +478,7 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
 
       {/* ── Bottom HUD Dock (Fine Status Line & Mode Toggle) ── */}
       <div className="absolute bottom-3 inset-x-0 pointer-events-none flex flex-col items-center gap-1 z-30">
-        {mode === 'design' && (
+        {(mode === 'design' || effectivePrimaryMode !== 'live') && (
           <div
             onMouseEnter={() => setIsStatusVisible(true)}
             className={`pointer-events-auto max-w-xl w-full transition-all duration-300 motion-reduce:transition-none ${
@@ -506,33 +499,101 @@ export const SpaceCommandDock: React.FC<SpaceCommandDockProps> = ({
 
         {/* Main Glassmorphism Command Dock (Height ≤ 44px) */}
         <div className="pointer-events-auto flex h-10 max-h-10 items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-2.5 py-1 shadow-xl backdrop-blur-md">
-          {/* Segmented Mode Toggle */}
+          {/* Segmented Mode Toggle (3 Modes) */}
           <div className="flex h-7 items-center rounded-full bg-slate-100 p-0.5">
+            {/* 1. Live Mode */}
             <button
               type="button"
-              onClick={() => onChangeMode('crop')}
+              data-testid="mode-btn-live"
+              aria-label="Cultivo - Manejo Vivo (1)"
+              aria-pressed={effectivePrimaryMode === 'live'}
+              onClick={() => {
+                onChangeMode('crop');
+                onChangePrimaryMode?.('live');
+              }}
               className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition cursor-pointer ${
-                mode === 'crop'
+                effectivePrimaryMode === 'live'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Sprout size={12} />
-              <span>🌱 Cultivo</span>
+              <span>🌿 Cultivo</span>
             </button>
+
+            {/* 2. Build Mode */}
             <button
               type="button"
-              onClick={() => onChangeMode('design')}
+              data-testid="mode-btn-build"
+              aria-label="Construcción - Diseñar (2)"
+              aria-pressed={effectivePrimaryMode === 'build'}
+              onClick={() => {
+                onChangeMode('design');
+                onChangePrimaryMode?.('build');
+              }}
               className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition cursor-pointer ${
-                mode === 'design'
+                effectivePrimaryMode === 'build'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Wrench size={12} />
-              <span>📐 Diseñar</span>
+              <span>🏗️ Construcción</span>
+            </button>
+
+            {/* 3. Planting Mode */}
+            <button
+              type="button"
+              data-testid="mode-btn-planting"
+              aria-label="Plantación (3)"
+              aria-pressed={effectivePrimaryMode === 'planting'}
+              onClick={() => {
+                onChangeMode('design');
+                onChangePrimaryMode?.('planting');
+              }}
+              className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition cursor-pointer ${
+                effectivePrimaryMode === 'planting'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🌱 Plantación</span>
             </button>
           </div>
+
+          {/* Sub-modes for Build Mode: Architecture vs Props */}
+          {effectivePrimaryMode === 'build' && (
+            <div className="flex h-7 items-center rounded-full bg-slate-100 p-0.5 border border-slate-200/50">
+              <button
+                type="button"
+                data-testid="submode-btn-architecture"
+                aria-label="Terreno y Estructura"
+                aria-pressed={effectiveBuildSubMode === 'architecture'}
+                onClick={() => onChangeBuildSubMode?.('architecture')}
+                className={`flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold transition cursor-pointer ${
+                  effectiveBuildSubMode === 'architecture'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>📐 Terreno y Estructura</span>
+              </button>
+              <button
+                type="button"
+                data-testid="submode-btn-props"
+                aria-label="Props y Equipamiento"
+                aria-pressed={effectiveBuildSubMode === 'props'}
+                onClick={() => onChangeBuildSubMode?.('props')}
+                className={`flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold transition cursor-pointer ${
+                  effectiveBuildSubMode === 'props'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>📦 Props</span>
+              </button>
+            </div>
+          )}
 
           {/* Primary + Sembrar Button */}
           <button

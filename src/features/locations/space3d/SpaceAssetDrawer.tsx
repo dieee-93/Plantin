@@ -10,8 +10,11 @@ import {
   CATALOG_CATEGORIES,
   CATALOG_SUBCATEGORIES,
   type CatalogCategoryId,
+  type AssetPlacementMode,
   FACILITY_OBJECTS_CATALOG,
   type FacilityCatalogItem,
+  getCatalogItemsForMode,
+  type TechnicalSpecLevel1,
 } from './objectsCatalog';
 
 export interface SpaceAssetDrawerProps {
@@ -20,6 +23,7 @@ export interface SpaceAssetDrawerProps {
   onClose?: () => void;
   selectedAssetId: string;
   onSelectAssetId: (assetId: string) => void;
+  placementMode?: AssetPlacementMode;
 }
 
 const ITEMS_PER_BATCH = 24;
@@ -30,6 +34,7 @@ export const SpaceAssetDrawer: React.FC<SpaceAssetDrawerProps> = ({
   onClose,
   selectedAssetId,
   onSelectAssetId,
+  placementMode,
 }) => {
   const [internalIsOpen, setInternalIsOpen] = useState(true);
   const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
@@ -55,13 +60,20 @@ export const SpaceAssetDrawer: React.FC<SpaceAssetDrawerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleLimit, setVisibleLimit] = useState(ITEMS_PER_BATCH);
 
+  const baseItems = useMemo(() => {
+    if (!placementMode) {
+      return FACILITY_OBJECTS_CATALOG;
+    }
+    return getCatalogItemsForMode(placementMode);
+  }, [placementMode]);
+
   const subcategories = useMemo(() => {
     return CATALOG_SUBCATEGORIES[selectedCategory] || CATALOG_SUBCATEGORIES.all;
   }, [selectedCategory]);
 
   // Filter items by category, subcategory and search term
   const filteredItems = useMemo(() => {
-    let list = FACILITY_OBJECTS_CATALOG;
+    let list = baseItems;
 
     if (selectedCategory !== 'all') {
       list = list.filter((item) => item.category === selectedCategory);
@@ -85,7 +97,7 @@ export const SpaceAssetDrawer: React.FC<SpaceAssetDrawerProps> = ({
     }
 
     return list;
-  }, [selectedCategory, selectedSubcategory, searchQuery]);
+  }, [baseItems, selectedCategory, selectedSubcategory, searchQuery]);
 
   const displayedItems = useMemo(
     () => filteredItems.slice(0, visibleLimit),
@@ -139,7 +151,7 @@ export const SpaceAssetDrawer: React.FC<SpaceAssetDrawerProps> = ({
         onChange={(e) => onSelectAssetId(e.target.value)}
         className="sr-only"
       >
-        {FACILITY_OBJECTS_CATALOG.map((item) => (
+        {baseItems.map((item) => (
           <option key={item.assetId} value={item.assetId}>
             {item.label}
           </option>
@@ -313,11 +325,24 @@ interface AssetTileCardProps {
   onSelect: () => void;
 }
 
+function getTechnicalBadge(spec?: TechnicalSpecLevel1): string | null {
+  if (!spec) return null;
+  if (spec.waterCapacityLiters) return `${spec.waterCapacityLiters} L`;
+  if (spec.substrateVolumeLiters) return `${spec.substrateVolumeLiters} L sustrato`;
+  if (spec.compostCapacityLiters) return `${spec.compostCapacityLiters} L compost`;
+  if (spec.thermalDeltaC) return `${spec.thermalDeltaC > 0 ? `+${spec.thermalDeltaC}` : spec.thermalDeltaC}°C`;
+  if (spec.airflowM3h) return `${spec.airflowM3h} m³/h`;
+  if (spec.flowRateLpm) return `${spec.flowRateLpm} L/min`;
+  return null;
+}
+
 const AssetTileCard: React.FC<AssetTileCardProps> = ({
   item,
   isSelected,
   onSelect,
 }) => {
+  const techBadge = getTechnicalBadge(item.technicalSpec);
+
   return (
     <button
       type="button"
@@ -356,6 +381,28 @@ const AssetTileCard: React.FC<AssetTileCardProps> = ({
         {item.dimensionsBadge && (
           <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-900/85 text-white backdrop-blur-xs shadow-xs">
             {item.dimensionsBadge}
+          </div>
+        )}
+
+        {/* Technical Spec Badges */}
+        {item.technicalSpec && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 z-10">
+            {item.technicalSpec.iotBindable && (
+              <span
+                data-testid="asset-tech-badge-iot"
+                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-600 text-white shadow-xs"
+              >
+                IoT
+              </span>
+            )}
+            {techBadge && (
+              <span
+                data-testid="asset-tech-badge"
+                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-700 text-white shadow-xs"
+              >
+                {techBadge}
+              </span>
+            )}
           </div>
         )}
 

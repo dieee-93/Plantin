@@ -22,7 +22,11 @@ import {
   type Polygon2DCm,
   type WallMaterialType,
 } from '@/domain/spaceGeometry';
-import { measurePlantNeighbors, type PlacedPlantSpatialCm } from '@/domain/solarAndPlantSpatial';
+import {
+  generateLinePlantPositions,
+  measurePlantNeighbors,
+  type PlacedPlantSpatialCm,
+} from '@/domain/solarAndPlantSpatial';
 import type { Individual } from '@/domain/individual';
 import { flushSpaceLayoutStorage, useSpaceLayoutStore } from '@/store/spaceLayoutStore';
 import { useIndividualStore } from '@/store/individualStore';
@@ -50,7 +54,18 @@ import { SpaceTerrainBuilderShelf } from './SpaceTerrainBuilderShelf';
 import { SpacePathBuilderShelf } from './SpacePathBuilderShelf';
 import { SpacePlantBuilderShelf } from './SpacePlantBuilderShelf';
 import { SpaceAssetDrawer } from './SpaceAssetDrawer';
-import { FACILITY_OBJECTS_CATALOG, getObjectDimensionsCm } from './objectsCatalog';
+import { SpacePlantingStagingBar } from './SpacePlantingStagingBar';
+import {
+  evaluatePlantingStagingDiagnostics,
+  commitPlantingSessionToStores,
+  normalizeCropCode,
+} from '@/domain/plantingStagingDiagnostics';
+import { resolveSpaceKeyCommand } from './spaceKeyboardShortcuts';
+import {
+  FACILITY_OBJECTS_CATALOG,
+  OBJECT_ELEVATION_PRESETS,
+  getObjectDimensionsCm,
+} from './objectsCatalog';
 import { SpaceBottomDock } from './SpaceBottomDock';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import { interactionProfiler } from './telemetry/interactionProfiler';
@@ -59,6 +74,7 @@ import {
   computeDraftPathMetrics,
   createInitialBuilderState,
   spaceBuilderReducer,
+  PLANT_BUILDER_PRESETS,
   type PlantPresetKey,
 } from './spaceBuilderReducer';
 
@@ -259,40 +275,16 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     };
   }, []);
 
-  // Global keyboard shortcuts (Ctrl+Z / Cmd+Z, Ctrl+Y / Cmd+Y, Ctrl+Shift+Z / Cmd+Shift+Z)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isInput =
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable);
-      if (isInput) return;
-
-      if (dockMode !== 'design') return;
-
-      const isMod = e.ctrlKey || e.metaKey;
-      if (isMod && !e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        undo(locationId);
-      } else if (
-        (isMod && !e.shiftKey && e.key.toLowerCase() === 'y') ||
-        (isMod && e.shiftKey && e.key.toLowerCase() === 'z')
-      ) {
-        e.preventDefault();
-        redo(locationId);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dockMode, locationId, undo, redo]);
-
   const [builderState, dispatch] = useReducer(
     spaceBuilderReducer,
     undefined,
-    createInitialBuilderState,
+    () => {
+      const s = createInitialBuilderState();
+      if ((initialMode ?? 'design') === 'design') {
+        s.primaryMode = 'build';
+      }
+      return s;
+    },
   );
 
   const prevActiveToolRef = useRef(builderState.activeTool);
@@ -484,33 +476,185 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
   const [isHudVisible, setIsHudVisible] = useState(true);
 
+  // Centralized keyboard shortcuts engine (WCAG accessible Tab, H toggle, Ctrl+Z/Y, 1/2/3, V/Q/W/E/T, R, Del, Esc)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        const target = e.target as HTMLElement | null;
-        const active = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
-        if (
-          (target &&
+      const target = e.target as HTMLElement | null;
+      const activeEl = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+      const isInput =
+        Boolean(
+          target &&
             (target.tagName === 'INPUT' ||
               target.tagName === 'TEXTAREA' ||
-              target.isContentEditable)) ||
-          (active &&
-            (active.tagName === 'INPUT' ||
-              active.tagName === 'TEXTAREA' ||
-              active.isContentEditable))
-        ) {
-          return;
+              target.tagName === 'SELECT' ||
+              target.isContentEditable),
+        ) ||
+        Boolean(
+          activeEl &&
+            (activeEl.tagName === 'INPUT' ||
+              activeEl.tagName === 'TEXTAREA' ||
+              activeEl.tagName === 'SELECT' ||
+              activeEl.isContentEditable),
+        );
+      const hasModal = Boolean(
+        typeof document !== 'undefined' &&
+          document.querySelector('[role="dialog"][aria-modal="true"]'),
+      );
+
+      const cmd = resolveSpaceKeyCommand(
+        {
+          key: e.key,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          shiftKey: e.shiftKey,
+          isInputFocused: Boolean(isInput),
+          hasModalOpen: hasModal,
+        },
+        builderState,
+      );
+
+      if (cmd.kind === 'ignore') return;
+
+      e.preventDefault();
+
+      switch (cmd.kind) {
+        case 'toggle_hud':
+          setIsHudVisible((v) => !v);
+          break;
+        case 'undo':
+          undo(locationId);
+          break;
+        case 'redo':
+          redo(locationId);
+          break;
+        case 'dispatch':
+          dispatch(cmd.event);
+          if (cmd.event.type === 'SET_PRIMARY_MODE') {
+            setDockMode(cmd.event.mode === 'live' ? 'crop' : 'design');
+          }
+          break;
+        case 'rotate_selected_object': {
+          if (selectedObject) {
+            const nextDeg = ((selectedObject.rotationDeg ?? 0) + cmd.deltaDeg + 360) % 360;
+            updateObject(locationId, selectedObject.id, { rotationDeg: nextDeg });
+            if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+            setFillToast({
+              type: 'info',
+              message: `Rotación: ${nextDeg}°`,
+            });
+            fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2000);
+          }
+          break;
         }
-        if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
-          return;
+        case 'delete_selected_object': {
+          if (selectedObject) {
+            removeObject(locationId, cmd.objectId);
+            dispatch({ type: 'SELECT_OBJECT', objectId: null });
+            if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
+            setFillToast({
+              type: 'info',
+              message: `Objeto "${selectedObject.label}" eliminado. Puedes usar Deshacer (Ctrl+Z).`,
+            });
+            fillToastTimerRef.current = setTimeout(() => setFillToast(null), 4000);
+          }
+          break;
         }
-        e.preventDefault();
-        setIsHudVisible((v) => !v);
+        case 'delete_selected_plant': {
+          const plant = layout.placedPlants.find((p) => p.id === cmd.plantId);
+          if (plant) {
+            removePlant(locationId, cmd.plantId);
+            dispatch({ type: 'SELECT_PLANT', plantId: null });
+            if (dockMode === 'crop' || builderState.primaryMode === 'live') {
+              const ind = individuals.find(
+                (i) => i.id === plant.id || i.slotId === plant.id,
+              );
+              setUndoToast({ plant, individual: ind ?? null });
+              if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+              toastTimerRef.current = setTimeout(() => setUndoToast(null), 6000);
+            }
+          }
+          break;
+        }
+        case 'reset_selected_wall':
+          updateWall(locationId, cmd.wallId, { heightCm: 0, openings: [] });
+          dispatch({ type: 'SELECT_WALL', wallId: null });
+          break;
+        case 'delete_selected_vertex':
+          removeBoundaryVertex(locationId, cmd.vertexIndex);
+          dispatch({ type: 'SELECT_VERTEX', vertexIndex: null });
+          break;
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [
+    builderState,
+    locationId,
+    selectedObject,
+    dockMode,
+    individuals,
+    layout.placedPlants,
+    undo,
+    redo,
+    updateObject,
+    removeObject,
+    removePlant,
+    updateWall,
+    removeBoundaryVertex,
+  ]);
+
+  const allVisiblePlants = useMemo(
+    () => [...layout.placedPlants, ...builderState.stagedPlants],
+    [layout.placedPlants, builderState.stagedPlants],
+  );
+
+  const sceneLayout = useMemo(
+    () => ({ ...layout, placedPlants: allVisiblePlants }),
+    [layout, allVisiblePlants],
+  );
+
+  const stagingReport = useMemo(() => {
+    if (builderState.stagedPlants.length === 0) {
+      return {
+        stagedCount: 0,
+        canCommit: false,
+        errorCount: 0,
+        warningCount: 0,
+        synergyCount: 0,
+        issues: [],
+        issuesByPlantId: {},
+      };
+    }
+    return evaluatePlantingStagingDiagnostics({
+      stagedPlants: builderState.stagedPlants,
+      existingPlants: layout.placedPlants,
+      regions,
+      walls: layout.walls,
+      solarConfig: layout.solarConfig,
+      locationType,
+    });
+  }, [
+    builderState.stagedPlants,
+    layout.placedPlants,
+    regions,
+    layout.walls,
+    layout.solarConfig,
+    locationType,
+  ]);
+
+  const handleConfirmStagedPlanting = () => {
+    if (!stagingReport.canCommit || builderState.stagedPlants.length === 0) return;
+    commitPlantingSessionToStores({
+      locationId,
+      stagedPlants: builderState.stagedPlants,
+    });
+    dispatch({ type: 'CLEAR_STAGED_PLANTS' });
+  };
+
+  const handleDiscardStagedPlanting = () => {
+    dispatch({ type: 'CLEAR_STAGED_PLANTS' });
+  };
 
   const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
   const [transientBoundary, setTransientBoundary] = useState<Polygon2DCm | null>(null);
@@ -1109,61 +1253,6 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     }
   }, [builderState.selectedObjectId, selectedObject]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isInput =
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable);
-      if (isInput) return;
-
-      if (e.key === 'Escape') {
-        if (builderState.selectedObjectId) {
-          dispatch({ type: 'SELECT_OBJECT', objectId: null });
-        } else if (builderState.selectedPlantId) {
-          dispatch({ type: 'SELECT_PLANT', plantId: null });
-        } else if (builderState.selectedWallId) {
-          dispatch({ type: 'SELECT_WALL', wallId: null });
-        }
-      } else if (builderState.selectedObjectId && selectedObject) {
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-          e.preventDefault();
-          removeObject(locationId, selectedObject.id);
-          dispatch({ type: 'SELECT_OBJECT', objectId: null });
-          if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
-          setFillToast({
-            type: 'info',
-            message: `Objeto "${selectedObject.label}" eliminado. Puedes usar Deshacer (Ctrl+Z).`,
-          });
-          fillToastTimerRef.current = setTimeout(() => setFillToast(null), 4000);
-        } else if (e.key.toLowerCase() === 'r') {
-          e.preventDefault();
-          const nextDeg = ((selectedObject.rotationDeg ?? 0) + 90) % 360;
-          updateObject(locationId, selectedObject.id, { rotationDeg: nextDeg });
-          if (fillToastTimerRef.current) clearTimeout(fillToastTimerRef.current);
-          setFillToast({
-            type: 'info',
-            message: `Rotación: ${nextDeg}°`,
-          });
-          fillToastTimerRef.current = setTimeout(() => setFillToast(null), 2000);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    builderState.selectedObjectId,
-    builderState.selectedPlantId,
-    builderState.selectedWallId,
-    selectedObject,
-    locationId,
-    removeObject,
-    updateObject,
-    undo,
-  ]);
 
   useEffect(() => {
     if (layout.baseBoundary.length > 8) {
@@ -1319,6 +1408,20 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       }
 
       if (builderState.activeTool === 'plant_single') {
+        if (builderState.primaryMode === 'planting') {
+          const stagedPlant: PlacedPlantSpatialCm = {
+            id: `staged-plant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            label: builderState.plantTemplate.label,
+            cropCode: builderState.plantTemplate.cropCode,
+            xCm: pt.x,
+            yCm: pt.y,
+            canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
+          };
+          dispatch({ type: 'STAGE_PLANT', plant: stagedPlant });
+          dispatch({ type: 'SELECT_PLANT', plantId: stagedPlant.id });
+          return;
+        }
+
         const newId = placePlant(locationId, {
           label: builderState.plantTemplate.label,
           cropCode: builderState.plantTemplate.cropCode,
@@ -1427,18 +1530,37 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           dispatch({ type: 'SET_DRAFT_START', pointCm: pt });
           dispatch({ type: 'MOVE_CURSOR', pointCm: pt });
         } else {
-          placePlantLine(
-            locationId,
-            builderState.draftStartCm,
-            pt,
-            builderState.plantTemplate.plantSpacingCm,
-            {
+          if (builderState.primaryMode === 'planting') {
+            const linePositions = generateLinePlantPositions(
+              builderState.draftStartCm,
+              pt,
+              builderState.plantTemplate.plantSpacingCm,
+              regions,
+            );
+            const stagedBatch: PlacedPlantSpatialCm[] = linePositions.map((pos, idx) => ({
+              id: `staged-line-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
               label: builderState.plantTemplate.label,
               cropCode: builderState.plantTemplate.cropCode,
+              xCm: pos.x,
+              yCm: pos.y,
               canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
-            },
-          );
-          dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+            }));
+            dispatch({ type: 'STAGE_PLANTS_BATCH', plants: stagedBatch });
+            dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+          } else {
+            placePlantLine(
+              locationId,
+              builderState.draftStartCm,
+              pt,
+              builderState.plantTemplate.plantSpacingCm,
+              {
+                label: builderState.plantTemplate.label,
+                cropCode: builderState.plantTemplate.cropCode,
+                canopyRadiusCm: builderState.plantTemplate.canopyRadiusCm,
+              },
+            );
+            dispatch({ type: 'SET_DRAFT_START', pointCm: null });
+          }
         }
       }
     },
@@ -1446,12 +1568,14 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       bbox.widthCm,
       bbox.depthCm,
       builderState.activeTool,
+      builderState.primaryMode,
       builderState.draftStartCm,
       builderState.pathMaterial,
       builderState.pathWidthCm,
       builderState.plantTemplate,
       layout.paths.length,
       locationId,
+      regions,
       addPathStroke,
       placePlant,
       placePlantLine,
@@ -1640,7 +1764,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           <div className="flex items-center gap-2">
             <SpaceHeaderNav
               locationName={locationName || 'Espacio 1:1'}
-              plantCount={layout.placedPlants.length}
+              plantCount={allVisiblePlants.length}
               capacity={capacity}
               widthM={bbox.widthCm / 100}
               depthM={bbox.depthCm / 100}
@@ -1649,6 +1773,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               isRectangular={isRectangular}
               vertexCount={layout.baseBoundary.length}
               onBackToCampus={onBackToCampus}
+              onOpenTerrainBuilder={() => {
+                dispatch({ type: 'SET_PRIMARY_MODE', mode: 'build', tool: 'edit_boundary' });
+                dispatch({ type: 'SET_BUILD_SUBMODE', subMode: 'architecture' });
+                setDockMode('design');
+              }}
               onApplyDimensions={(w, d) => {
                 setCustomWidthM(w.toFixed(1));
                 setCustomDepthM(d.toFixed(1));
@@ -1695,7 +1824,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
       {!isHudVisible && (
         <button
           type="button"
-          aria-label="Salir de modo inmersivo (Tab)"
+          aria-label="Salir de modo inmersivo (H)"
           onClick={() => setIsHudVisible(true)}
           className="pointer-events-auto absolute top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg backdrop-blur hover:bg-white cursor-pointer"
         >
@@ -1770,7 +1899,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                 }}
               />
               <SpaceSceneGraph
-                layout={layout}
+                layout={sceneLayout}
                 viewMode={viewMode}
                 cameraGroundPosCm={cameraGroundPosCm}
                 showRoof={showRoof}
@@ -2299,8 +2428,9 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
             )}
 
             {/* Placed plants 1:1 canopy circles */}
-            {layout.placedPlants.map((plant) => {
+            {allVisiblePlants.map((plant) => {
               const isSelected = builderState.selectedPlantId === plant.id;
+              const isStaged = builderState.stagedPlants.some((p) => p.id === plant.id);
               const isDimmed =
                 speciesFilter !== null && plant.cropCode !== speciesFilter;
               return (
@@ -2318,10 +2448,11 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
                     cx={plant.xCm}
                     cy={plant.yCm}
                     r={plant.canopyRadiusCm}
-                    fill={isSelected ? '#0ea5e9' : '#22c55e'}
+                    fill={isSelected ? '#0ea5e9' : isStaged ? '#10b981' : '#22c55e'}
                     fillOpacity={0.35}
-                    stroke={isSelected ? '#0284c7' : '#16a34a'}
+                    stroke={isSelected ? '#0284c7' : isStaged ? '#059669' : '#16a34a'}
                     strokeWidth={isSelected ? 4 : 2}
+                    strokeDasharray={isStaged ? '4 3' : undefined}
                   />
                   <circle
                     cx={plant.xCm}
@@ -2601,8 +2732,19 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               }
               setIsTrayOpen(false);
             }}
-            onSelectPlantToPlace={(_indId) => {
-              dispatch({ type: 'SET_TOOL', tool: 'plant_single' });
+            onSelectPlantToPlace={(indId) => {
+              const ind = individuals.find((i) => i.id === indId);
+              if (ind) {
+                const normCrop = normalizeCropCode(ind.cropCode || ind.species || ind.label);
+                if (normCrop in PLANT_BUILDER_PRESETS) {
+                  dispatch({
+                    type: 'SET_PLANT_PRESET',
+                    presetKey: normCrop as PlantPresetKey,
+                  });
+                }
+              }
+              dispatch({ type: 'SET_PRIMARY_MODE', mode: 'planting', tool: 'plant_single' });
+              setDockMode('design');
               setIsTrayOpen(false);
             }}
           />
@@ -2687,6 +2829,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
           onSelectAssetId={(assetId) =>
             dispatch({ type: 'SET_OBJECT_ASSET', assetId })
           }
+          placementMode={builderState.primaryMode === 'planting' ? 'planting_utility' : 'build_props'}
         />
       )}
 
@@ -2698,6 +2841,15 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
         {/* Bottom-Center Command Dock with Integrated Builder Shelf (Cities: Skylines 2 / Planet Zoo Style) */}
         <div className="pointer-events-auto flex flex-col items-center gap-1.5 max-w-2xl w-full z-40">
+        {/* ── 3.4b. Staging Bar for Planting Mode ── */}
+        {builderState.stagedPlants.length > 0 && (
+          <SpacePlantingStagingBar
+            stagedPlants={builderState.stagedPlants}
+            report={stagingReport}
+            onConfirm={handleConfirmStagedPlanting}
+            onDiscard={handleDiscardStagedPlanting}
+          />
+        )}
 {/* ── 3.5b. Contextual Builder Shelf for Perimeter Enclosures ── */}
       {builderState.activeTool === 'walls' && !selectedWall && (
         
@@ -2863,9 +3015,10 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
               <Layers size={12} /> Altura:
             </span>
             {[
-              { val: 0, label: 'Suelo' },
-              { val: 0.209, label: 'Palet' },
-              { val: 0.93, label: 'Mesa' },
+              { val: OBJECT_ELEVATION_PRESETS.floor, label: 'Suelo' },
+              { val: OBJECT_ELEVATION_PRESETS.pallet, label: 'Palet' },
+              { val: OBJECT_ELEVATION_PRESETS.rack, label: 'Rack' },
+              { val: OBJECT_ELEVATION_PRESETS.table, label: 'Mesa' },
             ].map(({ val, label }) => {
               const isSelected =
                 Math.abs(builderState.objectElevationM - val) < 0.05;
@@ -2904,7 +3057,22 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         {/* Bottom-Center Command Dock */}
         <SpaceCommandDock
           mode={dockMode}
-          onChangeMode={setDockMode}
+          onChangeMode={(m) => {
+            setDockMode(m);
+            dispatch({
+              type: 'SET_PRIMARY_MODE',
+              mode: m === 'crop' ? 'live' : 'build',
+            });
+          }}
+          primaryMode={builderState.primaryMode}
+          onChangePrimaryMode={(pm) => {
+            dispatch({ type: 'SET_PRIMARY_MODE', mode: pm });
+            setDockMode(pm === 'live' ? 'crop' : 'design');
+          }}
+          buildSubMode={builderState.buildSubMode}
+          onChangeBuildSubMode={(sub) => {
+            dispatch({ type: 'SET_BUILD_SUBMODE', subMode: sub });
+          }}
           onOpenSowModalOrDrawer={() => {
             if (onOpenSowModal) {
               onOpenSowModal();

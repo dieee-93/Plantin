@@ -53,7 +53,7 @@ describe('SpaceModelInstance & ObjectsLayer - 3D Logistics & Facility Assets', (
         label: 'Caja Apilada',
         xCm: 850,
         yCm: 100,
-        elevationM: 0.209,
+        elevationM: 0.21,
         rotationDeg: 0,
         category: 'logistics',
       },
@@ -75,8 +75,8 @@ describe('SpaceModelInstance & ObjectsLayer - 3D Logistics & Facility Assets', (
 
     expect(pallets).toHaveLength(1);
     expect(crates).toHaveLength(1);
-    // Crate stacked on top of pallet at elevationM = 0.209
-    expect(crates[0].props.position[1]).toBeCloseTo(0.209, 3);
+    // Crate stacked on top of pallet at elevationM = 0.21
+    expect(crates[0].props.position[1]).toBeCloseTo(0.21, 3);
 
     await renderer.unmount();
   });

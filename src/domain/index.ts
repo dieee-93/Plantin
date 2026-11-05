@@ -22,3 +22,4 @@ export type {
   CrossEventType,
   CrossSuccessStatus,
 } from './crossingEvent'
+export * from './plantingStagingDiagnostics'

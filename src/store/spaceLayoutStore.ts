@@ -208,7 +208,7 @@ export const SPACE_PRESETS: Record<string, SpacePresetDefinition> = {
             widthCm: 60,
             depthCm: 40,
             heightCm: 25,
-            elevationM: 0.209,
+            elevationM: 0.21,
             rotationDeg: 0,
             category: 'logistics',
           },
@@ -536,6 +536,10 @@ export interface SpaceLayoutStoreState {
     options: PolygonFillOptions,
     plantTemplate: PlantTemplateInput,
   ) => number;
+  commitStagedPlants: (
+    locationId: string,
+    stagedPlants: PlacedPlantSpatialCm[],
+  ) => PlacedPlantSpatialCm[];
   undo: (locationId: string) => void;
   redo: (locationId: string) => void;
   canUndo: (locationId: string) => boolean;
@@ -1400,6 +1404,33 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
         }));
 
         return addedPlants.length;
+      },
+
+      commitStagedPlants: (locationId, stagedPlants) => {
+        if (!stagedPlants || stagedPlants.length === 0) return [];
+        const current = get().getOrCreateSpaceLayout(locationId);
+
+        const plantsToAdd: PlacedPlantSpatialCm[] = stagedPlants.map((p, idx) => ({
+          ...p,
+          id: p.id || `plant-${uuidv7()}-${idx}`,
+        }));
+
+        set((state) => ({
+          history: pushHistoryEntry(
+            locationId,
+            { type: 'plant_batch_add', plants: plantsToAdd },
+            state.history,
+          ),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              placedPlants: [...current.placedPlants, ...plantsToAdd],
+            },
+          },
+        }));
+
+        return plantsToAdd;
       },
 
       canUndo: (locationId) => {

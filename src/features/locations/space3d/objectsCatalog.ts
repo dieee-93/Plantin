@@ -1,5 +1,27 @@
 import simreadyRawCatalog from './simreadyCatalog.json';
 
+export type FunctionalAssetRole =
+  | 'cultivation_vessel' // Macetas, cajones de cultivo, camas, mesas de cultivo, racks de propagación
+  | 'climate_control' // Ventiladores, extractores, filtros de aire, humidificadores, calefactores, HVAC
+  | 'irrigation_fertigation' // Tanques IBC, reservorios, bombas de agua/drenaje, mangueras, cañerías
+  | 'bioprocessing'; // Tambores de compost/200L, tolvas orgánicas
+
+export interface TechnicalSpecLevel1 {
+  role: FunctionalAssetRole;
+  iotBindable: boolean;
+  // Métricas opcionales según el rol:
+  waterCapacityLiters?: number;
+  flowRateLpm?: number;
+  airflowM3h?: number;
+  thermalDeltaC?: number;
+  humidityControl?: 'humidify' | 'dehumidify' | 'stabilize';
+  vesselType?: 'pot_container' | 'propagation_bench' | 'vertical_rack';
+  substrateVolumeLiters?: number;
+  compostCapacityLiters?: number;
+}
+
+export type AssetPlacementMode = 'build_props' | 'planting_utility';
+
 export interface FacilityCatalogItem {
   assetId: string;
   label: string;
@@ -16,7 +38,16 @@ export interface FacilityCatalogItem {
   badge?: string;
   dimensionsBadge?: string;
   defaultElevationM?: number;
+  placementMode: AssetPlacementMode;
+  technicalSpec?: TechnicalSpecLevel1;
 }
+
+export const OBJECT_ELEVATION_PRESETS = {
+  floor: 0,
+  pallet: 0.21,
+  rack: 0.5,
+  table: 0.93,
+} as const;
 
 export interface CatalogCategoryDef {
   id: string;
@@ -89,6 +120,197 @@ export const CATALOG_SUBCATEGORIES: Record<string, CatalogSubcategoryDef[]> = {
     { id: 'cabinets_safety', label: 'Gabinetes de Seguridad', emoji: '🔒' },
   ],
 };
+
+export function inferAssetPlacementAndSpec(
+  assetId: string,
+  category: string,
+  subcategory?: string,
+): {
+  placementMode: AssetPlacementMode;
+  technicalSpec?: TechnicalSpecLevel1;
+} {
+  const idLower = assetId.toLowerCase();
+  const subcat = subcategory ?? inferSubcategory(assetId, category);
+
+  // Todo harvest_produce, hand_tools y safety pasan a build_props
+  if (
+    category === 'harvest_produce' ||
+    category === 'hand_tools' ||
+    category === 'safety'
+  ) {
+    return { placementMode: 'build_props' };
+  }
+
+  // Calefactores y Humidificadores específicos
+  if (idLower.includes('heater') && !idLower.includes('handtool')) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'climate_control',
+        iotBindable: true,
+        thermalDeltaC: 5,
+        airflowM3h: 400,
+      },
+    };
+  }
+  if (idLower.includes('humidifier')) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'climate_control',
+        iotBindable: true,
+        humidityControl: 'humidify',
+        airflowM3h: 250,
+      },
+    };
+  }
+
+  // 2. Riego y Fertigación (role: 'irrigation_fertigation', iotBindable: true)
+  const isIbcTank = idLower.includes('ibctank') || idLower.includes('tank_ibc');
+  if (isIbcTank) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'irrigation_fertigation',
+        iotBindable: true,
+        waterCapacityLiters: 1000,
+      },
+    };
+  }
+
+  const isReservoir =
+    idLower.includes('reservoir_tank') ||
+    idLower.includes('water_tank') ||
+    (category === 'mep_climate' && (idLower.includes('tank') || idLower.includes('reservoir')));
+  if (isReservoir) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'irrigation_fertigation',
+        iotBindable: true,
+        waterCapacityLiters: 250,
+      },
+    };
+  }
+
+  const isPumpingOrHose =
+    idLower.includes('drainage_pumpsystem') ||
+    idLower.includes('fluid_pump') ||
+    idLower.includes('pump') ||
+    idLower.includes('hosereel') ||
+    idLower.includes('hose') ||
+    idLower.includes('pipe_plastic') ||
+    idLower.includes('pipe');
+  if (isPumpingOrHose && (category === 'mep_climate' || category === '')) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'irrigation_fertigation',
+        iotBindable: true,
+        flowRateLpm: 45,
+      },
+    };
+  }
+
+  // 1b. Clima, Ventilación y Filtrado restantes (role: 'climate_control', iotBindable: true)
+  const isClimateSubcat =
+    subcat === 'ventilation_fans' || subcat === 'hvac_cooling';
+  const hasClimateKeyword =
+    idLower.includes('fan') ||
+    idLower.includes('extractor') ||
+    idLower.includes('ventilation') ||
+    idLower.includes('airsystem') ||
+    idLower.includes('air_filter') ||
+    idLower.includes('airfilter') ||
+    idLower.includes('climate') ||
+    idLower.includes('cooling') ||
+    idLower.includes('hvac');
+
+  if (category === 'mep_climate' || isClimateSubcat || (category === '' && hasClimateKeyword)) {
+    if (hasClimateKeyword || isClimateSubcat) {
+      return {
+        placementMode: 'planting_utility',
+        technicalSpec: {
+          role: 'climate_control',
+          iotBindable: true,
+          thermalDeltaC: -2,
+          airflowM3h: 800,
+          humidityControl: 'stabilize',
+        },
+      };
+    }
+  }
+
+  // 3. Bioprocesamiento y Compostaje (role: 'bioprocessing', iotBindable: false)
+  const isBioprocessing =
+    idLower.includes('drum_plastic') ||
+    idLower.includes('drum_fiber') ||
+    idLower.includes('warehouse_barrel_plastic') ||
+    idLower.includes('hopper_dumpling');
+  if (isBioprocessing) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'bioprocessing',
+        iotBindable: false,
+        compostCapacityLiters: 200,
+      },
+    };
+  }
+
+  // 4. Contenedores, Mesas de Cultivo y Racks de Propagación (role: 'cultivation_vessel', iotBindable: false)
+  const isCratePot =
+    idLower.includes('crate_harvest_plastic') ||
+    idLower.includes('crate_plastic') ||
+    idLower.includes('pail_plastic') ||
+    idLower.includes('bucket_utility') ||
+    idLower.includes('bin_plastic');
+  if (isCratePot) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'cultivation_vessel',
+        iotBindable: false,
+        vesselType: 'pot_container',
+        substrateVolumeLiters: 40,
+      },
+    };
+  }
+
+  const isTableBench =
+    idLower.includes('table_metal_stainless') ||
+    idLower.includes('workbench_modular_table') ||
+    idLower.includes('table_deluxe_packing');
+  if (isTableBench) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'cultivation_vessel',
+        iotBindable: false,
+        vesselType: 'propagation_bench',
+        substrateVolumeLiters: 120,
+      },
+    };
+  }
+
+  const isVerticalRack =
+    idLower.includes('rack_heavyduty_metal') ||
+    idLower.includes('rack_industrial_empty');
+  if (isVerticalRack) {
+    return {
+      placementMode: 'planting_utility',
+      technicalSpec: {
+        role: 'cultivation_vessel',
+        iotBindable: false,
+        vesselType: 'vertical_rack',
+        substrateVolumeLiters: 300,
+      },
+    };
+  }
+
+  // 5. Todo el resto clasifica a build_props
+  return { placementMode: 'build_props' };
+}
 
 export function inferSubcategory(assetId: string, category: string): string {
   const id = assetId.toLowerCase();
@@ -455,6 +677,11 @@ export const SIMREADY_CATALOG: FacilityCatalogItem[] = (
     item.category,
   );
   const subcategory = inferSubcategory(item.assetId, item.category);
+  const { placementMode, technicalSpec } = inferAssetPlacementAndSpec(
+    item.assetId,
+    item.category,
+    subcategory,
+  );
 
   return {
     ...item,
@@ -469,8 +696,95 @@ export const SIMREADY_CATALOG: FacilityCatalogItem[] = (
       dimensionsBadge ||
       (item.triangles ? `${Math.round(item.triangles / 1000)}k tris` : undefined),
     defaultElevationM: 0,
+    placementMode,
+    technicalSpec,
   };
 });
+
+export function getCatalogItemsForMode(
+  mode: AssetPlacementMode,
+): FacilityCatalogItem[] {
+  return SIMREADY_CATALOG.filter((item) => item.placementMode === mode);
+}
+
+export interface RoomTechnicalSummary {
+  totalWaterCapacityLiters: number;
+  totalAirflowM3h: number;
+  netThermalDeltaC: number;
+  totalSubstrateVolumeLiters: number;
+  totalCompostCapacityLiters: number;
+  iotReadyDevicesCount: number;
+  hasActiveIrrigation: boolean;
+}
+
+export function computeRoomTechnicalSummary(
+  placedObjects: Array<{ assetId: string }>,
+): RoomTechnicalSummary {
+  let totalWaterCapacityLiters = 0;
+  let totalAirflowM3h = 0;
+  let rawThermalDeltaC = 0;
+  let totalSubstrateVolumeLiters = 0;
+  let totalCompostCapacityLiters = 0;
+  let iotReadyDevicesCount = 0;
+  let hasWaterSource = false;
+  let hasActivePumping = false;
+
+  const catalogMap = new Map<string, FacilityCatalogItem>();
+  for (const item of SIMREADY_CATALOG) {
+    catalogMap.set(item.assetId, item);
+  }
+
+  for (const obj of placedObjects) {
+    const catalogItem = catalogMap.get(obj.assetId);
+    const spec =
+      catalogItem?.technicalSpec ??
+      inferAssetPlacementAndSpec(obj.assetId, catalogItem?.category ?? '').technicalSpec;
+
+    if (!spec) continue;
+
+    if (spec.iotBindable) {
+      iotReadyDevicesCount += 1;
+    }
+
+    if (spec.waterCapacityLiters && spec.waterCapacityLiters > 0) {
+      totalWaterCapacityLiters += spec.waterCapacityLiters;
+      hasWaterSource = true;
+    }
+
+    if (spec.flowRateLpm && spec.flowRateLpm > 0) {
+      hasActivePumping = true;
+    }
+
+    if (spec.airflowM3h && spec.airflowM3h > 0) {
+      totalAirflowM3h += spec.airflowM3h;
+    }
+
+    if (spec.thermalDeltaC !== undefined) {
+      rawThermalDeltaC += spec.thermalDeltaC;
+    }
+
+    if (spec.substrateVolumeLiters && spec.substrateVolumeLiters > 0) {
+      totalSubstrateVolumeLiters += spec.substrateVolumeLiters;
+    }
+
+    if (spec.compostCapacityLiters && spec.compostCapacityLiters > 0) {
+      totalCompostCapacityLiters += spec.compostCapacityLiters;
+    }
+  }
+
+  const netThermalDeltaC = Math.max(-8, Math.min(12, rawThermalDeltaC));
+  const hasActiveIrrigation = hasWaterSource && hasActivePumping;
+
+  return {
+    totalWaterCapacityLiters,
+    totalAirflowM3h,
+    netThermalDeltaC,
+    totalSubstrateVolumeLiters,
+    totalCompostCapacityLiters,
+    iotReadyDevicesCount,
+    hasActiveIrrigation,
+  };
+}
 
 // Fallback compatibility alias
 export const FACILITY_OBJECTS_CATALOG = SIMREADY_CATALOG;

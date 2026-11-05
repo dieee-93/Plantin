@@ -17,6 +17,7 @@ export interface SpaceHeaderNavProps {
   onApplyShapePreset?: (shape: 'rect' | 'l_shape') => void;
   onScaleParcel?: (factor: number) => void;
   onInsertVertex?: () => void;
+  onOpenTerrainBuilder?: () => void;
 }
 
 export const SpaceHeaderNav: React.FC<SpaceHeaderNavProps> = ({
@@ -34,6 +35,7 @@ export const SpaceHeaderNav: React.FC<SpaceHeaderNavProps> = ({
   onApplyShapePreset,
   onScaleParcel,
   onInsertVertex,
+  onOpenTerrainBuilder,
 }) => {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [draftWidthM, setDraftWidthM] = useState<string>(() => widthM.toFixed(1));
@@ -53,6 +55,14 @@ export const SpaceHeaderNav: React.FC<SpaceHeaderNavProps> = ({
   const shapeDetail = isRectangular
     ? `${widthM.toFixed(1)} × ${depthM.toFixed(1)} m`
     : `Irregular (${vertexCount ?? 4} esquinas) · ${computedArea.toFixed(1)} m²`;
+
+  const handlePillClick = () => {
+    if (onOpenTerrainBuilder) {
+      onOpenTerrainBuilder();
+    } else {
+      setIsPopoverOpen((prev) => !prev);
+    }
+  };
 
   return (
     <div className="relative pointer-events-auto flex items-center gap-2">
@@ -89,7 +99,7 @@ export const SpaceHeaderNav: React.FC<SpaceHeaderNavProps> = ({
           <button
             type="button"
             aria-label={`Geometría: ${shapeDetail}`}
-            onClick={() => setIsPopoverOpen((prev) => !prev)}
+            onClick={handlePillClick}
             className="flex h-7 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 cursor-pointer"
             title={shapeDetail}
           >

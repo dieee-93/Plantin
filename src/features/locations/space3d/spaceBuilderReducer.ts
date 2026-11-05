@@ -10,6 +10,9 @@ import {
   type PlantNeighborMeasurement,
 } from '@/domain/solarAndPlantSpatial';
 
+export type SpacePrimaryMode = 'live' | 'build' | 'planting';
+export type SpaceBuildSubMode = 'architecture' | 'props';
+
 export type SpaceBuilderTool =
   | 'inspect'
   | 'draw_path'
@@ -77,6 +80,9 @@ export const PLANT_BUILDER_PRESETS: Record<PlantPresetKey, PlantBuilderTemplate>
 };
 
 export interface SpaceBuilderState {
+  primaryMode: SpacePrimaryMode;
+  buildSubMode: SpaceBuildSubMode;
+  stagedPlants: PlacedPlantSpatialCm[];
   activeTool: SpaceBuilderTool;
   pathWidthCm: number;
   pathMaterial: FloorMaterialType;
@@ -93,6 +99,14 @@ export interface SpaceBuilderState {
 }
 
 export type SpaceBuilderEvent =
+  | { type: 'SET_PRIMARY_MODE'; mode: SpacePrimaryMode; tool?: SpaceBuilderTool }
+  | { type: 'SET_BUILD_SUBMODE'; subMode: SpaceBuildSubMode }
+  | { type: 'STAGE_PLANT'; plant: PlacedPlantSpatialCm }
+  | { type: 'STAGE_PLANTS_BATCH'; plants: PlacedPlantSpatialCm[] }
+  | { type: 'REMOVE_STAGED_PLANT'; plantId: string }
+  | { type: 'UPDATE_STAGED_PLANT'; plantId: string; patch: Partial<PlacedPlantSpatialCm> }
+  | { type: 'CLEAR_STAGED_PLANTS' }
+  | { type: 'ESCAPE_STEP' }
   | { type: 'SET_TOOL'; tool: SpaceBuilderTool }
   | { type: 'SET_PATH_WIDTH'; widthCm: number }
   | { type: 'SET_PATH_MATERIAL'; material: FloorMaterialType }
@@ -114,7 +128,10 @@ export type SpaceBuilderEvent =
 
 export function createInitialBuilderState(): SpaceBuilderState {
   return {
+    primaryMode: 'live',
+    buildSubMode: 'architecture',
     activeTool: 'inspect',
+    stagedPlants: [],
     pathWidthCm: 80,
     pathMaterial: 'concrete',
     plantTemplate: { ...PLANT_BUILDER_PRESETS.tomato },
@@ -135,15 +152,189 @@ export function spaceBuilderReducer(
   event: SpaceBuilderEvent,
 ): SpaceBuilderState {
   switch (event.type) {
-    case 'SET_TOOL':
+    case 'SET_PRIMARY_MODE': {
+      if (event.mode === 'live') {
+        return {
+          ...state,
+          primaryMode: 'live',
+          activeTool: 'inspect',
+          draftStartCm: null,
+        };
+      }
+      if (event.mode === 'build') {
+        let nextTool: SpaceBuilderTool;
+        if (event.tool) {
+          nextTool = event.tool;
+        } else if (state.buildSubMode === 'props') {
+          nextTool = 'place_object';
+        } else {
+          const archTools: SpaceBuilderTool[] = [
+            'inspect',
+            'edit_boundary',
+            'walls',
+            'draw_path',
+            'roof',
+          ];
+          if (archTools.includes(state.activeTool) && state.activeTool !== 'inspect') {
+            nextTool = state.activeTool;
+          } else {
+            nextTool = 'edit_boundary';
+          }
+        }
+        return {
+          ...state,
+          primaryMode: 'build',
+          activeTool: nextTool,
+        };
+      }
+      if (event.mode === 'planting') {
+        let nextTool: SpaceBuilderTool;
+        if (event.tool) {
+          nextTool = event.tool;
+        } else {
+          const plantingTools: SpaceBuilderTool[] = [
+            'plant_single',
+            'plant_line',
+            'plant_fill_sector',
+            'place_object',
+            'inspect',
+          ];
+          if (plantingTools.includes(state.activeTool)) {
+            nextTool = state.activeTool;
+          } else {
+            nextTool = 'plant_single';
+          }
+        }
+        return {
+          ...state,
+          primaryMode: 'planting',
+          activeTool: nextTool,
+        };
+      }
+      return state;
+    }
+    case 'SET_BUILD_SUBMODE': {
+      if (event.subMode === 'props') {
+        return {
+          ...state,
+          primaryMode: 'build',
+          buildSubMode: 'props',
+          activeTool: 'place_object',
+        };
+      }
+      const plantingTools: SpaceBuilderTool[] = [
+        'plant_single',
+        'plant_line',
+        'plant_fill_sector',
+      ];
+      const shouldResetTool =
+        state.activeTool === 'place_object' || plantingTools.includes(state.activeTool);
       return {
         ...state,
+        primaryMode: 'build',
+        buildSubMode: 'architecture',
+        activeTool: shouldResetTool ? 'edit_boundary' : state.activeTool,
+      };
+    }
+    case 'STAGE_PLANT':
+      return {
+        ...state,
+        stagedPlants: [...state.stagedPlants, event.plant],
+      };
+    case 'STAGE_PLANTS_BATCH':
+      return {
+        ...state,
+        stagedPlants: [...state.stagedPlants, ...event.plants],
+      };
+    case 'REMOVE_STAGED_PLANT':
+      return {
+        ...state,
+        stagedPlants: state.stagedPlants.filter((p) => p.id !== event.plantId),
+        selectedPlantId:
+          state.selectedPlantId === event.plantId ? null : state.selectedPlantId,
+      };
+    case 'UPDATE_STAGED_PLANT':
+      return {
+        ...state,
+        stagedPlants: state.stagedPlants.map((p) =>
+          p.id === event.plantId ? { ...p, ...event.patch } : p,
+        ),
+      };
+    case 'CLEAR_STAGED_PLANTS':
+      return {
+        ...state,
+        stagedPlants: [],
+      };
+    case 'ESCAPE_STEP': {
+      if (state.draftStartCm !== null) {
+        return {
+          ...state,
+          draftStartCm: null,
+        };
+      }
+      if (
+        state.selectedObjectId !== null ||
+        state.selectedPlantId !== null ||
+        state.selectedWallId !== null ||
+        state.selectedVertexIndex !== null
+      ) {
+        return {
+          ...state,
+          selectedObjectId: null,
+          selectedPlantId: null,
+          selectedWallId: null,
+          selectedVertexIndex: null,
+        };
+      }
+      if (state.activeTool !== 'inspect') {
+        return {
+          ...state,
+          activeTool: 'inspect',
+        };
+      }
+      return state;
+    }
+    case 'SET_TOOL': {
+      let nextPrimaryMode = state.primaryMode;
+      let nextBuildSubMode = state.buildSubMode;
+
+      const archTools: SpaceBuilderTool[] = [
+        'edit_boundary',
+        'walls',
+        'draw_path',
+        'roof',
+      ];
+      const plantingTools: SpaceBuilderTool[] = [
+        'plant_single',
+        'plant_line',
+        'plant_fill_sector',
+      ];
+
+      if (archTools.includes(event.tool)) {
+        nextPrimaryMode = 'build';
+        nextBuildSubMode = 'architecture';
+      } else if (plantingTools.includes(event.tool)) {
+        if (state.primaryMode !== 'build') {
+          nextPrimaryMode = 'planting';
+        }
+      } else if (event.tool === 'place_object') {
+        if (state.primaryMode !== 'planting') {
+          nextPrimaryMode = 'build';
+          nextBuildSubMode = 'props';
+        }
+      }
+
+      return {
+        ...state,
+        primaryMode: nextPrimaryMode,
+        buildSubMode: nextBuildSubMode,
         activeTool: event.tool,
         draftStartCm: null,
         selectedVertexIndex: null,
         selectedWallId: null,
         selectedObjectId: null,
       };
+    }
     case 'SET_PATH_WIDTH':
       return {
         ...state,

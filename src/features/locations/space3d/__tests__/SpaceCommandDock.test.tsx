@@ -141,8 +141,7 @@ describe('SpaceCommandDock - Left Vertical HudRail & Bottom Command Dock', () =>
     expect(onChangePathWidth).toHaveBeenCalledWith(100);
   });
 
-  it('renders wall presets toolbar when activeTool is "walls"', () => {
-    const onSetAllWallsHeight = vi.fn();
+  it('renders wall presets status line without duplicate height buttons when activeTool is "walls"', () => {
     render(
       <SpaceCommandDock
         mode="design"
@@ -171,15 +170,11 @@ describe('SpaceCommandDock - Left Vertical HudRail & Bottom Command Dock', () =>
         onApplyDimensions={vi.fn()}
         onInsertVertex={vi.fn()}
         vertexCount={4}
-        onSetAllWallsHeight={onSetAllWallsHeight}
       />,
     );
 
     expect(screen.getByText(/Cerramiento perimetral:/i)).toBeInTheDocument();
-    const wall2mBtn = screen.getByRole('button', { name: /2.0m \(Medianera\)/i });
-    expect(wall2mBtn).toBeInTheDocument();
-    fireEvent.click(wall2mBtn);
-    expect(onSetAllWallsHeight).toHaveBeenCalledWith(200);
+    expect(screen.queryByRole('button', { name: /2.0m/i })).not.toBeInTheDocument();
   });
 
   it('renders Deshacer (Undo) and Rehacer (Redo) buttons in design mode with enabled/disabled states', () => {
