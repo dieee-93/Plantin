@@ -37,3 +37,4 @@ assets-src/guides/
 
 # Large 3D binary assets downloaded locally for cache (streamed from HF CDN in prod)
 public/models/simready/glb/
+public/models/plants/*_raw.glb
