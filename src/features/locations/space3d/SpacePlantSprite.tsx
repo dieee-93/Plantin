@@ -17,6 +17,40 @@ export interface SpacePlantSpriteProps {
   isCrowded?: boolean;
 }
 
+export function bbchToPhase(
+  bbch?: number,
+): 'germination' | 'leaf' | 'structure' | 'flowering' | 'fruiting' {
+  if (bbch === undefined) return 'fruiting';
+  if (bbch < 10) return 'germination';
+  if (bbch < 30) return 'leaf';
+  if (bbch < 55) return 'structure';
+  if (bbch < 70) return 'flowering';
+  return 'fruiting';
+}
+
+export function resolveBotanical3dModelUrl(
+  cropCode?: string,
+  label?: string,
+  phase: 'germination' | 'leaf' | 'structure' | 'flowering' | 'fruiting' = 'fruiting',
+): string | null {
+  const canonical = resolveCanonicalCropCode(cropCode, label);
+  if (canonical === 'TOM') {
+    switch (phase) {
+      case 'germination':
+      case 'leaf':
+        return '/models/plants/plant_tomato_clay_seedling.glb';
+      case 'structure':
+        return '/models/plants/plant_tomato_clay_vegetative.glb';
+      case 'flowering':
+        return '/models/plants/plant_tomato_clay_flowering.glb';
+      case 'fruiting':
+      default:
+        return '/models/plants/plant_tomato_clay_a01.glb';
+    }
+  }
+  return null;
+}
+
 export function resolvePlantSpriteUrl(
   cropCode?: string,
   label?: string,

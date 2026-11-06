@@ -522,6 +522,11 @@ export interface SpaceLayoutStoreState {
   ) => void;
   removeObject: (locationId: string, objectId: string) => void;
   movePlant: (locationId: string, plantId: string, xCm: number, yCm: number) => void;
+  updatePlant: (
+    locationId: string,
+    plantId: string,
+    patch: Partial<PlacedPlantSpatialCm>,
+  ) => void;
   removePlant: (locationId: string, plantId: string) => void;
   placePlantLine: (
     locationId: string,
@@ -1303,6 +1308,26 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
             { type: 'plant_move', plantId, prevX, prevY, nextX: roundedX, nextY: roundedY },
             state.history,
           ),
+          layouts: {
+            ...state.layouts,
+            [locationId]: {
+              ...current,
+              placedPlants: nextPlants,
+            },
+          },
+        }));
+      },
+
+      updatePlant: (locationId, plantId, patch) => {
+        const current = get().getOrCreateSpaceLayout(locationId);
+        const targetIndex = current.placedPlants.findIndex((p) => p.id === plantId);
+        if (targetIndex === -1) return;
+        const target = current.placedPlants[targetIndex];
+        const updatedPlant = { ...target, ...patch };
+        const nextPlants = current.placedPlants.slice();
+        nextPlants[targetIndex] = updatedPlant;
+
+        set((state) => ({
           layouts: {
             ...state.layouts,
             [locationId]: {

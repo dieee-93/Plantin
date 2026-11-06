@@ -47,6 +47,7 @@ import { SpaceLensBar, type AnalyticalLensType } from './SpaceLensBar';
 import { SpaceCommandDock } from './SpaceCommandDock';
 import { SpaceCameraWidget } from './SpaceCameraWidget';
 import { SpacePlantActionBar } from './SpacePlantActionBar';
+import { bbchToPhase } from './SpacePlantSprite';
 import { SpaceObjectActionBar } from './SpaceObjectActionBar';
 import { SpaceWallActionBar } from './SpaceWallActionBar';
 import { SpaceWallBuilderShelf } from './SpaceWallBuilderShelf';
@@ -215,6 +216,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
   const placeObject = useSpaceLayoutStore((state) => state.placeObject);
   const updateObject = useSpaceLayoutStore((state) => state.updateObject);
   const removeObject = useSpaceLayoutStore((state) => state.removeObject);
+  const updatePlant = useSpaceLayoutStore((state) => state.updatePlant);
   const removePlant = useSpaceLayoutStore((state) => state.removePlant);
   const placePlantLine = useSpaceLayoutStore((state) => state.placePlantLine);
   const fillCultivableSector = useSpaceLayoutStore(
@@ -1638,8 +1640,22 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
 
   const handleAdvanceBBCH = () => {
     if (matchingIndividual) {
+      const nextBBCH = Math.min(99, (matchingIndividual.currentBBCH || 0) + 10);
       updateIndividual(matchingIndividual.id, {
-        currentBBCH: Math.min(99, (matchingIndividual.currentBBCH || 0) + 10),
+        currentBBCH: nextBBCH,
+      });
+      if (selectedPlant) {
+        updatePlant(locationId, selectedPlant.id, {
+          bbchStage: nextBBCH,
+          phase: bbchToPhase(nextBBCH),
+        });
+      }
+    } else if (selectedPlant) {
+      const current = selectedPlant.bbchStage ?? 15;
+      const nextBBCH = Math.min(99, current + 15);
+      updatePlant(locationId, selectedPlant.id, {
+        bbchStage: nextBBCH,
+        phase: bbchToPhase(nextBBCH),
       });
     }
     onAdvancePlantBBCH?.(selectedPlant?.id || '');

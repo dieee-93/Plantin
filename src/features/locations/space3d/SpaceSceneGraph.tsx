@@ -35,6 +35,7 @@ import type { GizmoSpatialResult } from './gizmo/calculateGizmoSpatialUpdate';
 import { SurroundingGround } from './SurroundingGround';
 import { CanopyRingsInstanced, type CanopyRingItem } from './CanopyRingsInstanced';
 import { InstancedPlantGroup, type InstancedPlantItem } from './InstancedPlantSprites';
+import { resolveBotanical3dModelUrl, bbchToPhase } from './SpacePlantSprite';
 import type { AnalyticalLensType } from './SpaceLensBar';
 import { roomLoadProfiler } from './telemetry/roomLoadProfiler';
 import { PerfFrameTracker } from './telemetry/PerfFrameTracker';
@@ -264,31 +265,46 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
       return items;
     }, [placedPlants, centerCm, crowdedPlantIds]);
 
-    // 3. Group plants by cropCode for instanced billboard rendering (1 draw call per cropCode)
-    // NOTE: selectedPlantId is intentionally excluded so plantGroups is reference-stable on selection.
-    const plantGroups = useMemo(() => {
-      const groups = new Map<string, { cropCode: string; plants: InstancedPlantItem[] }>();
+    // 3. Separate plants into 3D botanical meshes and 2D billboard sprite groups
+    // NOTE: selectedPlantId is intentionally excluded so plant groupings are reference-stable on selection.
+    const { plants3d, plantGroups2d } = useMemo(() => {
+      const p3d: Array<{
+        plant: PlacedPlantSpatialCm;
+        modelUrl: string;
+        scale: number;
+      }> = [];
+      const groups2d = new Map<string, { cropCode: string; plants: InstancedPlantItem[] }>();
+
       const len = placedPlants.length;
       for (let i = 0; i < len; i++) {
         const p = placedPlants[i];
-        const cropCode = p.cropCode || 'TOM';
-        let group = groups.get(cropCode);
-        if (!group) {
-          group = { cropCode, plants: [] };
-          groups.set(cropCode, group);
+        const phase = p.phase ?? bbchToPhase(p.bbchStage);
+        const model3dUrl = p.modelUrl || resolveBotanical3dModelUrl(p.cropCode, p.label, phase);
+
+        if (model3dUrl) {
+          const scale = Math.max(0.4, Math.min(1.5, (p.canopyRadiusCm || 35) / 35));
+          p3d.push({ plant: p, modelUrl: model3dUrl, scale });
+        } else {
+          const cropCode = p.cropCode || 'TOM';
+          let group = groups2d.get(cropCode);
+          if (!group) {
+            group = { cropCode, plants: [] };
+            groups2d.set(cropCode, group);
+          }
+          const radiusM = Math.max(0.08, p.canopyRadiusCm * CM_TO_M);
+          group.plants.push({
+            id: p.id,
+            label: p.label,
+            xM: (p.xCm - centerCm.x) * CM_TO_M,
+            zM: (p.yCm - centerCm.y) * CM_TO_M,
+            radiusM,
+            bodyHeightM: Math.max(0.25, radiusM * 1.6),
+            isCrowded: crowdedPlantIds.has(p.id),
+          });
         }
-        const radiusM = Math.max(0.08, p.canopyRadiusCm * CM_TO_M);
-        group.plants.push({
-          id: p.id,
-          label: p.label,
-          xM: (p.xCm - centerCm.x) * CM_TO_M,
-          zM: (p.yCm - centerCm.y) * CM_TO_M,
-          radiusM,
-          bodyHeightM: Math.max(0.25, radiusM * 1.6),
-          isCrowded: crowdedPlantIds.has(p.id),
-        });
       }
-      return Array.from(groups.values());
+
+      return { plants3d: p3d, plantGroups2d: Array.from(groups2d.values()) };
     }, [placedPlants, centerCm, crowdedPlantIds]);
 
     const selectedPlant = useMemo(
@@ -306,14 +322,32 @@ export const PlantsLayer: React.FC<PlantsLayerProps> = React.memo(
           onSelectPlant={onSelectPlant}
         />
 
-        {/* GPU Instanced Plant Billboards (1 draw call per cropCode) */}
-        {plantGroups.map((group) => (
+        {/* GPU Instanced Plant Billboards for 2.5D crops */}
+        {plantGroups2d.map((group) => (
           <InstancedPlantGroup
             key={group.cropCode}
             cropCode={group.cropCode}
             plants={group.plants}
             selectedPlantId={selectedPlantId}
             onSelectPlant={onSelectPlant}
+          />
+        ))}
+
+        {/* 3D Botanical Meshes for crops with 3D models available (e.g. Tomate) */}
+        {plants3d.map(({ plant: p, modelUrl, scale }) => (
+          <SpaceModelInstance
+            key={p.id}
+            modelUrl={modelUrl}
+            positionCm={{ x: p.xCm, y: p.yCm }}
+            centerCm={centerCm}
+            elevationM={p.zCm ? p.zCm * 0.01 : 0}
+            scaleMultiplier={scale}
+            castShadow
+            receiveShadow
+            onClick={(e) => {
+              (e as { stopPropagation?: () => void })?.stopPropagation?.();
+              onSelectPlant?.(p.id);
+            }}
           />
         ))}
 

@@ -39,6 +39,9 @@ export interface PlacedPlantSpatialCm {
   yCm: number;
   zCm?: number;
   canopyRadiusCm: number;
+  bbchStage?: number;
+  phase?: 'germination' | 'leaf' | 'structure' | 'flowering' | 'fruiting';
+  modelUrl?: string;
 }
 
 export interface PlantNeighborMeasurement {

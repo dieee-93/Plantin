@@ -40,8 +40,12 @@ describe('SpaceSceneGraph - Slice 2: 1:1 R3F Scene Graph, Solar Light & Wall Cut
     // 1 single instanced mesh for all 3 canopy rings
     expect(canopyRingMeshes).toHaveLength(1);
     expect(canopyRingMeshes[0].props.args[2]).toBe(3);
-    // 3 instanced groups (one per cropCode: tomato, pepper, lettuce)
-    expect(plantBillboardMeshes).toHaveLength(3);
+    // 2 2.5D billboard groups (pepper, lettuce) and 1 3D botanical mesh for tomato
+    expect(plantBillboardMeshes).toHaveLength(2);
+    const tomato3dMeshes = renderer.scene.findAll((node) =>
+      typeof node.props.name === 'string' && node.props.name.includes('plant_tomato_clay'),
+    );
+    expect(tomato3dMeshes).toHaveLength(1);
 
     await renderer.unmount();
   });
