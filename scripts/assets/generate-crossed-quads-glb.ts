@@ -1,22 +1,104 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 
-/**
- * Generates an optimized glTF 2.0 binary (.glb) asset using the Crossed-Quads (Star-Billboard) technique.
- * - Creates intersecting vertical planes in a radial star pattern (e.g. 3 planes at 60° angles)
- * - Sets alphaMode="MASK" (alphaCutoff 0.5) and doubleSided=true for crisp shadow casting and depth sorting
- * - Bends vertex normals outward/upward for soft volumetric foliage lighting
- * - Embeds high-resolution transparent textures directly into the self-contained GLB
- */
-export function generateCrossedQuadsGlb(options: {
-  imagePngPath: string;
+export interface CrossedQuadsOptions {
+  inputImagePath: string;
   outputPath: string;
   widthM: number;
   heightM: number;
-  numPlanes?: number;
-}): void {
-  const { imagePngPath, outputPath, widthM, heightM, numPlanes = 3 } = options;
-  const imgBuffer = fs.readFileSync(imagePngPath);
+  numPlanes?: number; // 2 for 90° orthogonal cross
+  cols?: number;      // subdivision columns
+  rows?: number;      // subdivision rows
+  stemToleranceAlpha?: number;
+}
+
+/**
+ * Centers the stem base of a transparent plant texture on the horizontal canvas axis (U = 0.5)
+ * so that when crossed planes intersect at (0, 0, 0), the plant stems meet at the exact same point in space.
+ */
+async function createCenteredPlantTexture(inputPath: string, outputPath: string): Promise<string> {
+  const img = sharp(inputPath);
+  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+
+  // Find lowest row with plant pixels
+  let bottomRow = info.height - 1;
+  for (let y = info.height - 1; y >= 0; y--) {
+    let hasPixel = false;
+    for (let x = 0; x < info.width; x++) {
+      if (data[(y * info.width + x) * 4 + 3] > 30) {
+        hasPixel = true;
+        break;
+      }
+    }
+    if (hasPixel) {
+      bottomRow = y;
+      break;
+    }
+  }
+
+  // Find stem bounds in the bottom 12% of the plant
+  const scanStartY = Math.max(0, bottomRow - Math.floor(info.height * 0.12));
+  let minStemX = info.width;
+  let maxStemX = 0;
+  for (let y = scanStartY; y <= bottomRow; y++) {
+    for (let x = 0; x < info.width; x++) {
+      if (data[(y * info.width + x) * 4 + 3] > 40) {
+        if (x < minStemX) minStemX = x;
+        if (x > maxStemX) maxStemX = x;
+      }
+    }
+  }
+
+  const stemCenterX = (minStemX + maxStemX) / 2;
+  const halfWidth = Math.ceil(Math.max(stemCenterX, info.width - stemCenterX));
+  const newWidth = halfWidth * 2;
+  const leftPad = Math.round(halfWidth - stemCenterX);
+  const rightPad = Math.max(0, newWidth - info.width - leftPad);
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  await sharp(inputPath)
+    .extend({
+      top: 0,
+      bottom: 0,
+      left: Math.max(0, leftPad),
+      right: Math.max(0, rightPad),
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png({ compressionLevel: 9 })
+    .toFile(outputPath);
+
+  return outputPath;
+}
+
+/**
+ * Generates an optimized glTF 2.0 binary (.glb) asset using the Crossed-Quads technique:
+ * - 2 orthogonal planes at 90° for clear silhouettes and minimal self-overlap
+ * - 4x4 subdivision grid with subtle curvature
+ * - Sphere-projected normals (proxy sphere workflow) with upward bias to unify lighting across intersections
+ * - AlphaMode="MASK" (alphaCutoff 0.45), doubleSided=true
+ */
+export async function generateCrossedQuadsGlb(options: CrossedQuadsOptions): Promise<void> {
+  const {
+    inputImagePath,
+    outputPath,
+    widthM,
+    heightM,
+    numPlanes = 2,
+    cols = 4,
+    rows = 4,
+  } = options;
+
+  // 1. Ensure texture has stem centered at U = 0.5
+  const tempCenteredPng = path.join(path.dirname(outputPath), '_temp_centered.png');
+  await createCenteredPlantTexture(inputImagePath, tempCenteredPng);
+  const imgBuffer = fs.readFileSync(tempCenteredPng);
+  try {
+    fs.unlinkSync(tempCenteredPng);
+  } catch {
+    // Non-critical cleanup
+  }
 
   const positions: number[] = [];
   const normals: number[] = [];
@@ -26,47 +108,70 @@ export function generateCrossedQuadsGlb(options: {
   let vertexOffset = 0;
   const minPos = [Infinity, Infinity, Infinity];
   const maxPos = [-Infinity, -Infinity, -Infinity];
+  const sphereCenterY = heightM * 0.45;
 
   for (let p = 0; p < numPlanes; p++) {
-    const angle = (p * Math.PI) / numPlanes;
-    const dx = (widthM / 2) * Math.cos(angle);
-    const dz = (widthM / 2) * Math.sin(angle);
+    const angle = (p * Math.PI) / numPlanes; // 0 and 90 deg
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const startIdx = vertexOffset;
 
-    const verts = [
-      { x: -dx, y: 0, z: -dz, u: 0, v: 1 },
-      { x: dx, y: 0, z: dz, u: 1, v: 1 },
-      { x: -dx, y: heightM, z: -dz, u: 0, v: 0 },
-      { x: dx, y: heightM, z: dz, u: 1, v: 0 },
-    ];
+    for (let r = 0; r <= rows; r++) {
+      const v = r / rows; // 0 at top, 1 at bottom for glTF UV
+      const y = (1 - v) * heightM; // 0 at bottom, heightM at top
 
-    for (const vert of verts) {
-      positions.push(vert.x, vert.y, vert.z);
-      uvs.push(vert.u, vert.v);
+      for (let c = 0; c <= cols; c++) {
+        const u = c / cols; // 0 at left, 1 at right
+        const t = (u - 0.5) * widthM; // -width/2 to +width/2
 
-      const len = Math.hypot(vert.x, vert.z) || 1;
-      const nx = (vert.x / len) * 0.85;
-      const ny = 0.4;
-      const nz = (vert.z / len) * 0.85;
-      const nlen = Math.hypot(nx, ny, nz);
-      normals.push(nx / nlen, ny / nlen, nz / nlen);
+        // Subtle organic curvature: bend outer edges slightly backward (~2.5 cm max at tips)
+        const curveDist = Math.pow(Math.abs(u - 0.5) * 2, 2) * 0.025;
+        const curveX = -sinA * curveDist * (p === 0 ? 1 : -1);
+        const curveZ = cosA * curveDist * (p === 0 ? 1 : -1);
 
-      minPos[0] = Math.min(minPos[0], vert.x);
-      minPos[1] = Math.min(minPos[1], vert.y);
-      minPos[2] = Math.min(minPos[2], vert.z);
-      maxPos[0] = Math.max(maxPos[0], vert.x);
-      maxPos[1] = Math.max(maxPos[1], vert.y);
-      maxPos[2] = Math.max(maxPos[2], vert.z);
+        const x = t * cosA + curveX;
+        const z = t * sinA + curveZ;
+
+        positions.push(x, y, z);
+        uvs.push(u, v);
+
+        // Spherical normal from proxy sphere center + upward bias
+        // This ensures the intersection seam (where x~0, z~0) has identical upward normals,
+        // completely eliminating the harsh split lighting seam!
+        const dx = x;
+        const dy = (y - sphereCenterY) * 0.6 + heightM * 0.25;
+        const dz = z;
+        const dist = Math.hypot(dx, dy, dz) || 1;
+
+        const nx = (dx / dist) * 0.6;
+        const ny = Math.max(0.35, (dy / dist) * 0.6 + 0.4);
+        const nz = (dz / dist) * 0.6;
+        const nLen = Math.hypot(nx, ny, nz);
+
+        normals.push(nx / nLen, ny / nLen, nz / nLen);
+
+        minPos[0] = Math.min(minPos[0], x);
+        minPos[1] = Math.min(minPos[1], y);
+        minPos[2] = Math.min(minPos[2], z);
+        maxPos[0] = Math.max(maxPos[0], x);
+        maxPos[1] = Math.max(maxPos[1], y);
+        maxPos[2] = Math.max(maxPos[2], z);
+      }
     }
 
-    indices.push(
-      vertexOffset + 0,
-      vertexOffset + 1,
-      vertexOffset + 2,
-      vertexOffset + 1,
-      vertexOffset + 3,
-      vertexOffset + 2,
-    );
-    vertexOffset += 4;
+    const stride = cols + 1;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i0 = startIdx + r * stride + c;
+        const i1 = i0 + 1;
+        const i2 = i0 + stride;
+        const i3 = i2 + 1;
+
+        indices.push(i0, i2, i1);
+        indices.push(i1, i2, i3);
+      }
+    }
+    vertexOffset += (rows + 1) * stride;
   }
 
   const posBuf = Buffer.from(new Float32Array(positions).buffer);
@@ -111,7 +216,7 @@ export function generateCrossedQuadsGlb(options: {
   ]);
 
   const gltf = {
-    asset: { version: '2.0', generator: 'Plantin Crossed-Quads Generator' },
+    asset: { version: '2.0', generator: 'Plantin Crossed-Quads Spherical Normals Generator' },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0, name: 'plant_crossed_quads_mesh' }],
@@ -136,10 +241,10 @@ export function generateCrossedQuadsGlb(options: {
         pbrMetallicRoughness: {
           baseColorTexture: { index: 0 },
           metallicFactor: 0.0,
-          roughnessFactor: 0.55,
+          roughnessFactor: 0.65,
         },
         alphaMode: 'MASK',
-        alphaCutoff: 0.5,
+        alphaCutoff: 0.45,
         doubleSided: true,
       },
     ],
@@ -215,13 +320,13 @@ export function generateCrossedQuadsGlb(options: {
   console.log(`[CrossedQuads] Exported ${outputPath} (${(glbBuffer.length / 1024).toFixed(1)} KB)`);
 }
 
-// Run if called directly
-if (process.argv[1] && process.argv[1].includes('generate-crossed-quads-glb')) {
-  generateCrossedQuadsGlb({
-    imagePngPath: 'public/textures/plants/TOM/fruiting_highres.png',
-    outputPath: 'public/models/plants/plant_tomato_star_a01.glb',
-    widthM: 0.68,
-    heightM: 0.86,
-    numPlanes: 3,
-  });
-}
+// Execute generator
+generateCrossedQuadsGlb({
+  inputImagePath: 'public/textures/plants/TOM/fruiting_highres.png',
+  outputPath: 'public/models/plants/plant_tomato_star_a01.glb',
+  widthM: 0.72,
+  heightM: 0.86,
+  numPlanes: 2,
+  cols: 4,
+  rows: 4,
+});
