@@ -474,15 +474,15 @@ describe('Space3DViewer - Placed 3D Object Selection and Manipulation', () => {
     const placedClay = layoutAfterFirst.placedObjects?.find((o) => o.assetId === 'plant_tomato_clay_a01');
     expect(placedClay).toBeDefined();
 
-    // 2. Select Tomato Star in the drawer (second item)
-    const tomatoStarTile = screen.getByTestId('asset-tile-plant_tomato_star_a01');
-    fireEvent.click(tomatoStarTile);
+    // 2. Select another asset in the drawer (handTool_breakerBar_long_a01 is in first batch)
+    const secondTile = screen.getByTestId('asset-tile-handTool_breakerBar_long_a01');
+    fireEvent.click(secondTile);
 
     // Click to place second object at (250, 250)
     fireEvent.click(plane, { clientX: 250, clientY: 250 });
 
     const layoutAfterSecond = useSpaceLayoutStore.getState().getOrCreateSpaceLayout(locationId);
-    const placedStar = layoutAfterSecond.placedObjects?.find((o) => o.assetId === 'plant_tomato_star_a01');
-    expect(placedStar).toBeDefined();
+    const placedSecond = layoutAfterSecond.placedObjects?.filter((o) => o.assetId === 'handTool_breakerBar_long_a01');
+    expect(placedSecond?.length).toBeGreaterThanOrEqual(1);
   });
 });

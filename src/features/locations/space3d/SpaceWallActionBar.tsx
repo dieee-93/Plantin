@@ -73,12 +73,12 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
   return (
     <div
       data-testid="selected-wall-inspector"
-      className="pointer-events-auto flex flex-col gap-3 rounded-3xl border border-sky-200/90 bg-white/95 p-3.5 text-xs shadow-2xl backdrop-blur-xl min-w-[300px] max-w-[360px] animate-in fade-in zoom-in-95 duration-200"
+      className="pointer-events-auto flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-3 text-xs text-slate-900 shadow-xl backdrop-blur-md min-w-[300px] max-w-[360px] animate-in fade-in zoom-in-95 duration-200"
     >
       {/* ── Top Header ── */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
             <Shield size={15} />
           </div>
           <div>
@@ -92,7 +92,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <span className="rounded-full bg-sky-50 px-2.5 py-0.5 font-mono text-[11px] font-bold text-sky-800 border border-sky-200">
+          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-mono text-[11px] font-bold text-emerald-800 border border-emerald-200">
             {lengthM} m
           </span>
           <button
@@ -110,10 +110,10 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1 font-semibold text-slate-700 text-[11px]">
-            <Ruler size={12} className="text-sky-600" />
+            <Ruler size={12} className="text-emerald-600" />
             <span>Altura del Muro:</span>
           </span>
-          <span className="font-mono font-bold text-sky-800 text-[11px]">
+          <span className="font-mono font-bold text-emerald-800 text-[11px]">
             {(wall.heightCm / 100).toFixed(2)} m
           </span>
         </div>
@@ -127,7 +127,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
           step="10"
           value={wall.heightCm}
           onChange={(e) => onUpdateHeight(parseInt(e.target.value, 10))}
-          className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-sky-100 accent-sky-600"
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-emerald-100 accent-emerald-600"
         />
 
         {/* Height Quick Presets */}
@@ -139,7 +139,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
               onClick={() => onUpdateHeight(preset.value)}
               className={`rounded-lg py-1 px-1.5 text-center text-[10px] font-semibold transition ${
                 wall.heightCm === preset.value
-                  ? 'bg-sky-600 text-white shadow-xs'
+                  ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -154,7 +154,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
         <div className="flex flex-col gap-1.5 pt-1.5 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1 font-semibold text-slate-700 text-[11px]">
-              <Layers size={12} className="text-sky-600" />
+              <Layers size={12} className="text-emerald-600" />
               <span>Material PBR:</span>
             </span>
             <span className="text-[10px] text-slate-500 font-medium capitalize">
@@ -173,7 +173,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
                   onClick={() => onUpdateMaterial(swatch.value)}
                   className={`flex items-center gap-1.5 rounded-xl border p-1.5 text-left transition ${
                     isSelected
-                      ? 'border-sky-500 bg-sky-50/70 font-bold text-sky-900 shadow-xs ring-2 ring-sky-300'
+                      ? 'border-emerald-500 bg-emerald-50/70 font-bold text-emerald-900 shadow-xs ring-2 ring-emerald-300'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -226,7 +226,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
               className={`flex items-center justify-center gap-1.5 rounded-xl border p-1.5 font-semibold text-[11px] transition ${
                 !windowSlot.canPlace
                   ? 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'
-                  : 'border-slate-200 bg-sky-50/40 text-sky-900 hover:bg-sky-100/60'
+                  : 'border-slate-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-100/60'
               }`}
               title={
                 windowSlot.canPlace
@@ -234,7 +234,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
                   : windowSlot.reason ?? 'Sin espacio libre suficiente para una ventana'
               }
             >
-              <LayoutGrid size={13} className={windowSlot.canPlace ? 'text-sky-600' : 'text-slate-300'} />
+              <LayoutGrid size={13} className={windowSlot.canPlace ? 'text-emerald-600' : 'text-slate-300'} />
               <span>+ Ventana (120 cm)</span>
             </button>
           </div>
@@ -254,7 +254,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
                         {op.kind === 'door' ? (
                           <DoorClosed size={12} className="text-amber-600" />
                         ) : (
-                          <LayoutGrid size={12} className="text-sky-600" />
+                          <LayoutGrid size={12} className="text-emerald-600" />
                         )}
                         <span>
                           {op.kind === 'door' ? 'Puerta' : 'Ventana'} #{idx + 1} ({op.widthCm}×{op.heightCm} cm)
@@ -300,7 +300,7 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
                             });
                           }
                         }}
-                        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-sky-600"
+                        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-emerald-600"
                       />
                     </div>
                   </div>
@@ -317,10 +317,10 @@ export const SpaceWallActionBar: React.FC<SpaceWallActionBarProps> = ({
           <button
             type="button"
             onClick={onApplyToAllWalls}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/50 py-1.5 px-3 font-semibold text-sky-800 hover:bg-sky-100/70 transition text-[11px]"
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/50 py-1.5 px-3 font-semibold text-emerald-800 hover:bg-emerald-100/70 transition text-[11px]"
             title="Aplica esta misma altura y material a todos los lados del perímetro"
           >
-            <CheckCheck size={13} className="text-sky-600" />
+            <CheckCheck size={13} className="text-emerald-600" />
             <span>Aplicar a todo el perímetro</span>
           </button>
         </div>

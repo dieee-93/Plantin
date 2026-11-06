@@ -30,6 +30,12 @@ describe('SpaceWallActionBar - Contextual Popover for Wall Segments', () => {
       />,
     );
 
+    const inspector = screen.getByTestId('selected-wall-inspector');
+    expect(inspector).toBeInTheDocument();
+    expect(inspector.className).toContain('rounded-2xl');
+    expect(inspector.className).toContain('border-slate-200/90');
+    expect(inspector.className).toContain('bg-white/95');
+    expect(inspector.className).toContain('text-slate-900');
     expect(screen.getByText('Pared / Cerramiento')).toBeInTheDocument();
     expect(screen.getByText('5.00 m')).toBeInTheDocument();
 

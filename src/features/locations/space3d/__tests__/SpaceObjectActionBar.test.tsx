@@ -30,7 +30,12 @@ describe('SpaceObjectActionBar - Floating Contextual Popover for 3D Objects', ()
       />,
     );
 
-    expect(screen.getByTestId('selected-object-action-bar')).toBeInTheDocument();
+    const inspector = screen.getByTestId('selected-object-action-bar');
+    expect(inspector).toBeInTheDocument();
+    expect(inspector.className).toContain('rounded-2xl');
+    expect(inspector.className).toContain('border-slate-200/90');
+    expect(inspector.className).toContain('bg-white/95');
+    expect(inspector.className).toContain('text-slate-900');
     expect(screen.getByText('Palet Europeo')).toBeInTheDocument();
     expect(screen.getByText(/logistics/i)).toBeInTheDocument();
     expect(screen.getByText(/120 × 80 × 21 cm/i)).toBeInTheDocument();

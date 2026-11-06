@@ -53,12 +53,12 @@ export const SpaceObjectActionBar: React.FC<SpaceObjectActionBarProps> = ({
   return (
     <div
       data-testid="selected-object-action-bar"
-      className="pointer-events-auto flex flex-col gap-2 rounded-2xl border border-sky-300/80 bg-white/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[300px] max-w-[360px]"
+      className="pointer-events-auto flex flex-col gap-2 rounded-2xl border border-slate-200/90 bg-white/95 p-3 text-xs text-slate-900 shadow-xl backdrop-blur-md min-w-[300px] max-w-[360px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
             <Box size={16} />
           </div>
           <div className="flex flex-col">
@@ -96,7 +96,7 @@ export const SpaceObjectActionBar: React.FC<SpaceObjectActionBarProps> = ({
         </div>
         <div className="flex justify-between items-center">
           <span className="text-slate-500 font-sans">Elevación actual:</span>
-          <span className="font-bold text-sky-700">
+          <span className="font-bold text-emerald-700">
             {Math.round(currentElevationM * 100)} cm ({currentElevationM.toFixed(2)} m)
           </span>
         </div>
@@ -159,7 +159,7 @@ export const SpaceObjectActionBar: React.FC<SpaceObjectActionBarProps> = ({
                 onClick={() => onUpdateElevation(preset.elevationM)}
                 className={`rounded-lg px-2 py-1 text-[10px] font-semibold transition text-center border ${
                   isActive
-                    ? 'border-sky-500 bg-sky-50 text-sky-800 font-bold shadow-xs'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-bold shadow-xs ring-1 ring-emerald-500/30'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
                 }`}
               >

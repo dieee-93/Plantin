@@ -159,4 +159,28 @@ describe('SpaceAssetDrawer - 3D Asset Drawer & Taxonomy', () => {
     // Expecting next batch
     expect(screen.getByText(/Mostrando 48 de \d+/i)).toBeInTheDocument();
   });
+
+  it('renders in horizontal luminous bottom console layout without dark mode classes', () => {
+    const { container } = render(
+      <SpaceAssetDrawer
+        selectedAssetId="pallet_standard_wood_a01"
+        onSelectAssetId={vi.fn()}
+      />,
+    );
+
+    const aside = screen.getByTestId('space-asset-drawer');
+    // Checks horizontal luminous console layout
+    expect(aside.className).toContain('max-w-4xl');
+    expect(aside.className).toContain('max-h-[34vh]');
+    expect(aside.className).not.toContain('fixed top-0 bottom-0 left-0 w-96');
+
+    // No dark:* classes across the rendered component
+    const allHtml = container.innerHTML;
+    expect(allHtml).not.toMatch(/dark:/);
+
+    // Grid has horizontal responsive columns
+    const grid = screen.getByTestId('space-asset-grid');
+    expect(grid.className).toContain('sm:grid-cols-3');
+    expect(grid.className).toContain('md:grid-cols-4');
+  });
 });

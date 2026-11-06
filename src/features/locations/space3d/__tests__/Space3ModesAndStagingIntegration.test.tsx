@@ -202,6 +202,10 @@ describe('Fase 4: 3 Modes, Filtered Catalog & Planting Staging Integration', () 
 
       const bar = screen.getByTestId('planting-staging-bar');
       expect(bar).toBeInTheDocument();
+      expect(bar.className).toContain('bg-white/95');
+      expect(bar.className).toContain('border-emerald-300/90');
+      expect(bar.className).toContain('rounded-2xl');
+      expect(bar.className).not.toContain('dark:bg-slate-900/95');
       expect(within(bar).getByText(/2 plantas en borrador/i)).toBeInTheDocument();
       expect(within(bar).getByText(/densidad excesiva|solapamiento|crowding/i)).toBeInTheDocument();
       expect(within(bar).getByText(/sinergia/i)).toBeInTheDocument();

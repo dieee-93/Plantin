@@ -169,7 +169,7 @@ export const SpaceTerrainBuilderShelf: React.FC<SpaceTerrainBuilderShelfProps> =
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Material de Suelo
           </span>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
             {FLOOR_MATERIALS.map((card) => (
               <HudItemCard
                 key={card.value}

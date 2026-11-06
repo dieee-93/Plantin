@@ -5,7 +5,7 @@
 
 export const hudTokens = {
   surfaces: {
-    base: 'bg-white/85 backdrop-blur-md border border-slate-200/80 shadow-xl shadow-slate-900/5',
+    base: 'bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl shadow-slate-900/5 text-slate-900',
     subtle: 'bg-white/70 hover:bg-white text-slate-700 hover:text-slate-900',
     hover: 'hover:bg-white/95',
     active: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 ring-1 ring-emerald-500/50 shadow-xs',
@@ -26,8 +26,8 @@ export const hudTokens = {
     buttonClass: 'h-11 w-11 min-h-[44px] min-w-[44px]',
     iconPx: 20,
     iconClass: 'h-5 w-5',
-    flyoutWidth: 'w-[360px] md:w-[420px]',
-    flyoutMaxHeight: 'max-h-[35vh]',
+    flyoutWidth: 'w-full max-w-4xl',
+    flyoutMaxHeight: 'max-h-[32vh]',
   },
   radii: {
     rail: 'rounded-2xl',

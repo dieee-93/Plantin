@@ -32,7 +32,7 @@ export const HudFlyout: React.FC<HudFlyoutProps> = ({
       className={`pointer-events-auto flex flex-col ${hudTokens.surfaces.base} ${hudTokens.radii.flyout} ${hudTokens.sizes.flyoutWidth} ${hudTokens.sizes.flyoutMaxHeight} overflow-hidden p-3 shadow-2xl backdrop-blur-md ${className}`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2 mb-2">
+      <div className="flex items-center justify-between bg-slate-50/90 -mx-3 -mt-3 px-3.5 py-2 mb-2.5 border-b border-slate-200/80">
         <div className="flex items-center gap-2 min-w-0">
           {icon && (
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 shrink-0">

@@ -132,7 +132,7 @@ export const SpaceRoofActionBar: React.FC<SpaceRoofActionBarProps> = ({
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Tipo de Cubierta
           </span>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {ROOF_CARDS.map((card) => {
               const isActive = currentKind === card.kind;
               return (

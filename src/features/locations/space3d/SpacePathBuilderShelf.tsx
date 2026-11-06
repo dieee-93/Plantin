@@ -161,7 +161,7 @@ export const SpacePathBuilderShelf: React.FC<SpacePathBuilderShelfProps> = ({
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Material de Pavimento
           </span>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {PATH_MATERIALS.map((mat) => (
               <HudItemCard
                 key={mat.value}

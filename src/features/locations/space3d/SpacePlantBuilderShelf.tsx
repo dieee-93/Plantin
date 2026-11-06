@@ -144,7 +144,7 @@ export const SpacePlantBuilderShelf: React.FC<SpacePlantBuilderShelfProps> = ({
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Especie Vegetal
           </span>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
             {CROP_CARDS.map((crop) => {
               const isSelected = plantCropCode === crop.code;
               return (

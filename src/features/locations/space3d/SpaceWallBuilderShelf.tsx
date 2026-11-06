@@ -187,7 +187,7 @@ export const SpaceWallBuilderShelf: React.FC<SpaceWallBuilderShelfProps> = ({
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Arquetipos Perimetrales
           </span>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {WALL_ARCHETYPES.map((card) => {
               const isActive = selectedHeight === card.heightCm;
               return (

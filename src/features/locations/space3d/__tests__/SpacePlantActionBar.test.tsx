@@ -51,7 +51,12 @@ describe('SpacePlantActionBar - Floating Contextual Popover for Selected Plant',
       />,
     );
 
-    expect(screen.getByTestId('selected-plant-inspector')).toBeInTheDocument();
+    const inspector = screen.getByTestId('selected-plant-inspector');
+    expect(inspector).toBeInTheDocument();
+    expect(inspector.className).toContain('rounded-2xl');
+    expect(inspector.className).toContain('border-slate-200/90');
+    expect(inspector.className).toContain('bg-white/95');
+    expect(inspector.className).toContain('text-slate-900');
     expect(screen.getByText(/Tomatera #01/i)).toBeInTheDocument();
     expect(screen.getByText(/BBCH\s*65/i)).toBeInTheDocument();
 

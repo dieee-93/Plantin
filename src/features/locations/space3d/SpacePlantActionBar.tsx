@@ -38,7 +38,7 @@ export const SpacePlantActionBar: React.FC<SpacePlantActionBarProps> = ({
   return (
     <div
       data-testid="selected-plant-inspector"
-      className="pointer-events-auto flex flex-col gap-2 rounded-2xl border border-sky-200/90 bg-white/95 p-3 text-xs shadow-2xl backdrop-blur-md min-w-[280px] max-w-[340px]"
+      className="pointer-events-auto flex flex-col gap-2 rounded-2xl border border-slate-200/90 bg-white/95 p-3 text-xs text-slate-900 shadow-xl backdrop-blur-md min-w-[280px] max-w-[340px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
@@ -98,7 +98,7 @@ export const SpacePlantActionBar: React.FC<SpacePlantActionBarProps> = ({
         <button
           type="button"
           onClick={onInspectDetails}
-          className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-sky-50 px-2 py-1.5 font-semibold text-sky-800 hover:bg-sky-100 transition"
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-50 px-2 py-1.5 font-semibold text-emerald-800 hover:bg-emerald-100 transition"
           title="Ver ficha técnica completa del individuo"
         >
           <Search size={12} />
