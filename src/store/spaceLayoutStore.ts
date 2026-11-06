@@ -768,6 +768,26 @@ export const useSpaceLayoutStore = create<SpaceLayoutStoreState>()(
             const defaultPatio = SPACE_PRESETS.patio_croquis.createLayout(locationId);
             existing.placedObjects = defaultPatio.placedObjects;
           }
+
+          // Auto-heal legacy or removed assets in placedObjects
+          if (existing.placedObjects && existing.placedObjects.length > 0) {
+            let hasLegacy = false;
+            const sanitizedObjects = existing.placedObjects.map((obj) => {
+              if (obj.assetId === 'plant_tomato_star_a01') {
+                hasLegacy = true;
+                return {
+                  ...obj,
+                  assetId: 'plant_tomato_clay_a01',
+                  modelUrl: '/models/plants/plant_tomato_clay_a01.glb',
+                };
+              }
+              return obj;
+            });
+            if (hasLegacy) {
+              existing.placedObjects = sanitizedObjects;
+            }
+          }
+
           return existing;
         }
         const resolvedPresetId = resolveDefaultPresetId(locationType, presetId);
