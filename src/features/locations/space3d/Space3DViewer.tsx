@@ -607,10 +607,31 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
     removeBoundaryVertex,
   ]);
 
-  const allVisiblePlants = useMemo(
-    () => [...layout.placedPlants, ...builderState.stagedPlants],
-    [layout.placedPlants, builderState.stagedPlants],
-  );
+  const allVisiblePlants = useMemo(() => {
+    // Map live individual BBCH by ID and label for instant real-time synchronization
+    const indMap = new Map<string, number>();
+    for (let i = 0; i < individuals.length; i++) {
+      const ind = individuals[i];
+      if (ind.currentBBCH !== undefined) {
+        indMap.set(ind.id, ind.currentBBCH);
+        if (ind.label) {
+          indMap.set(ind.label, ind.currentBBCH);
+        }
+      }
+    }
+
+    return [...layout.placedPlants, ...builderState.stagedPlants].map((p) => {
+      const liveBBCH = indMap.get(p.id) ?? indMap.get(p.label);
+      if (liveBBCH !== undefined && (p.bbchStage !== liveBBCH || !p.phase)) {
+        return {
+          ...p,
+          bbchStage: liveBBCH,
+          phase: bbchToPhase(liveBBCH),
+        };
+      }
+      return p;
+    });
+  }, [layout.placedPlants, builderState.stagedPlants, individuals]);
 
   const sceneLayout = useMemo(
     () => ({ ...layout, placedPlants: allVisiblePlants }),
@@ -2616,7 +2637,7 @@ export const Space3DViewer: React.FC<Space3DViewerProps> = ({
         <div className="absolute top-20 right-4 z-40">
           <SpacePlantActionBar
             plant={selectedPlant}
-            bbchStage={matchingIndividual?.currentBBCH ?? 15}
+            bbchStage={matchingIndividual?.currentBBCH ?? selectedPlant.bbchStage ?? 15}
             neighbors={selectedPlantNeighbors}
             onClose={() => dispatch({ type: 'SELECT_PLANT', plantId: null })}
             onInspectDetails={handleInspectPlant}

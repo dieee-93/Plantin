@@ -13,6 +13,7 @@ import { getIndividualDisplayName } from '@/domain/individual'
 import type { Individual, IndividualStatus, CrossType } from '@/domain/individual'
 import { getVegetativeCloneCapability } from '@/domain/propagationForm'
 import { useSpaceLayoutStore } from '@/store/spaceLayoutStore'
+import { bbchToPhase } from '@/features/locations/space3d/SpacePlantSprite'
 import { ActiveCropTabs } from '@/components/ActiveCropTabs'
 import { HudChipRow, HudFlyout, type HudChipOption } from '@/components/hud'
 import {
@@ -348,6 +349,21 @@ export function IndividualDetail({
     if (Number.isNaN(newStage) || newStage < 0 || newStage > 99) return
     updateIndividual(individual.id, { currentBBCH: newStage })
     setBbchDraft(String(newStage))
+    if (individual.locationId) {
+      const store = useSpaceLayoutStore.getState()
+      const layout = store.layouts[individual.locationId]
+      if (layout) {
+        const matchingPlant = layout.placedPlants.find(
+          (p) => p.id === individual.id || p.label === individual.label
+        )
+        if (matchingPlant) {
+          store.updatePlant(individual.locationId, matchingPlant.id, {
+            bbchStage: newStage,
+            phase: bbchToPhase(newStage),
+          })
+        }
+      }
+    }
   }
 
   const handleHarvestSubmit = (e: React.FormEvent) => {
